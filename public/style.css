@@ -70,7 +70,7 @@ input::placeholder { color: var(--muted); }
 .viewer-wrap { position: relative; background: var(--viewer); min-height: 0; }
 .viewer { position: absolute; inset: 0; }
 .viewer-msg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--muted); max-width: 52ch; margin: auto; }
-.legend { position: absolute; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px 12px; background: rgba(17, 26, 43, .82); backdrop-filter: blur(8px); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 12px; z-index: 2; max-width: calc(100% - 24px); }
+.legend { position: absolute; left: 12px; top: 12px; display: flex; flex-wrap: wrap; gap: 6px 12px; background: rgba(17, 26, 43, .82); backdrop-filter: blur(8px); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 12px; z-index: 2; max-width: calc(100% - 24px); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
 
