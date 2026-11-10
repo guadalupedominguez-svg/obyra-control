@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0A0F1A">
+  <title>OBYRA Control</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Inicio de sesión -->
+  <main id="login" class="login" hidden>
+    <form id="login-form" class="login-card" novalidate>
+      <div class="brand brand-lg" aria-label="OBYRA Control">OBYRA <span>Control</span></div>
+      <p class="login-sub">Avance de obra por pieza, aprobación y generadores.</p>
+      <label for="login-email">Correo</label>
+      <input id="login-email" type="email" autocomplete="username" required>
+      <label for="login-pass">Contraseña</label>
+      <input id="login-pass" type="password" autocomplete="current-password" required>
+      <p id="login-error" class="form-error" role="alert" hidden></p>
+      <button id="login-btn" class="btn btn-primary" type="submit">Entrar</button>
+      <p id="login-config" class="login-config" hidden></p>
+    </form>
+  </main>
+
+  <!-- Aplicación -->
+  <div id="app" class="app" hidden>
+    <header class="top">
+      <div class="brand" aria-label="OBYRA Control">OBYRA <span>Control</span></div>
+      <div class="top-obra" id="obra-nombre"></div>
+      <div class="top-user">
+        <span id="user-name"></span>
+        <span id="user-rol" class="chip"></span>
+        <button id="btn-pass" class="btn btn-ghost btn-sm" type="button">Contraseña</button>
+        <button id="btn-logout" class="btn btn-ghost btn-sm" type="button">Salir</button>
+      </div>
+    </header>
+
+    <div class="body">
+      <section class="viewer-wrap" aria-label="Modelo 3D">
+        <div id="viewer" class="viewer"></div>
+        <div id="viewer-msg" class="viewer-msg" hidden></div>
+        <div class="legend" id="legend" aria-label="Colores por estatus"></div>
+      </section>
+
+      <aside class="panel">
+        <nav class="tabs" role="tablist" id="tabs">
+          <button role="tab" data-tab="piezas" class="tab" type="button">Piezas</button>
+          <button role="tab" data-tab="aprobar" class="tab" type="button" data-perm="aprobar">Por aprobar <span class="badge" id="badge-aprobar" hidden></span></button>
+          <button role="tab" data-tab="generador" class="tab" type="button">Generador</button>
+          <button role="tab" data-tab="admin" class="tab" type="button" data-perm="administrar">Configuración</button>
+        </nav>
+
+        <!-- Piezas -->
+        <section class="tabpane" data-pane="piezas">
+          <div class="filters">
+            <select id="f-contratista" aria-label="Contratista" data-perm="verTodo"></select>
+            <select id="f-estatus" aria-label="Estatus"></select>
+            <input id="f-buscar" type="search" placeholder="Buscar marca, clave, zona o eje" aria-label="Buscar">
+          </div>
+          <div class="list-head">
+            <label class="check"><input type="checkbox" id="sel-all"> <span id="list-count">0 piezas</span></label>
+            <button id="btn-ver-sel" class="btn btn-ghost btn-sm" type="button">Ver en el modelo</button>
+          </div>
+          <ul id="lista" class="lista" aria-label="Piezas"></ul>
+
+          <form id="reporte" class="actionbar" data-perm="reportar" hidden>
+            <div class="actionbar-title"><span id="sel-count">0</span> seleccionadas</div>
+            <div class="row">
+              <select id="r-estatus" aria-label="Nuevo estatus"></select>
+              <input id="r-pct" type="number" min="0" max="100" step="5" placeholder="%" aria-label="Porcentaje de avance">
+            </div>
+            <input id="r-coment" type="text" maxlength="500" placeholder="Comentario (opcional)" aria-label="Comentario">
+            <button id="r-btn" class="btn btn-primary" type="submit">Enviar avance</button>
+            <p class="hint" id="r-hint"></p>
+          </form>
+        </section>
+
+        <!-- Por aprobar -->
+        <section class="tabpane" data-pane="aprobar" hidden>
+          <p class="pane-intro">Avance reportado por los contratistas que espera tu revisión. Revisa en obra o en el modelo y aprueba o rechaza con el motivo.</p>
+          <div class="list-head">
+            <label class="check"><input type="checkbox" id="ap-all"> <span id="ap-count">0 pendientes</span></label>
+          </div>
+          <ul id="lista-ap" class="lista" aria-label="Avance por aprobar"></ul>
+          <div class="actionbar">
+            <input id="ap-coment" type="text" maxlength="500" placeholder="Comentario o motivo del rechazo" aria-label="Comentario">
+            <div class="row">
+              <button id="ap-ok" class="btn btn-primary" type="button">Aprobar</button>
+              <button id="ap-no" class="btn btn-danger" type="button">Rechazar</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Generador -->
+        <section class="tabpane" data-pane="generador" hidden>
+          <div class="filters">
+            <select id="g-contratista" aria-label="Contratista"></select>
+            <select id="g-vista" aria-label="Qué piezas">
+              <option value="porestimar">Terminado sin estimar</option>
+              <option value="todas">Todas las piezas</option>
+            </select>
+          </div>
+          <div id="g-resumen" class="g-resumen"></div>
+          <div class="tablewrap"><table class="tabla" id="g-tabla"></table></div>
+          <div class="actionbar">
+            <button id="g-excel" class="btn btn-ghost" type="button">Descargar Excel</button>
+            <div class="row" data-perm="estimar">
+              <input id="g-est" type="text" maxlength="30" placeholder="Estimación (ej. AD-003)" aria-label="Estimación">
+              <button id="g-marcar" class="btn btn-primary" type="button">Marcar como estimado</button>
+            </div>
+            <p class="hint">Solo entran piezas aprobadas como Terminado. Al marcarlas pasan a Estimado y dejan de aparecer aquí.</p>
+          </div>
+        </section>
+
+        <!-- Configuración -->
+        <section class="tabpane" data-pane="admin" hidden>
+          <div class="card">
+            <h3>Obra</h3>
+            <form id="obra-form" class="inline">
+              <input id="obra-input" type="text" maxlength="120" placeholder="Nombre de la obra" aria-label="Nombre de la obra">
+              <button class="btn btn-ghost btn-sm" type="submit">Guardar</button>
+            </form>
+          </div>
+          <div class="card">
+            <h3>Conexión con Forma</h3>
+            <p id="forma-estado" class="muted"></p>
+            <a class="btn btn-ghost btn-sm" href="/api/forma/connect" id="forma-btn">Conectar Forma</a>
+          </div>
+          <div class="card">
+            <h3>Modelo IFC</h3>
+            <p class="muted">En Forma Docs abre el IFC exportado con la configuración GCP_Control_Obra y copia la liga de la barra del navegador.</p>
+            <form id="modelo-form" class="stack">
+              <input id="modelo-url" type="url" placeholder="https://acc.autodesk.com/docs/files/projects/…" aria-label="Liga del IFC en Forma">
+              <div class="row">
+                <button class="btn btn-ghost btn-sm" type="submit">Guardar liga</button>
+                <button class="btn btn-ghost btn-sm" type="button" id="modelo-act">Usar la versión más reciente</button>
+              </div>
+            </form>
+            <p id="modelo-estado" class="muted"></p>
+          </div>
+          <div class="card">
+            <h3>Piezas del modelo</h3>
+            <p class="muted">Lee del modelo las piezas que tienen contratista o clave de concepto, con su marca, zona, eje y cantidades. Hazlo cada vez que cambie la versión del IFC.</p>
+            <button class="btn btn-primary btn-sm" type="button" id="cat-btn">Leer piezas del modelo</button>
+            <p id="cat-estado" class="muted"></p>
+          </div>
+          <div class="card">
+            <h3>Usuarios</h3>
+            <div class="tablewrap"><table class="tabla" id="u-tabla"></table></div>
+            <form id="u-form" class="stack">
+              <h4 id="u-form-title">Nuevo usuario</h4>
+              <input id="u-email" type="email" placeholder="Correo" aria-label="Correo" required>
+              <input id="u-nombre" type="text" maxlength="80" placeholder="Nombre" aria-label="Nombre" required>
+              <div class="row">
+                <select id="u-rol" aria-label="Rol"></select>
+                <input id="u-contratista" type="text" maxlength="60" placeholder="Contratista (como en el modelo)" aria-label="Contratista">
+              </div>
+              <input id="u-pass" type="text" autocomplete="new-password" placeholder="Contraseña (mínimo 10 caracteres)" aria-label="Contraseña">
+              <label class="check"><input type="checkbox" id="u-activo" checked> Activo</label>
+              <div class="row">
+                <button class="btn btn-primary btn-sm" type="submit">Guardar usuario</button>
+                <button class="btn btn-ghost btn-sm" type="button" id="u-nuevo">Limpiar</button>
+              </div>
+              <p class="hint">El contratista debe escribirse igual que en el parámetro GCP_Contratista del modelo (ej. COPRESA). Comparte la contraseña inicial por un medio seguro.</p>
+            </form>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <!-- Detalle de pieza -->
+    <dialog id="detalle" class="dialog">
+      <form method="dialog" class="dialog-body">
+        <h3 id="d-titulo"></h3>
+        <dl id="d-datos" class="datos"></dl>
+        <h4>Historial</h4>
+        <ol id="d-hist" class="hist"></ol>
+        <div class="row end"><button class="btn btn-ghost btn-sm" value="cerrar">Cerrar</button></div>
+      </form>
+    </dialog>
+
+    <!-- Cambiar contraseña -->
+    <dialog id="pass" class="dialog">
+      <form id="pass-form" class="dialog-body stack">
+        <h3>Cambiar contraseña</h3>
+        <input id="pass-actual" type="password" autocomplete="current-password" placeholder="Contraseña actual" aria-label="Contraseña actual" required>
+        <input id="pass-nueva" type="password" autocomplete="new-password" placeholder="Nueva contraseña (mínimo 10 caracteres)" aria-label="Nueva contraseña" required>
+        <p id="pass-error" class="form-error" role="alert" hidden></p>
+        <div class="row end">
+          <button class="btn btn-ghost btn-sm" type="button" id="pass-cancel">Cancelar</button>
+          <button class="btn btn-primary btn-sm" type="submit">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>

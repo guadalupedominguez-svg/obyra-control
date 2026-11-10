@@ -1,0 +1,16 @@
+// OBYRA Control en Cloudflare Workers: la carpeta public/ como archivos estáticos y /api/* en worker/index.js.
+// Las claves (SESSION_SECRET, KV_REST_API_URL, KV_REST_API_TOKEN, ADMIN_EMAIL, ADMIN_PASSWORD,
+// APS_CLIENT_ID, APS_CLIENT_SECRET, APS_CALLBACK_URL) se cargan como secretos en el panel de Cloudflare, nunca aquí.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "obyra-control",
+  "main": "worker/index.js",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "observability": { "enabled": true }
+}

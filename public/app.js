@@ -1,0 +1,721 @@
+// OBYRA Control · app web (sin frameworks).
+// Avance por pieza sobre el modelo IFC de Forma, aprobación del residente y generador de estimaciones.
+(function () {
+  "use strict";
+
+  // ---------- Utilidades ----------
+  var $ = function (id) { return document.getElementById(id); };
+  var qsa = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+  function el(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === "text") e.textContent = attrs[k];
+      else if (k === "class") e.className = attrs[k];
+      else if (k.slice(0, 2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else if (attrs[k] != null && attrs[k] !== false) e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function (c) { if (c != null) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function api(path, body) {
+    var opt = { credentials: "same-origin", headers: {} };
+    if (body !== undefined) { opt.method = "POST"; opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(body); }
+    return fetch(path, opt).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (r.status === 401 && path !== "/api/session") { showLogin(); }
+        if (!r.ok) { var e = new Error(j.error || "Error " + r.status); e.status = r.status; throw e; }
+        return j;
+      });
+    });
+  }
+  var toastT = null;
+  function toast(msg, err) {
+    var t = $("toast");
+    t.textContent = msg; t.className = "toast" + (err ? " err" : ""); t.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, err ? 6000 : 3500);
+  }
+  var nf2 = new Intl.NumberFormat("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  var nf0 = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
+  var f2 = function (n) { return n == null || !isFinite(n) ? "—" : nf2.format(n); };
+  var fecha = function (iso) { return iso ? new Date(iso).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" }) : "—"; };
+
+  // Colores por estatus (los mismos tonos de OBYRA).
+  var COLOR = {
+    "Planeado": "#5B6B85",
+    "Liberado": "#3B82F6",
+    "En ejecución": "#F5B83D",
+    "Por aprobar": "#F472B6",
+    "Terminado": "#2BD483",
+    "Estimado": "#22D3EE",
+    "Pagado": "#A78BFA",
+  };
+  var ORDEN = ["Planeado", "Liberado", "En ejecución", "Por aprobar", "Terminado", "Estimado", "Pagado"];
+
+  // ---------- Estado ----------
+  var S = {
+    me: null, permisos: {}, roles: {}, obra: null,
+    piezas: {}, avance: {}, version: null,
+    sel: new Set(), apSel: new Set(),
+    viewer: null, model: null, guid2db: new Map(), db2guid: new Map(),
+    syncing: false,
+  };
+  var rec = function (g) { return S.avance[g] || { estatus: "Planeado", pct: 0 }; };
+  var estado = function (g) { var r = rec(g); return r.pend ? "Por aprobar" : (r.estatus || "Planeado"); };
+
+  // ---------- Inicio ----------
+  function boot() {
+    var q = new URLSearchParams(location.search);
+    var forma = q.get("forma");
+    if (forma) {
+      history.replaceState(null, "", "/");
+      var msg = { conectado: "Forma quedó conectado.", cancelado: "Se canceló la conexión con Forma.", invalido: "La conexión con Forma no se pudo verificar. Inténtalo de nuevo.", error: "Autodesk rechazó la conexión. Revisa la app de APS y la URL de retorno.", "sin-permiso": "Solo un administrador puede conectar Forma." }[forma];
+      if (msg) setTimeout(function () { toast(msg, forma !== "conectado"); }, 300);
+    }
+    api("/api/session").then(function (s) {
+      if (!s.loggedIn) { showLogin(s.config); return; }
+      S.me = s.user; S.permisos = s.permisos; S.roles = s.roles;
+      startApp();
+    }).catch(function () { showLogin(); });
+  }
+
+  function showLogin(config) {
+    $("app").hidden = true; $("login").hidden = false;
+    var c = $("login-config");
+    if (config && (!config.store || !config.secret)) {
+      c.textContent = "Falta configurar el servidor: " + [!config.store && "base de datos (KV_REST_API_URL y KV_REST_API_TOKEN)", !config.secret && "SESSION_SECRET"].filter(Boolean).join(" y ") + ".";
+      c.hidden = false;
+    }
+    setTimeout(function () { $("login-email").focus(); }, 50);
+  }
+
+  $("login-form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var err = $("login-error"); err.hidden = true;
+    $("login-btn").disabled = true;
+    api("/api/session", { action: "login", email: $("login-email").value, password: $("login-pass").value })
+      .then(function () { location.reload(); })
+      .catch(function (e) { err.textContent = e.message; err.hidden = false; $("login-btn").disabled = false; });
+  });
+
+  function startApp() {
+    $("login").hidden = true; $("app").hidden = false;
+    $("user-name").textContent = S.me.nombre;
+    $("user-rol").textContent = S.me.rolNombre + (S.me.contratista ? " · " + S.me.contratista : "");
+    qsa("[data-perm]").forEach(function (n) { if (!S.permisos[n.getAttribute("data-perm")]) n.remove(); });
+    if (S.me.rol === "contratista") $("r-btn").textContent = "Enviar avance para aprobación";
+    else $("r-btn").textContent = "Registrar avance";
+    $("r-hint").textContent = S.me.rol === "contratista"
+      ? "El residente o el superintendente revisa y aprueba tu reporte antes de que cuente para el generador."
+      : "Como puedes aprobar, el avance que registras queda aprobado de inmediato.";
+    fillSelect($("r-estatus"), S.me.rol === "contratista" ? ["En ejecución", "Terminado"] : ["Planeado", "Liberado", "En ejecución", "Terminado"]);
+    fillSelect($("f-estatus"), [["", "Todos los estatus"]].concat(ORDEN.map(function (e) { return [e, e]; })));
+    renderLegend();
+    setupTabs();
+    Promise.all([api("/api/obra"), loadPiezas()]).then(function (r) {
+      S.obra = r[0];
+      $("obra-nombre").textContent = S.obra.nombre;
+      document.title = S.obra.nombre + " · OBYRA Control";
+      if (S.permisos.administrar) renderAdmin();
+      startViewer();
+    }).catch(function (e) { toast(e.message, true); });
+  }
+
+  function fillSelect(sel, items) {
+    sel.replaceChildren.apply(sel, items.map(function (it) {
+      var v = Array.isArray(it) ? it[0] : it, t = Array.isArray(it) ? it[1] : it;
+      return el("option", { value: v, text: t });
+    }));
+  }
+
+  function renderLegend() {
+    $("legend").replaceChildren.apply($("legend"), ORDEN.map(function (e) {
+      return el("span", null, [el("i", { class: "dot", style: "background:" + COLOR[e] }), e]);
+    }));
+  }
+
+  function setupTabs() {
+    var tabs = qsa(".tab");
+    function open(name) {
+      tabs.forEach(function (t) { t.setAttribute("aria-selected", String(t.getAttribute("data-tab") === name)); });
+      qsa(".tabpane").forEach(function (p) { p.hidden = p.getAttribute("data-pane") !== name; });
+      if (name === "generador") renderGenerador();
+      if (name === "aprobar") renderAprobar();
+      if (name === "admin") loadUsers();
+      try { localStorage.setItem("ctrl_tab", name); } catch (e) { /* sin almacenamiento */ }
+    }
+    tabs.forEach(function (t) { t.addEventListener("click", function () { open(t.getAttribute("data-tab")); }); });
+    var last = null;
+    try { last = localStorage.getItem("ctrl_tab"); } catch (e) { /* nada */ }
+    open(tabs.some(function (t) { return t.getAttribute("data-tab") === last; }) ? last : "piezas");
+  }
+
+  $("btn-logout").addEventListener("click", function () {
+    api("/api/session", { action: "logout" }).finally(function () { location.reload(); });
+  });
+  $("btn-pass").addEventListener("click", function () { $("pass-error").hidden = true; $("pass-form").reset(); $("pass").showModal(); });
+  $("pass-cancel").addEventListener("click", function () { $("pass").close(); });
+  $("pass-form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    api("/api/session", { action: "password", actual: $("pass-actual").value, nueva: $("pass-nueva").value })
+      .then(function () { $("pass").close(); toast("Contraseña actualizada."); })
+      .catch(function (e) { $("pass-error").textContent = e.message; $("pass-error").hidden = false; });
+  });
+
+  // ---------- Piezas ----------
+  function loadPiezas() {
+    return api("/api/piezas").then(function (r) {
+      S.piezas = r.piezas || {}; S.avance = r.avance || {}; S.version = r.version;
+      var contratistas = Array.from(new Set(Object.values(S.piezas).map(function (p) { return p.contratista; }).filter(Boolean))).sort();
+      if ($("f-contratista")) {
+        var prev = $("f-contratista").value;
+        fillSelect($("f-contratista"), [["", "Todos los contratistas"]].concat(contratistas.map(function (c) { return [c, c]; })));
+        $("f-contratista").value = contratistas.indexOf(prev) >= 0 ? prev : "";
+      }
+      var gPrev = $("g-contratista").value;
+      if (S.me.rol === "contratista") fillSelect($("g-contratista"), [[S.me.contratista, S.me.contratista]]);
+      else fillSelect($("g-contratista"), [["", "Todos los contratistas"]].concat(contratistas.map(function (c) { return [c, c]; })));
+      if (gPrev && contratistas.indexOf(gPrev) >= 0) $("g-contratista").value = gPrev;
+      updateBadge();
+      renderLista();
+      paintModel();
+    });
+  }
+
+  function filtradas() {
+    var c = $("f-contratista") ? $("f-contratista").value : "";
+    var e = $("f-estatus").value;
+    var q = $("f-buscar").value.trim().toLowerCase();
+    return Object.keys(S.piezas).filter(function (g) {
+      var p = S.piezas[g];
+      if (c && p.contratista !== c) return false;
+      if (e && estado(g) !== e) return false;
+      if (q && [p.marca, p.clave, p.zona, p.eje, p.concepto].join(" ").toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    }).sort(function (a, b) {
+      var pa = S.piezas[a], pb = S.piezas[b];
+      return (pa.contratista + pa.clave + pa.marca).localeCompare(pb.contratista + pb.clave + pb.marca, "es", { numeric: true });
+    });
+  }
+
+  function pill(est, label) {
+    return el("span", { class: "pill" }, [el("i", { class: "dot", style: "background:" + (COLOR[est] || COLOR.Planeado) }), label || est]);
+  }
+
+  function renderLista() {
+    var list = filtradas();
+    var ul = $("lista");
+    $("list-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pieza" : " piezas");
+    if (!Object.keys(S.piezas).length) {
+      ul.replaceChildren(el("li", { class: "empty", text: S.permisos.administrar
+        ? "Todavía no hay piezas. En Configuración, conecta Forma, pega la liga del IFC y usa «Leer piezas del modelo»."
+        : (S.me.rol === "contratista" ? "Aún no hay piezas asignadas a " + S.me.contratista + " en el modelo." : "Todavía no se han leído las piezas del modelo.") }));
+      updateSel();
+      return;
+    }
+    if (!list.length) { ul.replaceChildren(el("li", { class: "empty", text: "Ninguna pieza coincide con el filtro." })); updateSel(); return; }
+    ul.replaceChildren.apply(ul, list.map(function (g) {
+      var p = S.piezas[g], r = rec(g), est = estado(g);
+      var cb = el("input", { type: "checkbox", "aria-label": "Seleccionar " + (p.marca || g) });
+      cb.checked = S.sel.has(g);
+      cb.addEventListener("click", function (ev) { ev.stopPropagation(); toggleSel(g, cb.checked); });
+      var notes = [];
+      if (r.pend) notes.push(el("span", { class: "note warn", text: "Propuesto: " + r.pend.estatus + (r.pend.estatus !== "Terminado" && r.pend.pct ? " " + r.pend.pct + " %" : "") + " · " + r.pend.por }));
+      if (r.rechazo) notes.push(el("span", { class: "note bad", text: "Rechazado: " + r.rechazo.motivo }));
+      var li = el("li", { class: S.sel.has(g) ? "sel" : "" }, [
+        cb,
+        el("span", { class: "m", text: (p.marca || "(sin marca)") + " · " + (p.clave || "sin clave") }),
+        pill(est, est + (est === "En ejecución" && r.pct ? " " + r.pct + " %" : "")),
+        el("span", { class: "s", text: [p.contratista, p.zona, p.eje && "Eje " + p.eje, p.nivel].filter(Boolean).join(" · ") }),
+      ].concat(notes));
+      li.addEventListener("click", function () { focusPieces([g]); });
+      li.addEventListener("dblclick", function () { showDetalle(g); });
+      return li;
+    }));
+    updateSel();
+  }
+
+  ["f-contratista", "f-estatus"].forEach(function (id) { if ($(id)) $(id).addEventListener("change", renderLista); });
+  $("f-buscar").addEventListener("input", renderLista);
+  $("sel-all").addEventListener("change", function () {
+    var list = filtradas();
+    if ($("sel-all").checked) list.forEach(function (g) { S.sel.add(g); }); else S.sel.clear();
+    renderLista(); selectInViewer();
+  });
+  $("btn-ver-sel").addEventListener("click", function () {
+    if (!S.sel.size) { toast("Selecciona piezas en la lista o en el modelo."); return; }
+    focusPieces(Array.from(S.sel));
+  });
+
+  function toggleSel(g, on) {
+    if (on) S.sel.add(g); else S.sel["delete"](g);
+    renderLista(); selectInViewer();
+  }
+  function updateSel() {
+    $("sel-count").textContent = nf0.format(S.sel.size);
+    if ($("reporte")) $("reporte").hidden = !S.sel.size;
+    var list = filtradas();
+    $("sel-all").checked = list.length > 0 && list.every(function (g) { return S.sel.has(g); });
+  }
+
+  if ($("reporte")) {
+    var syncPct = function () { var t = $("r-estatus").value === "Terminado"; $("r-pct").disabled = t; if (t) $("r-pct").value = ""; };
+    $("r-estatus").addEventListener("change", syncPct); syncPct();
+    $("reporte").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var guids = Array.from(S.sel);
+      $("r-btn").disabled = true;
+      api("/api/piezas", { action: "reportar", guids: guids, estatus: $("r-estatus").value, pct: Number($("r-pct").value || 0), comentario: $("r-coment").value })
+        .then(function (r) {
+          Object.assign(S.avance, r.avance);
+          toast(nf0.format(r.actualizadas) + (r.actualizadas === 1 ? " pieza actualizada" : " piezas actualizadas") + (r.omitidas ? " · " + r.omitidas + " sin cambio (ya estimadas o de otro contratista)" : "") + ".");
+          S.sel.clear(); $("r-coment").value = "";
+          updateBadge(); renderLista(); paintModel(); selectInViewer();
+        })
+        .catch(function (e) { toast(e.message, true); })
+        .finally(function () { $("r-btn").disabled = false; });
+    });
+  }
+
+  function showDetalle(g) {
+    var p = S.piezas[g], r = rec(g);
+    $("d-titulo").textContent = (p.marca || "(sin marca)") + " · " + (p.clave || "sin clave");
+    var datos = [
+      ["Contratista", p.contratista], ["Partida", p.partida], ["Concepto", p.concepto], ["Zona", p.zona], ["Eje", p.eje], ["Nivel", p.nivel],
+      ["Estatus", estado(g) + (r.pct && r.estatus === "En ejecución" ? " (" + r.pct + " %)" : "")], ["Estimación", r.estimacion],
+      ["Área (m²)", f2(p.area)], ["Volumen (m³)", f2(p.volumen)], ["Largo (m)", f2(p.largo)], ["Alto (m)", f2(p.alto)], ["Espesor (m)", f2(p.espesor)],
+      ["GlobalId", g],
+    ];
+    $("d-datos").replaceChildren.apply($("d-datos"), datos.reduce(function (acc, d) { acc.push(el("dt", { text: d[0] }), el("dd", { text: d[1] || "—" })); return acc; }, []));
+    var h = (r.hist || []).slice().reverse();
+    $("d-hist").replaceChildren.apply($("d-hist"), h.length ? h.map(function (e) {
+      var verbo = { reporta: "reportó", registra: "registró", aprueba: "aprobó", rechaza: "rechazó", estima: "asignó a la estimación" }[e.accion] || e.accion;
+      var que = e.accion === "estima" ? e.estimacion : (e.estatus || "") + (e.pct && e.estatus !== "Terminado" ? " " + e.pct + " %" : "");
+      return el("li", null, [e.por + " " + verbo + " " + que, el("small", { text: fecha(e.at) + (e.comentario ? " · " + e.comentario : "") })]);
+    }) : [el("li", { text: "Sin movimientos." })]);
+    $("detalle").showModal();
+  }
+
+  // ---------- Por aprobar ----------
+  function pendientes() { return Object.keys(S.piezas).filter(function (g) { return rec(g).pend; }); }
+  function updateBadge() {
+    var b = $("badge-aprobar"); if (!b) return;
+    var n = pendientes().length; b.textContent = n; b.hidden = !n;
+  }
+  function renderAprobar() {
+    if (!$("lista-ap")) return;
+    var list = pendientes().sort(function (a, b) { return rec(a).pend.at < rec(b).pend.at ? -1 : 1; });
+    S.apSel.forEach(function (g) { if (list.indexOf(g) < 0) S.apSel["delete"](g); });
+    $("ap-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pendiente" : " pendientes");
+    $("ap-all").checked = list.length > 0 && list.every(function (g) { return S.apSel.has(g); });
+    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: "No hay avance pendiente de aprobar." })); return; }
+    $("lista-ap").replaceChildren.apply($("lista-ap"), list.map(function (g) {
+      var p = S.piezas[g], pe = rec(g).pend;
+      var cb = el("input", { type: "checkbox", "aria-label": "Seleccionar " + (p.marca || g) });
+      cb.checked = S.apSel.has(g);
+      cb.addEventListener("click", function (ev) { ev.stopPropagation(); if (cb.checked) S.apSel.add(g); else S.apSel["delete"](g); renderAprobar(); });
+      var li = el("li", { class: S.apSel.has(g) ? "sel" : "" }, [
+        cb,
+        el("span", { class: "m", text: (p.marca || "(sin marca)") + " · " + p.contratista }),
+        pill(pe.estatus, pe.estatus + (pe.estatus !== "Terminado" && pe.pct ? " " + pe.pct + " %" : "")),
+        el("span", { class: "s", text: [p.clave, p.zona, p.eje && "Eje " + p.eje, "de " + estado(g).replace("Por aprobar", rec(g).estatus || "Planeado")].filter(Boolean).join(" · ") }),
+        el("span", { class: "note", text: pe.por + " · " + fecha(pe.at) + (pe.comentario ? " · " + pe.comentario : "") }),
+      ]);
+      li.addEventListener("click", function () { focusPieces([g]); });
+      li.addEventListener("dblclick", function () { showDetalle(g); });
+      return li;
+    }));
+  }
+  if ($("ap-all")) {
+    $("ap-all").addEventListener("change", function () {
+      pendientes().forEach(function (g) { if ($("ap-all").checked) S.apSel.add(g); else S.apSel["delete"](g); });
+      renderAprobar();
+    });
+    var decide = function (action) {
+      var guids = Array.from(S.apSel);
+      if (!guids.length) { toast("Selecciona al menos un avance."); return; }
+      api("/api/piezas", { action: action, guids: guids, comentario: $("ap-coment").value })
+        .then(function (r) {
+          Object.assign(S.avance, r.avance);
+          S.apSel.clear(); $("ap-coment").value = "";
+          toast(nf0.format(r.actualizadas) + (action === "aprobar" ? " aprobados." : " rechazados."));
+          updateBadge(); renderAprobar(); renderLista(); paintModel();
+        })
+        .catch(function (e) { toast(e.message, true); });
+    };
+    $("ap-ok").addEventListener("click", function () { decide("aprobar"); });
+    $("ap-no").addEventListener("click", function () { decide("rechazar"); });
+  }
+
+  // ---------- Generador ----------
+  function genFilas() {
+    var c = $("g-contratista").value, vista = $("g-vista").value;
+    return Object.keys(S.piezas).filter(function (g) {
+      var p = S.piezas[g], r = rec(g);
+      if (c && p.contratista !== c) return false;
+      if (vista === "porestimar") return r.estatus === "Terminado" && !r.pend;
+      return true;
+    }).sort(function (a, b) {
+      var pa = S.piezas[a], pb = S.piezas[b];
+      return (pa.contratista + pa.clave + pa.marca).localeCompare(pb.contratista + pb.clave + pb.marca, "es", { numeric: true });
+    });
+  }
+  function renderGenerador() {
+    var filas = genFilas();
+    var grupos = {};
+    filas.forEach(function (g) {
+      var p = S.piezas[g], k = p.contratista + "|" + (p.clave || "(sin clave)");
+      var x = grupos[k] || (grupos[k] = { contratista: p.contratista, clave: p.clave || "(sin clave)", partida: p.partida, piezas: 0, area: 0, volumen: 0 });
+      x.piezas++; x.area += p.area || 0; x.volumen += p.volumen || 0;
+    });
+    var gs = Object.values(grupos);
+    $("g-resumen").replaceChildren.apply($("g-resumen"), gs.length ? gs.map(function (x) {
+      return el("div", { class: "g-card" }, [
+        el("b", { text: x.clave + (x.partida ? " · " + x.partida : "") }), el("b", { text: f2(x.area) + " m²" }),
+        el("span", { class: "s", text: x.contratista + " · " + x.piezas + (x.piezas === 1 ? " pieza" : " piezas") }), el("span", { class: "s", text: f2(x.volumen) + " m³" }),
+      ]);
+    }) : [el("p", { class: "muted", text: $("g-vista").value === "porestimar" ? "No hay piezas terminadas y aprobadas pendientes de estimar." : "No hay piezas." })]);
+    var head = el("tr", null, ["Marca", "Clave", "Zona", "Eje", "Nivel", "Largo", "Alto", "Área m²", "Vol. m³", "Estatus", "Estimación"].map(function (h, i) { return el("th", { class: i >= 5 && i <= 8 ? "num" : null, text: h }); }));
+    var rows = filas.map(function (g) {
+      var p = S.piezas[g], r = rec(g);
+      var tr = el("tr", { class: "click" }, [
+        el("td", { text: p.marca || "—" }), el("td", { text: p.clave || "—" }), el("td", { text: p.zona || "—" }), el("td", { text: p.eje || "—" }), el("td", { text: p.nivel || "—" }),
+        el("td", { class: "num", text: f2(p.largo) }), el("td", { class: "num", text: f2(p.alto) }), el("td", { class: "num", text: f2(p.area) }), el("td", { class: "num", text: f2(p.volumen) }),
+        el("td", { text: estado(g) }), el("td", { text: r.estimacion || "—" }),
+      ]);
+      tr.addEventListener("click", function () { focusPieces([g]); });
+      return tr;
+    });
+    $("g-tabla").replaceChildren(el("thead", null, [head]), el("tbody", null, rows));
+  }
+  ["g-contratista", "g-vista"].forEach(function (id) { $(id).addEventListener("change", renderGenerador); });
+
+  $("g-excel").addEventListener("click", function () {
+    if (!window.XLSX) { toast("No se pudo cargar el generador de Excel. Revisa tu conexión.", true); return; }
+    var filas = genFilas();
+    if (!filas.length) { toast("No hay piezas para exportar."); return; }
+    var datos = filas.map(function (g) {
+      var p = S.piezas[g], r = rec(g);
+      return {
+        Contratista: p.contratista, Partida: p.partida, "Clave concepto": p.clave, Concepto: p.concepto, Marca: p.marca, Zona: p.zona, Eje: p.eje, Nivel: p.nivel,
+        Pzas: 1, "Largo (m)": p.largo, "Espesor (m)": p.espesor, "Alto (m)": p.alto, "Área (m²)": p.area, "Volumen (m³)": p.volumen,
+        Estatus: estado(g), "Aprobado por": r.aprobado ? r.aprobado.por : "", "Fecha aprobación": r.aprobado ? new Date(r.aprobado.at) : "", "Estimación": r.estimacion || "", GlobalId: g,
+      };
+    });
+    var res = {};
+    datos.forEach(function (d) {
+      var k = d.Contratista + "|" + d["Clave concepto"];
+      var x = res[k] || (res[k] = { Contratista: d.Contratista, Partida: d.Partida, "Clave concepto": d["Clave concepto"], Concepto: d.Concepto, Pzas: 0, "Área (m²)": 0, "Volumen (m³)": 0 });
+      x.Pzas++; x["Área (m²)"] += d["Área (m²)"] || 0; x["Volumen (m³)"] += d["Volumen (m³)"] || 0;
+    });
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.values(res)), "Resumen");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(datos, { cellDates: true }), "Generador");
+    var c = $("g-contratista").value || "Todos";
+    XLSX.writeFile(wb, "Generador_" + c.replace(/[^\w-]+/g, "_") + "_" + new Date().toISOString().slice(0, 10) + ".xlsx");
+  });
+
+  if ($("g-marcar")) {
+    $("g-marcar").addEventListener("click", function () {
+      var est = $("g-est").value.trim();
+      if (!est) { toast("Escribe la estimación (ej. AD-003)."); $("g-est").focus(); return; }
+      var guids = genFilas().filter(function (g) { return rec(g).estatus === "Terminado" && !rec(g).pend; });
+      if (!guids.length) { toast("No hay piezas terminadas sin estimar con este filtro."); return; }
+      var btn = $("g-marcar");
+      if (btn.getAttribute("data-confirm") !== est) {
+        btn.setAttribute("data-confirm", est);
+        btn.textContent = "Confirmar: " + guids.length + " piezas a " + est.toUpperCase();
+        setTimeout(function () { btn.removeAttribute("data-confirm"); btn.textContent = "Marcar como estimado"; }, 6000);
+        return;
+      }
+      btn.removeAttribute("data-confirm"); btn.textContent = "Marcar como estimado";
+      api("/api/piezas", { action: "estimar", guids: guids, estimacion: est })
+        .then(function (r) {
+          Object.assign(S.avance, r.avance);
+          toast(nf0.format(r.actualizadas) + " piezas asignadas a " + est.toUpperCase() + ".");
+          renderGenerador(); renderLista(); paintModel();
+        })
+        .catch(function (e) { toast(e.message, true); });
+    });
+  }
+
+  // ---------- Configuración (admin) ----------
+  function renderAdmin() {
+    var o = S.obra;
+    $("obra-input").value = o.nombre;
+    var f = o.forma || {};
+    $("forma-estado").textContent = f.conectado ? "Conectado con la cuenta de " + f.por + " desde " + fecha(f.desde) + ". La app solo lee el IFC y lo muestra; los usuarios no ven tu cuenta." : "Sin conectar. Conecta una cuenta de Autodesk con acceso al proyecto donde está el IFC.";
+    $("forma-btn").textContent = f.conectado ? "Volver a conectar" : "Conectar Forma";
+    $("modelo-url").value = o.formaUrl || "";
+    $("modelo-estado").textContent = o.modelo ? o.modelo.archivo + " · versión " + o.modelo.version + " · revisado " + fecha(o.modelo.actualizado) : "Sin modelo.";
+    $("cat-estado").textContent = S.version ? Object.keys(S.piezas).length + " piezas leídas de la versión " + S.version + "." : "Aún no se han leído piezas.";
+  }
+  function saveObra(body, okMsg) {
+    return api("/api/obra", body).then(function () { return api("/api/obra"); }).then(function (o) {
+      var cambio = !S.obra.modelo || !o.modelo || S.obra.modelo.urn !== o.modelo.urn;
+      S.obra = o; $("obra-nombre").textContent = o.nombre; renderAdmin(); toast(okMsg);
+      if (cambio && o.modelo) { toast(okMsg + " Cargando el modelo…"); startViewer(); }
+    }).catch(function (e) { toast(e.message, true); });
+  }
+  if ($("obra-form")) {
+    $("obra-form").addEventListener("submit", function (ev) { ev.preventDefault(); saveObra({ action: "nombre", nombre: $("obra-input").value }, "Nombre guardado."); });
+    $("modelo-form").addEventListener("submit", function (ev) { ev.preventDefault(); saveObra({ action: "modelo", url: $("modelo-url").value }, "Modelo guardado."); });
+    $("modelo-act").addEventListener("click", function () { saveObra({ action: "actualizar" }, "Versión revisada."); });
+    $("cat-btn").addEventListener("click", leerCatalogo);
+    $("u-nuevo").addEventListener("click", resetUserForm);
+    $("u-rol").addEventListener("change", function () { $("u-contratista").hidden = $("u-rol").value !== "contratista"; });
+    $("u-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      api("/api/users", { action: "save", email: $("u-email").value, nombre: $("u-nombre").value, rol: $("u-rol").value, contratista: $("u-contratista").value, activo: $("u-activo").checked, password: $("u-pass").value || undefined })
+        .then(function () { toast("Usuario guardado."); resetUserForm(); loadUsers(); })
+        .catch(function (e) { toast(e.message, true); });
+    });
+  }
+  function resetUserForm() {
+    $("u-form").reset(); $("u-email").readOnly = false; $("u-form-title").textContent = "Nuevo usuario"; $("u-activo").checked = true;
+    $("u-contratista").hidden = $("u-rol").value !== "contratista";
+  }
+  function loadUsers() {
+    if (!S.permisos.administrar) return;
+    api("/api/users").then(function (r) {
+      if (!$("u-rol").options.length) { fillSelect($("u-rol"), Object.keys(r.roles).map(function (k) { return [k, r.roles[k]]; })); $("u-rol").value = "residente"; $("u-contratista").hidden = true; }
+      var head = el("tr", null, ["Nombre", "Correo", "Rol", "Contratista", ""].map(function (h) { return el("th", { text: h }); }));
+      var rows = r.users.map(function (u) {
+        var del = u.email === S.me.email ? el("span") : el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Eliminar", onclick: function (ev) {
+          ev.stopPropagation();
+          if (del.getAttribute("data-c") !== "1") { del.setAttribute("data-c", "1"); del.textContent = "¿Seguro?"; setTimeout(function () { del.removeAttribute("data-c"); del.textContent = "Eliminar"; }, 4000); return; }
+          api("/api/users", { action: "delete", email: u.email }).then(function () { toast("Usuario eliminado."); loadUsers(); }).catch(function (e) { toast(e.message, true); });
+        } });
+        var tr = el("tr", { class: "click" }, [
+          el("td", { text: u.nombre + (u.activo ? "" : " (inactivo)") }), el("td", { text: u.email }), el("td", { text: r.roles[u.rol] || u.rol }), el("td", { text: u.contratista || "—" }), el("td", null, [del]),
+        ]);
+        tr.addEventListener("click", function () {
+          $("u-email").value = u.email; $("u-email").readOnly = true; $("u-nombre").value = u.nombre; $("u-rol").value = u.rol;
+          $("u-contratista").value = u.contratista; $("u-contratista").hidden = u.rol !== "contratista"; $("u-activo").checked = u.activo; $("u-pass").value = "";
+          $("u-form-title").textContent = "Editar " + u.nombre + " (deja la contraseña vacía para no cambiarla)";
+        });
+        return tr;
+      });
+      $("u-tabla").replaceChildren(el("thead", null, [head]), el("tbody", null, rows));
+    }).catch(function (e) { toast(e.message, true); });
+  }
+
+  // ---------- Visor ----------
+  var VIEWER_JS = "https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js";
+  var VIEWER_CSS = "https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.min.css";
+  var libPromise = null;
+  function viewerMsg(t) { var m = $("viewer-msg"); m.textContent = t || ""; m.hidden = !t; }
+
+  function loadLib() {
+    if (libPromise) return libPromise;
+    libPromise = new Promise(function (resolve, reject) {
+      if (window.Autodesk && window.Autodesk.Viewing) return resolve();
+      document.head.appendChild(el("link", { rel: "stylesheet", href: VIEWER_CSS }));
+      var s = el("script", { src: VIEWER_JS });
+      s.onload = resolve;
+      s.onerror = function () { libPromise = null; reject(new Error("No se pudo cargar el visor de Autodesk. Revisa tu conexión.")); };
+      document.head.appendChild(s);
+    }).then(function () {
+      return new Promise(function (resolve) {
+        Autodesk.Viewing.Initializer({
+          env: "AutodeskProduction2", api: "streamingV2",
+          getAccessToken: function (cb) {
+            fetch("/api/forma/token", { credentials: "same-origin" })
+              .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error); return j; }); })
+              .then(function (t) { cb(t.access_token, t.expires_in); })
+              .catch(function (e) { viewerMsg(e.message || "No se pudo obtener acceso al modelo."); cb("", 0); });
+          },
+        }, resolve);
+      });
+    });
+    return libPromise;
+  }
+
+  function startViewer() {
+    if (!S.obra || !S.obra.modelo) {
+      viewerMsg(S.permisos.administrar ? "Aún no hay modelo. En Configuración conecta Forma y pega la liga del IFC." : "El administrador aún no ha cargado el modelo de la obra.");
+      return;
+    }
+    viewerMsg("Cargando el modelo…");
+    loadLib().then(function () {
+      if (S.viewer) { try { S.viewer.finish(); } catch (e) { /* nada */ } S.viewer = null; }
+      var v = new Autodesk.Viewing.GuiViewer3D($("viewer"), { theme: "dark-theme" });
+      v.start();
+      v.setGhosting(true);
+      S.viewer = v;
+      Autodesk.Viewing.Document.load("urn:" + S.obra.modelo.urn, function (doc) {
+        var node = doc.getRoot().getDefaultGeometry();
+        if (!node) { viewerMsg("Forma todavía no termina de procesar el IFC para verlo. Intenta en unos minutos."); return; }
+        v.loadDocumentNode(doc, node).then(function (model) {
+          S.model = model;
+          v.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, function () { buildMaps().then(function () { viewerMsg(""); paintModel(); }); });
+          if (model.getInstanceTree()) buildMaps().then(function () { viewerMsg(""); paintModel(); });
+          v.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, onViewerSelect);
+        }).catch(function () { viewerMsg("No se pudo cargar el modelo."); });
+      }, function (code, msg) {
+        viewerMsg(code === 4 || code === 5 ? "La cuenta conectada a Forma no tiene acceso a este modelo, o la conexión venció. Un administrador debe volver a conectar Forma." : "No se pudo abrir el modelo de Forma (" + (msg || code) + ").");
+      });
+    }).catch(function (e) { viewerMsg(e.message); });
+  }
+
+  var GUID_RE = /^[0-9A-Za-z_$]{22}$/;
+  var GUID_PROPS = ["GlobalId", "GLOBALID", "IfcGUID", "IFC GUID", "Ifc GUID", "IfcGuid"];
+  function leafIds() {
+    var it = S.model.getInstanceTree(), out = [];
+    it.enumNodeChildren(it.getRootId(), function (id) { if (!it.getChildCount(id)) out.push(id); }, true);
+    return out;
+  }
+  function allIds() {
+    var it = S.model.getInstanceTree(), out = [];
+    it.enumNodeChildren(it.getRootId(), function (id) { out.push(id); }, true);
+    return out;
+  }
+  function bulk(ids, filter) {
+    return new Promise(function (resolve, reject) {
+      S.model.getBulkProperties(ids, filter ? { propFilter: filter } : {}, resolve, reject);
+    });
+  }
+  // Relación GlobalId ↔ dbId. Los IFC convertidos por Forma suelen traer el GlobalId como externalId;
+  // si no, se busca en las propiedades.
+  function buildMaps() {
+    if (!S.model || buildMaps.busy) return buildMaps.busy || Promise.resolve();
+    buildMaps.busy = new Promise(function (resolve) {
+      S.model.getExternalIdMapping(function (map) {
+        var keys = Object.keys(map), ok = keys.filter(function (k) { return GUID_RE.test(k); }).length;
+        S.guid2db = new Map(); S.db2guid = new Map();
+        if (keys.length && ok / keys.length > 0.5) {
+          keys.forEach(function (k) { if (GUID_RE.test(k)) { S.guid2db.set(k, map[k]); S.db2guid.set(map[k], k); } });
+          resolve();
+        } else {
+          bulk(allIds(), GUID_PROPS).then(function (res) {
+            res.forEach(function (r) {
+              var p = (r.properties || []).find(function (x) { return GUID_RE.test(String(x.displayValue)); });
+              if (p) { S.guid2db.set(String(p.displayValue), r.dbId); S.db2guid.set(r.dbId, String(p.displayValue)); }
+            });
+            resolve();
+          }).catch(function () { resolve(); });
+        }
+      }, function () { resolve(); });
+    }).then(function () { buildMaps.busy = null; });
+    return buildMaps.busy;
+  }
+
+  function hexToVec(hex) {
+    var n = parseInt(hex.slice(1), 16);
+    return new THREE.Vector4(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1);
+  }
+  // Colorea cada pieza por su estatus y deja en gris translúcido lo que no está en seguimiento.
+  function paintModel() {
+    var v = S.viewer, m = S.model;
+    if (!v || !m || !S.guid2db.size) return;
+    v.clearThemingColors(m);
+    var ids = [];
+    Object.keys(S.piezas).forEach(function (g) {
+      var id = S.guid2db.get(g);
+      if (id == null) return;
+      ids.push(id);
+      v.setThemingColor(id, hexToVec(COLOR[estado(g)] || COLOR.Planeado), m, true);
+    });
+    if (ids.length) v.isolate(ids, m); else v.showAll();
+  }
+
+  function onViewerSelect(ev) {
+    if (S.syncing) return;
+    var gs = (ev.dbIdArray || []).map(function (id) {
+      // Si se selecciona una parte de una pieza, sube hasta la pieza.
+      var it = S.model.getInstanceTree(), cur = id;
+      while (cur != null && !S.piezas[S.db2guid.get(cur)]) {
+        cur = it.getNodeParentId(cur);
+        if (cur == null || cur < 0 || cur === it.getRootId()) cur = null;
+      }
+      return cur != null ? S.db2guid.get(cur) : null;
+    }).filter(Boolean);
+    if (!gs.length) return;
+    S.sel = new Set(gs);
+    renderLista();
+    var sel = document.querySelector("#lista li.sel");
+    if (sel) sel.scrollIntoView({ block: "nearest" });
+  }
+  function selectInViewer() {
+    if (!S.viewer || !S.model) return;
+    S.syncing = true;
+    S.viewer.select(Array.from(S.sel).map(function (g) { return S.guid2db.get(g); }).filter(function (x) { return x != null; }), S.model);
+    S.syncing = false;
+  }
+  function focusPieces(gs) {
+    if (!S.viewer || !S.model) return;
+    var ids = gs.map(function (g) { return S.guid2db.get(g); }).filter(function (x) { return x != null; });
+    if (!ids.length) { toast("Esa pieza no está en la versión del modelo que se ve ahora."); return; }
+    S.syncing = true;
+    S.viewer.select(ids, S.model);
+    S.syncing = false;
+    S.viewer.fitToView(ids, S.model);
+  }
+
+  // ---------- Leer piezas del modelo (admin) ----------
+  function norm(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, ""); }
+  var CAMPOS = {
+    contratista: ["gcpcontratista"], clave: ["gcpclaveconcepto"], partida: ["gcppartida"], zona: ["gcpzona"], eje: ["gcpeje"],
+    marca: ["marca", "mark"], nivel: ["level", "nivel", "buildingstorey", "referencelevel", "basebuildingstorey"],
+    area: ["netsidearea", "netarea", "netfloorarea", "arearevit", "area", "outersurfacearea"],
+    areaBruta: ["grosssidearea", "grossarea", "grossfloorarea"],
+    volumen: ["netvolume", "volumenrevit", "volume", "grossvolume"],
+    largo: ["length", "largo"], alto: ["height", "depth", "altura"], espesor: ["width", "thickness", "espesor"],
+    tipo: ["objecttype", "type", "typename", "familyandtype"], categoria: ["ifcclass", "ifcentity", "category", "entity"],
+  };
+  function pick(props, names, numeric) {
+    for (var i = 0; i < names.length; i++) {
+      for (var j = 0; j < props.length; j++) {
+        if (norm(props[j].displayName) === names[i] || norm(props[j].attributeName) === names[i]) {
+          var val = props[j].displayValue;
+          if (numeric) { var n = parseFloat(String(val).replace(",", ".")); if (isFinite(n)) return n; }
+          else if (val != null && String(val).trim() !== "") return String(val).trim();
+        }
+      }
+    }
+    return numeric ? null : "";
+  }
+
+  function leerCatalogo() {
+    if (!S.model) { toast("Primero carga el modelo.", true); return; }
+    var btn = $("cat-btn"); btn.disabled = true;
+    $("cat-estado").textContent = "Leyendo propiedades del modelo…";
+    var ids = allIds();
+    bulk(ids, ["GCP_Contratista", "GCP_ClaveConcepto"]).then(function (res) {
+      var cand = res.filter(function (r) { return (r.properties || []).some(function (p) { return String(p.displayValue || "").trim(); }); }).map(function (r) { return r.dbId; });
+      if (!cand.length) throw new Error("Ninguna pieza del modelo tiene GCP_Contratista ni GCP_ClaveConcepto. Revisa que el IFC se exportó con el Pset GCP_ControlObra.");
+      return bulk(cand, null);
+    }).then(function (res) {
+      var it = S.model.getInstanceTree();
+      var byDb = {};
+      res.forEach(function (r) {
+        var props = r.properties || [], o = { dbId: r.dbId };
+        Object.keys(CAMPOS).forEach(function (k) { o[k] = pick(props, CAMPOS[k], ["area", "areaBruta", "volumen", "largo", "alto", "espesor"].indexOf(k) >= 0); });
+        o.tipo = o.tipo || r.name || "";
+        o.concepto = o.tipo;
+        o.guid = S.db2guid.get(r.dbId) || pick(props, GUID_PROPS.map(norm), false);
+        if (o.area == null && o.volumen && o.espesor) o.area = o.volumen / o.espesor; // muros sin área en el IFC
+        if (o.alto == null && o.area && o.largo) o.alto = o.area / o.largo;
+        byDb[r.dbId] = o;
+      });
+      // Una cubierta y sus losas internas traen los mismos datos: se cuenta solo la cubierta, con el volumen de sus losas.
+      Object.keys(byDb).forEach(function (id) {
+        var o = byDb[id], parent = byDb[it.getNodeParentId(Number(id))];
+        if (parent && parent.contratista === o.contratista && parent.clave === o.clave && (parent.marca || "") === (o.marca || "")) {
+          if (parent.volumen == null && o.volumen != null) parent.volumen = o.volumen;
+          if (parent.area == null && o.area != null) parent.area = o.area;
+          o.omitir = true;
+        }
+      });
+      var piezas = Object.values(byDb).filter(function (o) { return !o.omitir && GUID_RE.test(o.guid || ""); });
+      if (!piezas.length) throw new Error("No se encontró el GlobalId de las piezas en el modelo.");
+      return api("/api/piezas", { action: "catalogo", version: String(S.obra.modelo.version || ""), piezas: piezas });
+    }).then(function (r) {
+      toast(nf0.format(r.total) + " piezas leídas del modelo.");
+      return loadPiezas();
+    }).then(function () { renderAdmin(); })
+      .catch(function (e) { $("cat-estado").textContent = e.message; toast(e.message, true); })
+      .finally(function () { btn.disabled = false; });
+  }
+
+  boot();
+})();
