@@ -55,7 +55,7 @@
   var S = {
     me: null, permisos: {}, roles: {}, obra: null,
     piezas: {}, avance: {}, version: null,
-    sel: new Set(), apSel: new Set(), gSel: new Set(),
+    sel: new Set(), apSel: new Set(), gSel: new Set(), envios: [],
     viewer: null, model: null, guid2db: new Map(), db2guid: new Map(),
     syncing: false, tab: "piezas",
   };
@@ -628,7 +628,8 @@
           grupos.length > 1 ? grupos.length + " generadores" : "", new Date().toLocaleDateString("es-MX", { dateStyle: "long" })].filter(Boolean).join(" · "),
       };
       if (grupos.length === 1) grupos[0].img = img; // la foto ya es justo de ese generador
-      renderPrevia(); textoBotones();
+      renderPrevia(); textoBotones(); renderGruposPrevia();
+      cargarEnvios().then(renderGruposPrevia);
       $("gen-prev").showModal();
     }).finally(function () { btn.disabled = false; btn.textContent = "Ver generador"; actualizarMarcar(); });
   });
@@ -776,7 +777,7 @@
       var G = gs[i++];
       btn.textContent = gs.length > 1 ? verbo + " " + i + " de " + gs.length + "…" : verbo + "…";
       var foto = G.img !== undefined || !S.viewer ? Promise.resolve(G.img || GP.img) : capturarModelo(G.filas).then(function (img) { G.img = img; return img; });
-      return foto.then(function () { return construirExcel(G); }).then(function (buf) { out.push({ archivo: G.archivo, buf: buf }); return siguiente(); });
+      return foto.then(function () { return construirExcel(G); }).then(function (buf) { out.push({ archivo: G.archivo, buf: buf, G: G }); return siguiente(); });
     };
     return loadExcel().then(siguiente).finally(function () { if (gs.length > 1 && S.viewer) paintModel(false); });
   }
@@ -827,7 +828,10 @@
           if (k >= archivos.length) return Promise.resolve();
           var f = archivos[k++];
           btn.textContent = archivos.length > 1 ? "Enviando " + k + " de " + archivos.length + "…" : "Enviando…";
-          return aBase64(f.buf).then(function (b64) { return api("/api/envio", { nombre: f.archivo, base64: b64 }); })
+          var tot = f.G.filas.reduce(function (a, g) { var p = S.piezas[g]; a.area += p.area || 0; a.volumen += p.volumen || 0; return a; }, { area: 0, volumen: 0 });
+          return aBase64(f.buf).then(function (b64) {
+            return api("/api/envio", { nombre: f.archivo, base64: b64, contratista: f.G.contratista, estimacion: f.G.estimacion, piezas: f.G.filas.length, area: tot.area, volumen: tot.volumen });
+          })
             .then(function (r) { enviados.push(r); return uno(); });
         };
         return uno();
@@ -838,9 +842,53 @@
           : enviados.length + " generadores quedaron en la carpeta «" + c + "» de Forma.");
       }).catch(function (e) {
         toast((enviados.length ? enviados.length + " enviados antes del error. " : "") + (e.message || "No se pudo enviar a Forma."), true);
-      }).finally(function () { btn.disabled = false; textoBotones(); });
+      }).finally(function () { btn.disabled = false; textoBotones(); cargarEnvios().then(renderGruposPrevia); });
     });
   }
+
+  // ---------- Bitácora de envíos a Forma ----------
+  function cargarEnvios() {
+    return api("/api/envio").then(function (r) { S.envios = r.envios || []; }).catch(function () { /* sin bitácora */ });
+  }
+  // Último envío del mismo contratista y estimación (los "Sin estimar" cambian de nombre por día).
+  function ultimoEnvio(G) {
+    return S.envios.filter(function (e) { return e.contratista === G.contratista && (e.estimacion || "") === (G.estimacion || ""); })
+      .sort(function (a, b) { return a.ultimo.at < b.ultimo.at ? 1 : -1; })[0] || null;
+  }
+  function renderGruposPrevia() {
+    if (!GP) return;
+    $("gp-grupos").replaceChildren.apply($("gp-grupos"), GP.grupos.map(function (G) {
+      var e = ultimoEnvio(G), nombre = G.contratista + " · " + (G.estimacion || "Sin estimar");
+      if (!e) return pill("Planeado", nombre + " — no enviado a Forma");
+      var mismo = e.nombre === G.archivo;
+      var txt = nombre + " — enviado " + fecha(e.ultimo.at) + " por " + e.ultimo.por + (e.ultimo.version ? " (versión " + e.ultimo.version + ")" : "");
+      if (!mismo) txt += " · archivo de otro día";
+      if (e.piezas != null && e.piezas !== G.filas.length) txt += " · se enviaron " + e.piezas + " piezas, ahora son " + G.filas.length;
+      return pill("Terminado", txt);
+    }));
+  }
+  $("g-envios").addEventListener("click", function () {
+    $("ev-tabla").replaceChildren(el("tbody", null, [el("tr", null, [el("td", { text: "Cargando…" })])]));
+    $("envios").showModal();
+    cargarEnvios().then(function () {
+      var c = $("g-contratista").value;
+      var lista = S.envios.filter(function (e) { return !c || e.contratista === c; });
+      $("ev-sub").textContent = (c ? c + " · " : "") + lista.length + (lista.length === 1 ? " archivo enviado" : " archivos enviados") + (S.obra && S.obra.carpeta ? " a la carpeta «" + S.obra.carpeta.nombre + "»" : "");
+      var head = el("tr", null, ["Archivo", "Contratista", "Estimación", "Piezas", "Área m²", "Vol. m³", "Versión", "Último envío", "Envíos"].map(function (h, i) { return el("th", { class: i >= 3 && i <= 6 || i === 8 ? "num" : null, text: h }); }));
+      var rows = lista.map(function (e) {
+        var tr = el("tr", { class: "click" }, [
+          el("td", { text: e.nombre }), el("td", { text: e.contratista || "—" }), el("td", { text: e.estimacion || "Sin estimar" }),
+          el("td", { class: "num", text: e.piezas == null ? "—" : nf0.format(e.piezas) }), el("td", { class: "num", text: f2(e.area) }), el("td", { class: "num", text: f2(e.volumen) }),
+          el("td", { class: "num", text: e.ultimo.version || "—" }), el("td", { text: fecha(e.ultimo.at) + " · " + e.ultimo.por }), el("td", { class: "num", text: String((e.envios || []).length) }),
+        ]);
+        tr.title = (e.envios || []).slice().reverse().map(function (x) { return fecha(x.at) + " · " + x.por + (x.version ? " · v" + x.version : "") + (x.piezas != null ? " · " + x.piezas + " pzas" : ""); }).join("\n");
+        return tr;
+      });
+      if (!rows.length) rows = [el("tr", null, [el("td", { colspan: "9", class: "muted", text: "Todavía no se ha enviado ningún generador" + (c ? " de " + c : "") + " a Forma." })])];
+      $("ev-tabla").replaceChildren(el("thead", null, [head]), el("tbody", null, rows));
+    });
+  });
+  $("ev-cerrar").addEventListener("click", function () { $("envios").close(); });
 
   function construirExcel(G) {
     var wb = new ExcelJS.Workbook();

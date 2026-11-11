@@ -149,6 +149,11 @@ input::placeholder { color: var(--muted); }
 }
 .gp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .gp-head p { margin: 4px 0 0; }
+.gp-grupos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.gp-grupos .pill { white-space: normal; }
+.dialog-lg { width: min(1100px, calc(100% - 32px)); }
+.ev-wrap { max-height: 65vh; }
+.ok-txt { color: var(--ok); }
 .gp-wrap { min-height: 0; }
 .gp-tabla td.ref { vertical-align: top; width: 38%; min-width: 260px; padding: 8px; background: #EEF1F5; white-space: normal; }
 .gp-tabla td.ref img { display: block; width: 100%; height: auto; position: sticky; top: 36px; border-radius: 6px; }

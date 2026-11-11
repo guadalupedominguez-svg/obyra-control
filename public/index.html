@@ -108,7 +108,10 @@
           <div id="g-resumen" class="g-resumen"></div>
           <div class="tablewrap"><table class="tabla" id="g-tabla"></table></div>
           <div class="actionbar">
-            <button id="g-ver" class="btn btn-ghost" type="button">Ver generador</button>
+            <div class="row">
+              <button id="g-ver" class="btn btn-ghost" type="button">Ver generador</button>
+              <button id="g-envios" class="btn btn-ghost" type="button">Enviados a Forma</button>
+            </div>
             <div class="row" data-perm="estimar">
               <input id="g-est" type="text" maxlength="30" placeholder="Estimación (ej. AD-003)" aria-label="Estimación">
               <button id="g-marcar" class="btn btn-primary" type="button">Marcar como estimado</button>
@@ -189,6 +192,7 @@
           <div>
             <h3 id="gp-titulo">Generador</h3>
             <p id="gp-sub" class="muted"></p>
+            <div id="gp-grupos" class="gp-grupos"></div>
           </div>
           <div class="row end">
             <button id="gp-forma" class="btn btn-ghost btn-sm" type="button" data-perm="estimar">Enviar a Forma</button>
@@ -216,6 +220,20 @@
             <p class="gp-ayuda">Rueda o +/− para acercar · arrastra para mover · clic en un renglón para ubicar la pieza</p>
           </div>
         </div>
+      </div>
+    </dialog>
+
+    <!-- Bitácora de envíos a Forma -->
+    <dialog id="envios" class="dialog dialog-lg" aria-labelledby="ev-titulo">
+      <div class="dialog-body">
+        <div class="gp-head">
+          <div>
+            <h3 id="ev-titulo">Enviados a Forma</h3>
+            <p id="ev-sub" class="muted"></p>
+          </div>
+          <button id="ev-cerrar" class="btn btn-ghost btn-sm" type="button">Cerrar</button>
+        </div>
+        <div class="tablewrap ev-wrap"><table class="tabla" id="ev-tabla"></table></div>
       </div>
     </dialog>
 

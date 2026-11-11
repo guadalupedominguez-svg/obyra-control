@@ -36,6 +36,7 @@ const handlers = {
   session: (await import("../api/session.js")).default,
   users: (await import("../api/users.js")).default,
   piezas: (await import("../api/piezas.js")).default,
+  envio: (await import("../api/envio.js")).default,
 };
 
 // ---- Cliente HTTP simulado con cookies por usuario ----
@@ -182,4 +183,30 @@ test("solo el contratista reporta; el administrador tampoco aprueba", async () =
   assert.equal(s.json.permisos.aprobar, false);
   r = await resi("piezas", { action: "aprobar", guids: [G(3)] });
   assert.equal(r.json.avance[G(3)].estatus, "En ejecución");
+});
+
+test("el envío a Forma queda en la bitácora", async () => {
+  db.set("ctrl:obra", JSON.stringify({ nombre: "Obra", carpeta: { projectId: "b.p", folderUrn: "urn:adsk.wipprod:fs.folder:co.x", nombre: "05 Generadores" } }));
+  db.set("ctrl:forma:data", JSON.stringify({ access: "tok", refresh: "r", exp: Date.now() + 3_600_000, scope: "data:read data:write data:create" }));
+  db.set("ctrl:forma:view", JSON.stringify({ access: "tok", refresh: "r", exp: Date.now() + 3_600_000, scope: "viewables:read" }));
+  const ok = (j) => new Response(JSON.stringify(j), { status: 200 });
+  globalThis.fetch = async (url, opt = {}) => {
+    if (url.endsWith("/storage")) return ok({ data: { id: "urn:adsk.objects:os.object:wip.dm.prod/a.xlsx" } });
+    if (url.includes("signeds3upload")) return ok({ uploadKey: "K", urls: ["https://s3/put"] });
+    if (url === "https://s3/put") return new Response("", { status: 200 });
+    if (url.includes("/contents?")) return ok({ data: [] });
+    if (url.endsWith("/items")) return ok({ data: { id: "i" } });
+    throw new Error("no esperado " + url + " " + (opt.method || "GET"));
+  };
+  const xlsx = Buffer.from("PK\u0003\u0004 prueba").toString("base64");
+  assert.equal((await otro("envio", { nombre: "G.xlsx", base64: xlsx })).status, 403); // contratista no envía
+  const r = await resi("envio", { nombre: "Generador_AD-001_AD-004_2026-11-11.xlsx", base64: xlsx, contratista: "ad-001", estimacion: "ad-004", piezas: 2, area: 13 });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(r.json.carpeta, "05 Generadores");
+  const lista = (await resi("envio")).json.envios;
+  assert.equal(lista.length, 1);
+  assert.equal(lista[0].contratista, "AD-001");
+  assert.equal(lista[0].estimacion, "AD-004");
+  assert.equal(lista[0].ultimo.por, "Residente");
+  assert.equal((await otro("envio")).json.envios.length, 1); // AD-001 ve el suyo
 });
