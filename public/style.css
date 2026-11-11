@@ -157,6 +157,16 @@ input::placeholder { color: var(--muted); }
 .carpeta-contr { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px 8px; align-items: center; padding-top: 8px; border-top: 1px solid var(--line); }
 .carpeta-contr b { font-size: 13px; grid-column: 1 / -1; }
 .carpeta-contr .muted { grid-column: 1 / -1; }
+.pk-ruta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; font-size: 13px; }
+.pk-ruta button { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 2px 4px; border-radius: 4px; font: inherit; }
+.pk-ruta button:hover { background: var(--surface-2); }
+.pk-ruta span { color: var(--muted); }
+.pk-lista { height: min(52vh, 460px); }
+.pk-lista li { grid-template-columns: auto minmax(0, 1fr) auto; }
+.pk-lista .ico { width: 18px; height: 14px; border-radius: 2px 3px 3px 3px; background: var(--warn); position: relative; margin-top: 3px; }
+.pk-lista .ico::before { content: ""; position: absolute; left: 0; top: -3px; width: 8px; height: 4px; background: var(--warn); border-radius: 2px 2px 0 0; }
+.pk-lista .entrar { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 18px; padding: 0 6px; }
+.pk-lista .sug { color: var(--accent); font-size: 12px; margin-left: 6px; }
 .linklike { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; font: inherit; }
 .gp-wrap { min-height: 0; }
 .gp-tabla td.ref { vertical-align: top; width: 38%; min-width: 260px; padding: 8px; background: #EEF1F5; white-space: normal; }

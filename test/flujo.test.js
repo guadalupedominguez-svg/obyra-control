@@ -37,6 +37,7 @@ const handlers = {
   users: (await import("../api/users.js")).default,
   piezas: (await import("../api/piezas.js")).default,
   envio: (await import("../api/envio.js")).default,
+  carpetas: (await import("../api/carpetas.js")).default,
 };
 
 // ---- Cliente HTTP simulado con cookies por usuario ----
@@ -219,4 +220,21 @@ test("el envío a Forma queda en la bitácora", async () => {
   assert.equal(lista[0].estimacion, "AD-004");
   assert.equal(lista[0].ultimo.por, "Residente");
   assert.equal((await otro("envio")).json.envios.length, 1); // AD-001 ve el suyo
+});
+
+test("el residente elige la carpeta de un contratista; la general solo el admin", async () => {
+  const o = JSON.parse(db.get("ctrl:obra")); o.projectId = "b.p"; db.set("ctrl:obra", JSON.stringify(o));
+  globalThis.fetch = async (url) => {
+    if (url.includes("/folders/urn%3Aadsk.wipprod%3Afs.folder%3Aco.nueva")) return new Response(JSON.stringify({ data: { attributes: { displayName: "Gen FAMEP" } } }), { status: 200 });
+    throw new Error("no esperado " + url);
+  };
+  const F = "urn:adsk.wipprod:fs.folder:co.nueva";
+  assert.equal((await resi("carpetas", { contratista: "", folderUrn: F })).status, 403);
+  assert.equal((await otro("carpetas", { contratista: "AD-001", folderUrn: F })).status, 403); // contratista no
+  const r = await resi("carpetas", { contratista: "famep", folderUrn: F, ruta: [{ id: "urn:adsk.wipprod:fs.folder:co.pf", nombre: "Project Files" }, { id: F, nombre: "Gen FAMEP" }] });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  const guardada = JSON.parse(db.get("ctrl:obra")).carpetas.FAMEP;
+  assert.equal(guardada.nombre, "Gen FAMEP");
+  assert.equal(guardada.ruta.length, 2);
+  assert.ok(JSON.parse(db.get("ctrl:obra")).carpetas["AD-001"]); // no borró las demás
 });

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { _setStoreForTests } from "../lib/store.js";
-import { parseFolderLink, subirArchivo, cuentaStatus } from "../lib/forma.js";
+import { parseFolderLink, subirArchivo, cuentaStatus, listarCarpetas } from "../lib/forma.js";
 
 process.env.KV_REST_API_URL = "http://memoria";
 process.env.KV_REST_API_TOKEN = "t";
@@ -73,4 +73,25 @@ test("si ya existe un archivo con el mismo nombre, guarda una versión nueva", a
   assert.deepEqual(r, { nombre: "G.xlsx", version: 2, nuevo: false });
   assert.ok(log.some((l) => l.startsWith("POST /data/v1/projects/b.p/versions")));
   assert.ok(!log.some((l) => l.includes("/items")));
+});
+
+test("el explorador lista carpetas principales y subcarpetas (con paginación)", async () => {
+  const P = "b.proj";
+  globalThis.fetch = async (url) => {
+    const ok = (j) => new Response(JSON.stringify(j), { status: 200 });
+    const u = url.replace("https://developer.api.autodesk.com", "");
+    if (u === "/project/v1/hubs") return ok({ data: [{ id: "b.otro" }, { id: "b.hub" }] });
+    if (u === "/project/v1/hubs/b.otro/projects/b.proj") return new Response("{}", { status: 404 });
+    if (u === "/project/v1/hubs/b.hub/projects/b.proj") return ok({ data: { id: P } });
+    if (u.startsWith("/project/v1/hubs/b.hub/projects/b.proj/topFolders")) return ok({ data: [{ id: "urn:adsk.wipprod:fs.folder:co.pf", type: "folders", attributes: { displayName: "Project Files" } }] });
+    if (u.includes("/folders/urn%3Aadsk.wipprod%3Afs.folder%3Aco.pf/contents") && !u.includes("pagina2"))
+      return ok({ data: [{ id: "urn:adsk.wipprod:fs.folder:co.b", type: "folders", attributes: { displayName: "Gen COPRESA" } }], links: { next: { href: "https://developer.api.autodesk.com/data/v1/x?pagina2" } } });
+    if (u.includes("pagina2")) return ok({ data: [{ id: "urn:adsk.wipprod:fs.folder:co.a", type: "folders", attributes: { displayName: "Gen AD-001" } }, { id: "oculta", type: "folders", attributes: { displayName: "x", hidden: true } }] });
+    throw new Error("URL no esperada " + u);
+  };
+  const top = await listarCarpetas(P, "");
+  assert.deepEqual(top.map((c) => c.nombre), ["Project Files"]);
+  const sub = await listarCarpetas(P, "urn:adsk.wipprod:fs.folder:co.pf");
+  assert.deepEqual(sub.map((c) => c.nombre), ["Gen AD-001", "Gen COPRESA"]); // ordenadas y sin ocultas
+  assert.equal(JSON.parse(db.get("ctrl:forma:hub:b.proj")), "b.hub"); // el hub se recuerda
 });

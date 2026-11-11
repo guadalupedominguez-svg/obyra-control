@@ -21,8 +21,8 @@ export default route(["GET", "POST"], async (req, res) => {
       modelo: o.versionUrn
         ? { urn: b64url(o.versionUrn), version: o.versionNumber, archivo: o.fileName, fecha: o.fecha, actualizado: o.actualizado }
         : null,
-      carpeta: o.carpeta ? { nombre: o.carpeta.nombre } : null,
-      carpetas: Object.fromEntries(Object.entries(o.carpetas || {}).map(([c, x]) => [c, { nombre: x.nombre }])),
+      carpeta: o.carpeta ? { nombre: o.carpeta.nombre, ruta: o.carpeta.ruta || [] } : null,
+      carpetas: Object.fromEntries(Object.entries(o.carpetas || {}).map(([c, x]) => [c, { nombre: x.nombre, ruta: x.ruta || [] }])),
     };
     if (can(me, "administrar")) {
       out.forma = await formaStatus();

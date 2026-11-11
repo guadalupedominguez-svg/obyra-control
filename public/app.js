@@ -800,11 +800,8 @@
         return;
       }
       b.textContent = n > 1 ? "Enviar " + n + " a Forma" : "Enviar a Forma";
-      var falta = GP ? GP.grupos.filter(function (G) { return !carpetaDe(G.contratista); }).map(function (G) { return G.contratista; }) : [];
-      b.disabled = falta.length > 0;
-      b.title = falta.length
-        ? "Falta configurar la carpeta de Forma de " + falta.join(", ") + " (Configuración)"
-        : "Se suben con tu cuenta de Autodesk a: " + Array.from(new Set(GP.grupos.map(function (G) { return "«" + carpetaDe(G.contratista).nombre + "»"; }))).join(", ");
+      b.disabled = false;
+      b.title = "Elige la carpeta de Forma de cada contratista y se suben con tu cuenta de Autodesk";
     }
   }
   // Carpeta de Forma de un contratista; si no tiene, la general.
@@ -856,7 +853,24 @@
       if (!S.autodesk.conectada) { location.href = "/api/forma/cuenta"; return; }
       var btn = $("gp-forma"); btn.disabled = true;
       var enviados = [];
-      prepararArchivos(btn, "Preparando").then(function (archivos) {
+      // Primero se elige (o confirma) la carpeta de cada contratista en el explorador de Forma.
+      var contrs = Array.from(new Set(GP.grupos.map(function (G) { return G.contratista; })));
+      var elegir = function (i) {
+        if (i >= contrs.length) return Promise.resolve(true);
+        var c = contrs[i], actual = carpetaDe(c);
+        return elegirCarpeta({ contratista: c, titulo: "¿En qué carpeta guardo los generadores de " + c + "?" + (contrs.length > 1 ? " (" + (i + 1) + " de " + contrs.length + ")" : ""),
+          ruta: S.obra.carpetas && S.obra.carpetas[c] ? actual.ruta : null })
+          .then(function (sel) {
+            if (!sel) return false;
+            return guardarCarpeta(c, sel).then(function () { return elegir(i + 1); });
+          });
+      };
+      elegir(0).then(function (ok) {
+        if (!ok) { toast("Envío cancelado."); return "cancelado"; }
+        renderGruposPrevia();
+        return prepararArchivos(btn, "Preparando");
+      }).then(function (archivos) {
+        if (archivos === "cancelado") return;
         var k = 0;
         var uno = function () {
           if (k >= archivos.length) return Promise.resolve();
@@ -870,6 +884,7 @@
         };
         return uno();
       }).then(function () {
+        if (!enviados.length) return; // se canceló al elegir carpeta
         var cs = Array.from(new Set(enviados.map(function (x) { return "«" + x.carpeta + "»"; }))).join(", ");
         toast(enviados.length === 1
           ? "«" + enviados[0].nombre + "» quedó en la carpeta " + cs + " de Forma" + (enviados[0].nuevo ? "." : " como versión " + enviados[0].version + ".")
@@ -1043,32 +1058,116 @@
       : "Sin conectar. Conecta una cuenta de Autodesk con acceso al proyecto donde está el IFC.";
     $("forma-btn").textContent = f.conectado ? "Volver a conectar" : "Conectar Forma";
     $("modelo-url").value = o.formaUrl || "";
-    $("carpeta-url").value = o.carpetaUrl || "";
-    $("carpeta-estado").textContent = o.carpeta ? "Carpeta general: «" + o.carpeta.nombre + "»." : "Sin carpeta general.";
     renderCarpetasContr();
     $("modelo-estado").textContent = o.modelo ? o.modelo.archivo + " · versión " + o.modelo.version + " · revisado " + fecha(o.modelo.actualizado) : "Sin modelo.";
     $("cat-estado").textContent = S.version ? Object.keys(S.piezas).length + " piezas leídas de la versión " + S.version + "." : "Aún no se han leído piezas.";
   }
-  // Una fila por contratista (los del modelo y los que ya tienen carpeta).
+  // Una fila por contratista (los del modelo y los que ya tienen carpeta) más la carpeta general.
   function renderCarpetasContr() {
-    var o = S.obra || {}, urls = o.carpetasUrl || {}, cs = o.carpetas || {};
+    var o = S.obra || {}, cs = o.carpetas || {};
     var lista = Array.from(new Set(Object.values(S.piezas).map(function (p) { return p.contratista; }).filter(Boolean).concat(Object.keys(cs)))).sort();
-    if (!lista.length) { $("carpetas-contr").replaceChildren(el("p", { class: "muted", text: "Cuando se lean las piezas del modelo aparecerán aquí los contratistas." })); return; }
-    $("carpetas-contr").replaceChildren.apply($("carpetas-contr"), lista.map(function (c) {
-      var inp = el("input", { type: "url", value: urls[c] || "", placeholder: "Liga de la carpeta de " + c, "aria-label": "Carpeta de Forma de " + c });
-      var guardar = el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Guardar", onclick: function () {
-        if (!inp.value.trim()) { toast("Pega la liga de la carpeta de " + c + "."); inp.focus(); return; }
-        saveObra({ action: "carpeta", contratista: c, url: inp.value }, "Carpeta de " + c + " guardada.");
-      } });
-      var quitar = el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Quitar", disabled: cs[c] ? null : "disabled", onclick: function () {
-        saveObra({ action: "carpeta", contratista: c, url: "" }, c + " usará la carpeta general.");
+    var fila = function (c, actual, quitar) {
+      var elegir = el("button", { class: "btn btn-ghost btn-sm", type: "button", text: actual ? "Cambiar" : "Elegir carpeta", onclick: function () {
+        elegirCarpeta({ contratista: c, titulo: c ? "Carpeta de " + c : "Carpeta general", ruta: actual ? actual.ruta : null })
+          .then(function (sel) { if (sel) return guardarCarpeta(c, sel).then(function () { renderCarpetasContr(); toast(c ? "Carpeta de " + c + " guardada." : "Carpeta general guardada."); }); })
+          .catch(function (e) { toast(e.message, true); });
       } });
       return el("div", { class: "carpeta-contr" }, [
-        el("b", { text: c }), inp, guardar, quitar,
-        el("p", { class: "muted", text: cs[c] ? "→ «" + cs[c].nombre + "»" : (o.carpeta ? "Usa la carpeta general «" + o.carpeta.nombre + "»" : "Sin carpeta") }),
+        el("b", { text: c || "General (contratistas sin carpeta propia)" }), elegir,
+        quitar && actual ? el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Quitar", onclick: function () {
+          saveObra({ action: "carpeta", contratista: c, url: "" }, c + " usará la carpeta general.");
+        } }) : el("span"),
+        el("p", { class: "muted", text: actual ? rutaTexto(actual) : (c && o.carpeta ? "Usa la carpeta general «" + o.carpeta.nombre + "»" : "Sin carpeta") }),
       ]);
-    }));
+    };
+    $("carpetas-contr").replaceChildren.apply($("carpetas-contr"), [fila("", o.carpeta, false)].concat(lista.map(function (c) { return fila(c, cs[c], true); })));
   }
+  function rutaTexto(c) { return (c.ruta && c.ruta.length ? c.ruta.map(function (x) { return x.nombre; }).join(" / ") : "«" + c.nombre + "»"); }
+  function guardarCarpeta(contratista, sel) {
+    return api("/api/carpetas", { contratista: contratista, folderUrn: sel.id, ruta: sel.ruta }).then(function (r) {
+      S.obra = S.obra || {};
+      var dato = { nombre: r.carpeta.nombre, ruta: r.carpeta.ruta };
+      if (contratista) { S.obra.carpetas = S.obra.carpetas || {}; S.obra.carpetas[contratista] = dato; } else S.obra.carpeta = dato;
+      if ($("carpetas-contr")) renderCarpetasContr();
+      return dato;
+    });
+  }
+
+  // ---------- Explorador de carpetas de Forma (como el de Windows) ----------
+  var PK = { cache: {}, resolver: null };
+  function norm2(x) { return String(x || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, ""); }
+  // Abre el explorador y resuelve con {id, nombre, ruta} o null si se cancela.
+  function elegirCarpeta(op) {
+    return new Promise(function (resolve) {
+      PK.resolver = resolve;
+      PK.contratista = op.contratista || "";
+      var ruta = (op.ruta || []).slice();
+      PK.sel = ruta.length ? ruta[ruta.length - 1] : null;   // carpeta guardada: queda seleccionada
+      PK.ruta = ruta.length ? ruta.slice(0, -1) : [];         // y se abre la carpeta que la contiene
+      $("pk-titulo").textContent = op.titulo || "Elige la carpeta";
+      $("pk-sub").textContent = op.sub || (PK.contratista ? "Busca la carpeta con el nombre de " + PK.contratista + "." : "");
+      $("pk-buscar").value = "";
+      $("picker").showModal();
+      pkCargar();
+    });
+  }
+  function pkActual() { return PK.ruta.length ? PK.ruta[PK.ruta.length - 1] : null; }
+  function pkCargar() {
+    var padre = pkActual(), k = padre ? padre.id : "";
+    $("pk-lista").replaceChildren(el("li", { class: "empty", text: "Cargando carpetas de Forma…" }));
+    pkRuta();
+    var p = PK.cache[k] ? Promise.resolve(PK.cache[k]) : api("/api/carpetas" + (k ? "?padre=" + encodeURIComponent(k) : "")).then(function (r) { PK.cache[k] = r.carpetas; return r.carpetas; });
+    p.then(function (lista) {
+      if (pkActual() !== padre) return; // ya se movió a otra carpeta
+      PK.lista = lista;
+      // Si no hay carpeta elegida, sugiere la que tenga el nombre del contratista.
+      if (!PK.sel && PK.contratista) {
+        var m = lista.filter(function (f) { return norm2(f.nombre).indexOf(norm2(PK.contratista)) >= 0; });
+        if (m.length === 1) PK.sel = m[0];
+      }
+      pkRender();
+    }).catch(function (e) { $("pk-lista").replaceChildren(el("li", { class: "empty", text: e.message })); });
+  }
+  function pkRuta() {
+    var partes = [el("button", { type: "button", text: "Proyecto", onclick: function () { PK.ruta = []; PK.sel = null; pkCargar(); } })];
+    PK.ruta.forEach(function (f, i) {
+      partes.push(el("span", { text: "›" }), el("button", { type: "button", text: f.nombre, onclick: function () { PK.ruta = PK.ruta.slice(0, i + 1); PK.sel = null; pkCargar(); } }));
+    });
+    $("pk-ruta").replaceChildren.apply($("pk-ruta"), partes);
+  }
+  function pkRender() {
+    var q = norm2($("pk-buscar").value), c = norm2(PK.contratista);
+    var lista = (PK.lista || []).filter(function (f) { return !q || norm2(f.nombre).indexOf(q) >= 0; });
+    if (!lista.length) {
+      $("pk-lista").replaceChildren(el("li", { class: "empty", text: q ? "Ninguna carpeta coincide." : "Esta carpeta no tiene subcarpetas. Puedes seleccionarla tal cual." }));
+    } else {
+      $("pk-lista").replaceChildren.apply($("pk-lista"), lista.map(function (f) {
+        var entrar = el("button", { class: "entrar", type: "button", "aria-label": "Abrir " + f.nombre, text: "›", onclick: function (ev) { ev.stopPropagation(); pkEntrar(f); } });
+        var li = el("li", { class: PK.sel && PK.sel.id === f.id ? "sel" : "" }, [
+          el("i", { class: "ico", "aria-hidden": "true" }),
+          el("span", { class: "m" }, [f.nombre, c && norm2(f.nombre).indexOf(c) >= 0 ? el("span", { class: "sug", text: "sugerida" }) : null]),
+          entrar,
+        ]);
+        li.addEventListener("click", function () { PK.sel = f; pkRender(); });
+        li.addEventListener("dblclick", function () { pkEntrar(f); });
+        return li;
+      }));
+    }
+    var destino = PK.sel || pkActual();
+    $("pk-ok").disabled = !destino;
+    $("pk-ok").textContent = destino ? "Guardar en «" + destino.nombre + "»" : "Elige una carpeta";
+  }
+  function pkEntrar(f) { PK.ruta = PK.ruta.concat([f]); PK.sel = null; $("pk-buscar").value = ""; pkCargar(); }
+  function pkCerrar(valor) { var r = PK.resolver; PK.resolver = null; $("picker").close(); if (r) r(valor); }
+  $("pk-buscar").addEventListener("input", pkRender);
+  $("pk-cancelar").addEventListener("click", function () { pkCerrar(null); });
+  $("picker").addEventListener("cancel", function (ev) { ev.preventDefault(); pkCerrar(null); });
+  $("pk-ok").addEventListener("click", function () {
+    var d = PK.sel || pkActual(); if (!d) return;
+    var ruta = PK.sel && (!pkActual() || PK.sel.id !== pkActual().id) ? PK.ruta.concat([PK.sel]) : PK.ruta.slice();
+    pkCerrar({ id: d.id, nombre: d.nombre, ruta: ruta });
+  });
+
   function saveObra(body, okMsg) {
     return api("/api/obra", body).then(function () { return api("/api/obra"); }).then(function (o) {
       var cambio = !S.obra.modelo || !o.modelo || S.obra.modelo.urn !== o.modelo.urn;
@@ -1079,7 +1178,6 @@
   if ($("obra-form")) {
     $("obra-form").addEventListener("submit", function (ev) { ev.preventDefault(); saveObra({ action: "nombre", nombre: $("obra-input").value }, "Nombre guardado."); });
     $("modelo-form").addEventListener("submit", function (ev) { ev.preventDefault(); saveObra({ action: "modelo", url: $("modelo-url").value }, "Modelo guardado."); });
-    $("carpeta-form").addEventListener("submit", function (ev) { ev.preventDefault(); saveObra({ action: "carpeta", url: $("carpeta-url").value }, "Carpeta guardada."); });
     $("modelo-act").addEventListener("click", function () { saveObra({ action: "actualizar" }, "Versión revisada."); });
     $("cat-btn").addEventListener("click", leerCatalogo);
     $("u-nuevo").addEventListener("click", resetUserForm);

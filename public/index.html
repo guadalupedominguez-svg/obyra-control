@@ -149,14 +149,7 @@
           </div>
           <div class="card">
             <h3>Carpetas de generadores en Forma</h3>
-            <p class="muted">Cada residente sube los generadores con su propia cuenta de Autodesk a la carpeta del contratista. En Forma Docs abre la carpeta y copia la liga de la barra del navegador. Los residentes necesitan permiso para subir archivos en esas carpetas.</p>
-            <h4>Carpeta general (para contratistas sin carpeta propia)</h4>
-            <form id="carpeta-form" class="stack">
-              <input id="carpeta-url" type="url" placeholder="https://acc.autodesk.com/docs/files/projects/…?folderUrn=…" aria-label="Liga de la carpeta general en Forma">
-              <div class="row"><button class="btn btn-ghost btn-sm" type="submit">Guardar carpeta general</button></div>
-            </form>
-            <p id="carpeta-estado" class="muted"></p>
-            <h4>Carpeta por contratista</h4>
+            <p class="muted">Cada residente sube los generadores con su propia cuenta de Autodesk a la carpeta de cada contratista. Al enviar se abre el explorador de Forma ya en la última carpeta usada; aquí puedes dejarlas elegidas desde antes. Los residentes necesitan permiso para subir archivos en esas carpetas.</p>
             <div id="carpetas-contr" class="stack"></div>
           </div>
           <div class="card">
@@ -238,6 +231,24 @@
           <button id="ev-cerrar" class="btn btn-ghost btn-sm" type="button">Cerrar</button>
         </div>
         <div class="tablewrap ev-wrap"><table class="tabla" id="ev-tabla"></table></div>
+      </div>
+    </dialog>
+
+    <!-- Explorador de carpetas de Forma -->
+    <dialog id="picker" class="dialog dialog-lg" aria-labelledby="pk-titulo">
+      <div class="dialog-body">
+        <div>
+          <h3 id="pk-titulo">Elige la carpeta</h3>
+          <p id="pk-sub" class="muted"></p>
+        </div>
+        <nav id="pk-ruta" class="pk-ruta" aria-label="Ubicación"></nav>
+        <input id="pk-buscar" type="search" placeholder="Buscar en esta carpeta" aria-label="Buscar carpeta">
+        <ul id="pk-lista" class="lista pk-lista" aria-label="Carpetas"></ul>
+        <p class="hint">Un clic selecciona la carpeta; doble clic (o la flecha) entra a ella.</p>
+        <div class="row end">
+          <button id="pk-cancelar" class="btn btn-ghost btn-sm" type="button">Cancelar</button>
+          <button id="pk-ok" class="btn btn-primary btn-sm" type="button" disabled>Seleccionar</button>
+        </div>
       </div>
     </dialog>
 

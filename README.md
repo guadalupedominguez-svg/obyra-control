@@ -44,7 +44,7 @@ Usuarios y contraseñas propios (no requiere cuenta de Autodesk). Solo el admini
 5. Entra con `ADMIN_EMAIL`, y en **Configuración**:
    1. **Conectar Forma** con una cuenta que tenga acceso al proyecto.
    2. Pega la **liga del IFC** de Forma Docs (la de la barra del navegador) y guarda.
-   3. Pega la **liga de la carpeta general** de generadores y, si aplica, la **carpeta de cada contratista**. Los residentes necesitan permiso para subir archivos en esas carpetas.
+   3. En *Carpetas de generadores* usa **Elegir carpeta** (explorador de Forma) para la carpeta general y, si quieres dejarlas listas, la de cada contratista. Si no, el residente la elige al enviar. Los residentes necesitan permiso para subir archivos en esas carpetas.
    4. **Leer piezas del modelo**.
    5. Da de alta residentes, superintendentes y contratistas.
 

@@ -9,6 +9,7 @@ const API = {
   obra: () => import("../api/obra.js"),
   piezas: () => import("../api/piezas.js"),
   envio: () => import("../api/envio.js"),
+  carpetas: () => import("../api/carpetas.js"),
 };
 const FORMA = () => import("../api/forma/[action].js");
 
