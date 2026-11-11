@@ -516,61 +516,65 @@
       it.enumNodeFragments(id, function (f) { fl.getWorldBounds(f, tmp); caja.union(tmp); }, true);
       if (caja.isEmpty()) return;
       var p = v.worldToClient(caja.getCenter(new THREE.Vector3()));
-      out.push({ marca: S.piezas[g].marca || "(sin marca)", x: p.x, y: p.y, color: COLOR[estado(g)] || COLOR.Planeado });
+      out.push({ guid: g, marca: S.piezas[g].marca || "(sin marca)", x: p.x, y: p.y, color: COLOR[estado(g)] || COLOR.Planeado });
     });
     return out;
   }
 
   // Dibuja las etiquetas de marca sobre la foto, moviéndolas si se enciman, con una línea hacia la pieza.
+  // Devuelve la imagen y dónde quedó cada pieza (para ubicarla al hacer zoom).
   function etiquetar(dataUrl, w, h, puntos, sx, sy) {
+    var k = w / 1600; // tamaños pensados para 1600 px de ancho
     return new Promise(function (resolve) {
       var img = new Image();
       img.onload = function () {
         var cv = document.createElement("canvas"); cv.width = w; cv.height = h;
         var ctx = cv.getContext("2d");
         ctx.drawImage(img, 0, 0, w, h);
-        ctx.font = "bold 15px Arial"; ctx.textBaseline = "middle";
-        var padX = 7, alto = 24, gap = 4;
-        var dentro = puntos.map(function (pt) { return { marca: pt.marca, color: pt.color, x: pt.x * sx, y: pt.y * sy }; })
+        ctx.font = "bold " + Math.round(15 * k) + "px Arial"; ctx.textBaseline = "middle";
+        var padX = 7 * k, alto = 24 * k, gap = 4 * k;
+        var dentro = puntos.map(function (pt) { return { guid: pt.guid, marca: pt.marca, color: pt.color, x: pt.x * sx, y: pt.y * sy }; })
           .filter(function (pt) { return pt.x >= 0 && pt.y >= 0 && pt.x <= w && pt.y <= h; }); // fuera de cuadro: sin etiqueta
         // Obstáculos: los puntos de todas las piezas (para no taparlos) y las etiquetas ya colocadas.
-        var puestas = dentro.map(function (pt) { return { x: pt.x - 6, y: pt.y - 6, w: 12, h: 12 }; });
+        var puestas = dentro.map(function (pt) { return { x: pt.x - 6 * k, y: pt.y - 6 * k, w: 12 * k, h: 12 * k }; });
         var choca = function (r) { return puestas.some(function (q) { return r.x < q.x + q.w + gap && q.x < r.x + r.w + gap && r.y < q.y + q.h + gap && q.y < r.y + r.h + gap; }); };
         var coloc = [];
         dentro.slice().sort(function (a, b) { return a.y - b.y; }).forEach(function (pt) {
           var tw = ctx.measureText(pt.marca).width + padX * 2;
           var caja = function (dx, dy) { return { x: Math.min(Math.max(pt.x - tw / 2 + dx, 2), w - tw - 2), y: Math.min(Math.max(pt.y + dy, 2), h - alto - 2), w: tw, h: alto }; };
-          var r = null, lado = tw / 2 + 22;
+          var r = null, lado = tw / 2 + 22 * k;
           // Primero arriba, luego a los lados y abajo, cada vez más lejos.
           [-36, -66, -96, -126, -156].some(function (dy, k) {
             var dyAbajo = [14, 44, 74, 104, 134][k];
             return [[0, dy], [-lado, -12 + dy / 3], [lado, -12 + dy / 3], [0, dyAbajo], [-lado, dy], [lado, dy]].some(function (d) {
-              var c = caja(d[0], d[1]); if (!choca(c)) { r = c; return true; } return false;
+              var c = caja(d[0], d[1] * k); if (!choca(c)) { r = c; return true; } return false;
             });
           });
-          if (!r) r = caja(0, -36);
+          if (!r) r = caja(0, -36 * k);
           puestas.push(r); coloc.push({ pt: pt, r: r });
         });
         // Líneas con contorno blanco para que se vean sobre piezas oscuras, después los puntos y al final las etiquetas.
-        var ancla = function (c) { var r = c.r, cx = Math.min(Math.max(c.pt.x, r.x + 4), r.x + r.w - 4); return { x: cx, y: r.y > c.pt.y ? r.y : (r.y + r.h < c.pt.y ? r.y + r.h : r.y + r.h / 2) }; };
+        var ancla = function (c) { var r = c.r, cx = Math.min(Math.max(c.pt.x, r.x + 4 * k), r.x + r.w - 4 * k); return { x: cx, y: r.y > c.pt.y ? r.y : (r.y + r.h < c.pt.y ? r.y + r.h : r.y + r.h / 2) }; };
         [["#FFFFFF", 4], ["#111A2B", 1.5]].forEach(function (st) {
-          ctx.strokeStyle = st[0]; ctx.lineWidth = st[1];
+          ctx.strokeStyle = st[0]; ctx.lineWidth = st[1] * k;
           coloc.forEach(function (c) { var a = ancla(c); ctx.beginPath(); ctx.moveTo(c.pt.x, c.pt.y); ctx.lineTo(a.x, a.y); ctx.stroke(); });
         });
         coloc.forEach(function (c) {
-          ctx.beginPath(); ctx.arc(c.pt.x, c.pt.y, 4, 0, Math.PI * 2);
-          ctx.fillStyle = "#111A2B"; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#FFFFFF"; ctx.stroke();
+          ctx.beginPath(); ctx.arc(c.pt.x, c.pt.y, 4 * k, 0, Math.PI * 2);
+          ctx.fillStyle = "#111A2B"; ctx.fill(); ctx.lineWidth = 2 * k; ctx.strokeStyle = "#FFFFFF"; ctx.stroke();
         });
         coloc.forEach(function (c) {
           var r = c.r;
           ctx.fillStyle = "rgba(17,26,43,.94)";
-          if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 5); ctx.fill(); } else ctx.fillRect(r.x, r.y, r.w, r.h);
-          ctx.fillStyle = c.pt.color; ctx.fillRect(r.x + 3, r.y + r.h - 3, r.w - 6, 3);
-          ctx.fillStyle = "#FFFFFF"; ctx.fillText(c.pt.marca, r.x + padX, r.y + r.h / 2 - 1);
+          if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 5 * k); ctx.fill(); } else ctx.fillRect(r.x, r.y, r.w, r.h);
+          ctx.fillStyle = c.pt.color; ctx.fillRect(r.x + 3 * k, r.y + r.h - 3 * k, r.w - 6 * k, 3 * k);
+          ctx.fillStyle = "#FFFFFF"; ctx.fillText(c.pt.marca, r.x + padX, r.y + r.h / 2 - k);
         });
-        resolve(cv.toDataURL("image/png"));
+        var pts = {};
+        dentro.forEach(function (pt) { if (pt.guid) pts[pt.guid] = { x: pt.x, y: pt.y }; });
+        resolve({ data: cv.toDataURL("image/png"), pts: pts });
       };
-      img.onerror = function () { resolve(dataUrl); };
+      img.onerror = function () { resolve({ data: dataUrl, pts: {} }); };
       img.src = dataUrl;
     });
   }
@@ -589,14 +593,14 @@
         v.removeEventListener(Autodesk.Viewing.FINAL_FRAME_RENDERED_CHANGED_EVENT, onFrame);
         var c = v.canvas || v.container.querySelector("canvas");
         var cw = (c && c.clientWidth) || 1200, ch = (c && c.clientHeight) || 800;
-        var w = 1600, h = Math.round(w * ch / cw);
+        var w = 2400, h = Math.round(w * ch / cw); // resolución alta para poder hacer zoom
         var puntos = [];
         try { puntos = puntosDePiezas(guids || []); } catch (e) { puntos = []; }
         v.getScreenShot(w, h, function (url) {
           fetch(url).then(function (r) { return r.blob(); }).then(function (b) {
             var fr = new FileReader();
             fr.onload = function () {
-              etiquetar(fr.result, w, h, puntos, w / cw, h / ch).then(function (data) { resolve({ data: data, w: w, h: h }); });
+              etiquetar(fr.result, w, h, puntos, w / cw, h / ch).then(function (r) { resolve({ data: r.data, pts: r.pts, w: w, h: h }); });
             };
             fr.onerror = function () { resolve(null); };
             fr.readAsDataURL(b);
@@ -627,23 +631,87 @@
     }).finally(function () { btn.disabled = false; btn.textContent = "Ver generador"; actualizarMarcar(); });
   });
   $("gp-cerrar").addEventListener("click", function () { $("gen-prev").close(); });
+  $("gen-prev").addEventListener("close", cerrarZoom);
+
+  // ---------- Vista ampliada (zoom) de la referencia visual ----------
+  // La imagen ya trae las marcas dibujadas, así que al acercar se conservan.
+  var Z = { s: 1, tx: 0, ty: 0, fit: 1 };
+  function zVisor() { return $("gp-visor"); }
+  function aplicarZ() { $("gp-lienzo").style.transform = "translate(" + Z.tx + "px," + Z.ty + "px) scale(" + Z.s + ")"; }
+  function ajustarZ() {
+    var v = zVisor(), W = GP.img.w, H = GP.img.h, cw = v.clientWidth, ch = v.clientHeight;
+    Z.fit = Math.min(cw / W, ch / H) * 0.96;
+    Z.s = Z.fit; Z.tx = (cw - W * Z.s) / 2; Z.ty = (ch - H * Z.s) / 2;
+    aplicarZ();
+  }
+  function zoomZ(f, mx, my) {
+    var ns = Math.min(Math.max(Z.s * f, Z.fit * 0.6), Math.max(Z.fit * 8, 2.5));
+    Z.tx = mx - (mx - Z.tx) * ns / Z.s; Z.ty = my - (my - Z.ty) * ns / Z.s; Z.s = ns;
+    aplicarZ();
+  }
+  function abrirZoom(g) {
+    if (!GP || !GP.img) return;
+    var abierto = $("gen-prev").classList.contains("gp-zoom");
+    if (!abierto) {
+      $("gen-prev").classList.add("gp-zoom");
+      zVisor().hidden = false;
+      $("gp-zimg").src = GP.img.data; $("gp-zimg").width = GP.img.w; $("gp-zimg").height = GP.img.h;
+      ajustarZ();
+    }
+    qsa("#gp-tabla tbody tr").forEach(function (tr) { tr.classList.toggle("sel", !!g && tr.getAttribute("data-guid") === g); });
+    var an = $("gp-anillo"); an.hidden = true;
+    if (!g) return;
+    var p = GP.img.pts && GP.img.pts[g];
+    if (!p) { toast("Esa pieza no quedó dentro de la vista del modelo."); return; }
+    var v = zVisor(), cw = v.clientWidth, ch = v.clientHeight;
+    Z.s = Math.max(Z.s, Z.fit * 3);
+    Z.tx = cw / 2 - p.x * Z.s; Z.ty = ch / 2 - p.y * Z.s;
+    aplicarZ();
+    var d = Math.round(GP.img.w / 22);
+    an.style.left = p.x + "px"; an.style.top = p.y + "px"; an.style.width = d + "px"; an.style.height = d + "px";
+    an.hidden = false; an.style.animation = "none"; void an.offsetWidth; an.style.animation = "";
+  }
+  function cerrarZoom() {
+    $("gen-prev").classList.remove("gp-zoom");
+    zVisor().hidden = true; $("gp-anillo").hidden = true;
+    qsa("#gp-tabla tbody tr.sel").forEach(function (tr) { tr.classList.remove("sel"); });
+  }
+  (function () {
+    var v = zVisor(), arr = null;
+    var rel = function (ev) { var r = v.getBoundingClientRect(); return { x: ev.clientX - r.left, y: ev.clientY - r.top }; };
+    v.addEventListener("wheel", function (ev) { ev.preventDefault(); var p = rel(ev); zoomZ(ev.deltaY < 0 ? 1.18 : 1 / 1.18, p.x, p.y); }, { passive: false });
+    v.addEventListener("dblclick", function (ev) { if (ev.target.closest(".gp-ctrl")) return; var p = rel(ev); zoomZ(2, p.x, p.y); });
+    v.addEventListener("pointerdown", function (ev) {
+      if (ev.target.closest(".gp-ctrl")) return;
+      arr = { x: ev.clientX, y: ev.clientY, tx: Z.tx, ty: Z.ty }; v.setPointerCapture(ev.pointerId); v.classList.add("arrastrando");
+    });
+    v.addEventListener("pointermove", function (ev) { if (!arr) return; Z.tx = arr.tx + ev.clientX - arr.x; Z.ty = arr.ty + ev.clientY - arr.y; aplicarZ(); });
+    var fin = function () { arr = null; v.classList.remove("arrastrando"); };
+    v.addEventListener("pointerup", fin); v.addEventListener("pointercancel", fin);
+    $("gp-mas").addEventListener("click", function () { zoomZ(1.4, v.clientWidth / 2, v.clientHeight / 2); });
+    $("gp-menos").addEventListener("click", function () { zoomZ(1 / 1.4, v.clientWidth / 2, v.clientHeight / 2); });
+    $("gp-ajustar").addEventListener("click", ajustarZ);
+    $("gp-salir").addEventListener("click", cerrarZoom);
+    window.addEventListener("resize", function () { if ($("gen-prev").classList.contains("gp-zoom")) ajustarZ(); });
+  })();
 
   function renderPrevia() {
     $("gp-titulo").textContent = GP.titulo;
     $("gp-sub").textContent = GP.sub;
-    var head = el("tr", null, COLS.map(function (c) { return el("th", { class: c[2] ? "num" : null, text: c[0] }); }).concat([el("th", { text: "Referencia visual" })]));
+    var head = el("tr", null, COLS.map(function (c) { return el("th", { class: c[2] ? "num" : null, text: c[0] }); }).concat([el("th", { class: "refh", text: "Referencia visual" })]));
     var tot = { area: 0, volumen: 0 };
     var rows = GP.filas.map(function (g, i) {
       var p = S.piezas[g]; tot.area += p.area || 0; tot.volumen += p.volumen || 0;
       var tds = COLS.map(function (c) { var x = valor(g, c[1]); return el("td", { class: c[2] ? "num" : null, text: c[2] ? f2(x) : (x || "—") }); });
       if (i === 0) {
         tds.push(el("td", { class: "ref", rowspan: String(GP.filas.length) }, [
-          GP.img ? el("img", { src: GP.img.data, alt: "Vista del modelo con las " + GP.filas.length + " piezas del generador" })
+          GP.img ? el("img", { src: GP.img.data, alt: "Vista del modelo con las " + GP.filas.length + " piezas del generador", title: "Clic para ampliar", onclick: function (ev) { ev.stopPropagation(); abrirZoom(); } })
                  : el("p", { class: "muted", text: "No se pudo tomar la vista del modelo. Espera a que cargue el modelo e intenta de nuevo." }),
         ]));
       }
-      var tr = el("tr", { class: "click" }, tds);
-      tr.addEventListener("click", function () { $("gen-prev").close(); focusPieces([g]); });
+      var tr = el("tr", { class: "click", "data-guid": g }, tds);
+      // Con vista del modelo: el renglón ubica la pieza en la vista ampliada. Sin vista: lleva a la pieza en el modelo.
+      tr.addEventListener("click", function () { if (GP.img) abrirZoom(g); else { $("gen-prev").close(); focusPieces([g]); } });
       return tr;
     });
     var foot = el("tr", null, COLS.map(function (c) {
@@ -653,6 +721,7 @@
       return el("td");
     }).concat([el("td")]));
     $("gp-tabla").replaceChildren(el("thead", null, [head]), el("tbody", null, rows), el("tfoot", null, [foot]));
+    cerrarZoom();
 
     var res = resumenDe(GP.filas);
     $("gp-resumen").replaceChildren(

@@ -186,9 +186,26 @@
             <button id="gp-cerrar" class="btn btn-ghost btn-sm" type="button">Cerrar</button>
           </div>
         </div>
-        <div class="tablewrap gp-wrap"><table class="tabla gp-tabla" id="gp-tabla"></table></div>
-        <h4>Resumen por concepto</h4>
-        <div class="tablewrap"><table class="tabla" id="gp-resumen"></table></div>
+        <div class="gp-main">
+          <div class="gp-left">
+            <div class="tablewrap gp-wrap"><table class="tabla gp-tabla" id="gp-tabla"></table></div>
+            <h4>Resumen por concepto</h4>
+            <div class="tablewrap gp-res"><table class="tabla" id="gp-resumen"></table></div>
+          </div>
+          <div class="gp-visor" id="gp-visor" hidden>
+            <div class="gp-lienzo" id="gp-lienzo">
+              <img id="gp-zimg" alt="Vista ampliada del modelo con las marcas de las piezas" draggable="false">
+              <div class="gp-anillo" id="gp-anillo" hidden></div>
+            </div>
+            <div class="gp-ctrl">
+              <button class="btn btn-sm" type="button" id="gp-mas" aria-label="Acercar">+</button>
+              <button class="btn btn-sm" type="button" id="gp-menos" aria-label="Alejar">−</button>
+              <button class="btn btn-sm" type="button" id="gp-ajustar">Ajustar</button>
+              <button class="btn btn-sm" type="button" id="gp-salir">Cerrar vista</button>
+            </div>
+            <p class="gp-ayuda">Rueda o +/− para acercar · arrastra para mover · clic en un renglón para ubicar la pieza</p>
+          </div>
+        </div>
       </div>
     </dialog>
 
