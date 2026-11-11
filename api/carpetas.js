@@ -26,7 +26,7 @@ export default route(["GET", "POST"], async (req, res) => {
   if (req.method === "GET") {
     const padre = String((req.query && req.query.padre) || "");
     if (padre && !URN.test(padre)) throw new HttpError(400, "Carpeta no válida.");
-    res.status(200).json({ carpetas: await listarCarpetas(o.projectId, padre, chain) });
+    res.status(200).json({ carpetas: await listarCarpetas(o.projectId, padre, chain, { lineage: o.lineage }) });
     return;
   }
 

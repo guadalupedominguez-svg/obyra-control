@@ -95,3 +95,19 @@ test("el explorador lista carpetas principales y subcarpetas (con paginación)",
   assert.deepEqual(sub.map((c) => c.nombre), ["Gen AD-001", "Gen COPRESA"]); // ordenadas y sin ocultas
   assert.equal(JSON.parse(db.get("ctrl:forma:hub:b.proj")), "b.hub"); // el hub se recuerda
 });
+
+test("si Autodesk no deja ver el hub, el explorador arranca subiendo desde la carpeta del IFC", async () => {
+  db.delete("ctrl:forma:hub:b.p2");
+  globalThis.fetch = async (url) => {
+    const ok = (j) => new Response(JSON.stringify(j), { status: 200 });
+    const u = url.replace("https://developer.api.autodesk.com", "");
+    if (u === "/project/v1/hubs") return ok({ data: [] }); // la app no está habilitada en la cuenta
+    if (u.endsWith("/items/urn%3Aadsk.wipprod%3Adm.lineage%3Aifc/parent")) return ok({ data: { id: "urn:adsk.wipprod:fs.folder:co.av", attributes: { displayName: "034_AVANCES" } } });
+    if (u.includes("co.av/parent")) return ok({ data: { id: "urn:adsk.wipprod:fs.folder:co.con", attributes: { displayName: "03_CONSTRUCCION" } } });
+    if (u.includes("co.con/parent")) return ok({ data: { id: "urn:adsk.wipprod:fs.folder:co.pf", attributes: { displayName: "Project Files" } } });
+    if (u.includes("co.pf/parent")) return ok({ data: { id: "urn:adsk.wipprod:fs.folder:co.root", attributes: { displayName: "root", hidden: true } } });
+    throw new Error("URL no esperada " + u);
+  };
+  const top = await listarCarpetas("b.p2", "", "data", { lineage: "urn:adsk.wipprod:dm.lineage:ifc" });
+  assert.deepEqual(top, [{ id: "urn:adsk.wipprod:fs.folder:co.pf", nombre: "Project Files" }]);
+});
