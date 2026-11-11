@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { _setStoreForTests } from "../lib/store.js";
-import { parseFolderLink, subirArchivo, cuentaStatus, listarCarpetas } from "../lib/forma.js";
+import { parseFolderLink, subirArchivo, cuentaStatus, listarCarpetas, buscarCarpetas } from "../lib/forma.js";
 
 process.env.KV_REST_API_URL = "http://memoria";
 process.env.KV_REST_API_TOKEN = "t";
@@ -110,4 +110,17 @@ test("si Autodesk no deja ver el hub, el explorador arranca subiendo desde la ca
   };
   const top = await listarCarpetas("b.p2", "", "data", { lineage: "urn:adsk.wipprod:dm.lineage:ifc" });
   assert.deepEqual(top, [{ id: "urn:adsk.wipprod:fs.folder:co.pf", nombre: "Project Files" }]);
+});
+
+test("busca carpetas por nombre en subcarpetas y devuelve su ruta", async () => {
+  const kids = { av: [["g", "generadores"], ["v", "03401_Vuelo Dron"]], g: [["cp", "Gen COPRESA"], ["fm", "Gen FAMEP"]], v: [], cp: [], fm: [] };
+  globalThis.fetch = async (url) => {
+    const m = /co\.(\w+)\/contents/.exec(decodeURIComponent(url));
+    const lista = (m && kids[m[1]]) || [];
+    return new Response(JSON.stringify({ data: lista.map(([id, n]) => ({ id: "urn:adsk.wipprod:fs.folder:co." + id, type: "folders", attributes: { displayName: n } })) }), { status: 200 });
+  };
+  const r = await buscarCarpetas("b.p", "urn:adsk.wipprod:fs.folder:co.av", "copresa");
+  assert.equal(r.length, 1);
+  assert.equal(r[0].nombre, "Gen COPRESA");
+  assert.deepEqual(r[0].ruta.map((x) => x.nombre), ["generadores", "Gen COPRESA"]);
 });

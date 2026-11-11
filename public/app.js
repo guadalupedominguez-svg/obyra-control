@@ -1106,9 +1106,15 @@
       PK.ruta = ruta.length ? ruta.slice(0, -1) : [];         // y se abre la carpeta que la contiene
       $("pk-titulo").textContent = op.titulo || "Elige la carpeta";
       $("pk-sub").textContent = op.sub || (PK.contratista ? "Busca la carpeta con el nombre de " + PK.contratista + "." : "");
-      $("pk-buscar").value = "";
+      $("pk-buscar").value = ""; PK.remotos = null;
+      $("pk-buscar").placeholder = "Buscar carpeta (aquí y en subcarpetas)";
       $("picker").showModal();
-      pkCargar();
+      if (ruta.length) { pkCargar(); return; }
+      // Sin carpeta guardada: abre donde está el IFC, con la ruta completa arriba.
+      $("pk-lista").replaceChildren(el("li", { class: "empty", text: "Cargando carpetas de Forma…" }));
+      (PK.inicio ? Promise.resolve(PK.inicio) : api("/api/carpetas?inicio=1").then(function (r) { PK.inicio = r.ruta || []; return PK.inicio; }))
+        .catch(function () { return []; })
+        .then(function (r) { PK.ruta = r.slice(); pkCargar(); });
     });
   }
   function pkActual() { return PK.ruta.length ? PK.ruta[PK.ruta.length - 1] : null; }
@@ -1153,13 +1159,52 @@
         return li;
       }));
     }
+    // Resultados en subcarpetas.
+    if (PK.remotos === "buscando") {
+      $("pk-lista").appendChild(el("li", { class: "empty", text: "Buscando en subcarpetas…" }));
+    } else if (Array.isArray(PK.remotos)) {
+      var locales = new Set(lista.map(function (f) { return f.id; }));
+      var extra = PK.remotos.filter(function (r) { return !locales.has(r.id); });
+      if (lista.length === 0 && $("pk-lista").firstChild && $("pk-lista").firstChild.classList.contains("empty")) $("pk-lista").replaceChildren();
+      if (!extra.length && !lista.length) $("pk-lista").appendChild(el("li", { class: "empty", text: "Tampoco se encontró en las subcarpetas." }));
+      extra.forEach(function (r) {
+        var li = el("li", null, [
+          el("i", { class: "ico", "aria-hidden": "true" }),
+          el("span", { class: "m" }, [r.nombre, el("small", { class: "pk-donde", text: r.ruta.slice(0, -1).map(function (x) { return x.nombre; }).join(" / ") || "aquí" })]),
+          el("button", { class: "entrar", type: "button", "aria-label": "Ir a " + r.nombre, text: "›", onclick: function (ev) { ev.stopPropagation(); pkIrA(r); } }),
+        ]);
+        li.addEventListener("click", function () { pkIrA(r); });
+        $("pk-lista").appendChild(li);
+      });
+    }
     var destino = PK.sel || pkActual();
     $("pk-ok").disabled = !destino;
     $("pk-ok").textContent = destino ? "Guardar en «" + destino.nombre + "»" : "Elige una carpeta";
   }
-  function pkEntrar(f) { PK.ruta = PK.ruta.concat([f]); PK.sel = null; $("pk-buscar").value = ""; pkCargar(); }
+  function pkEntrar(f) { PK.ruta = PK.ruta.concat([f]); PK.sel = null; $("pk-buscar").value = ""; PK.remotos = null; pkCargar(); }
+
+  // Búsqueda en subcarpetas (además del filtro de la carpeta actual).
+  var pkT = null;
+  function pkBuscarRemoto() {
+    clearTimeout(pkT);
+    var q = $("pk-buscar").value.trim(), padre = pkActual();
+    PK.remotos = null;
+    if (q.length < 3 || !padre) { pkRender(); return; }
+    PK.remotos = "buscando"; pkRender();
+    pkT = setTimeout(function () {
+      api("/api/carpetas?buscar=" + encodeURIComponent(q) + "&padre=" + encodeURIComponent(padre.id)).then(function (r) {
+        if ($("pk-buscar").value.trim() !== q || pkActual() !== padre) return;
+        PK.remotos = r.resultados || []; pkRender();
+      }).catch(function (e) { PK.remotos = []; toast(e.message, true); pkRender(); });
+    }, 450);
+  }
+  function pkIrA(res) {
+    // Abre la carpeta que contiene el resultado y lo deja seleccionado.
+    PK.ruta = PK.ruta.concat(res.ruta.slice(0, -1)); PK.sel = { id: res.id, nombre: res.nombre };
+    $("pk-buscar").value = ""; PK.remotos = null; pkCargar();
+  }
   function pkCerrar(valor) { var r = PK.resolver; PK.resolver = null; $("picker").close(); if (r) r(valor); }
-  $("pk-buscar").addEventListener("input", pkRender);
+  $("pk-buscar").addEventListener("input", function () { pkRender(); pkBuscarRemoto(); });
   $("pk-cancelar").addEventListener("click", function () { pkCerrar(null); });
   $("picker").addEventListener("cancel", function (ev) { ev.preventDefault(); pkCerrar(null); });
   $("pk-ok").addEventListener("click", function () {

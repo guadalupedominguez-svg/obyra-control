@@ -1,5 +1,7 @@
 // Explorador de carpetas de Forma para elegir dónde se guardan los generadores.
 //   GET  /api/carpetas?padre=<folderUrn>    subcarpetas (sin padre: carpetas principales del proyecto)
+//   GET  /api/carpetas?inicio=1             ruta hasta la carpeta del IFC (donde abre el explorador)
+//   GET  /api/carpetas?buscar=<texto>&padre=<folderUrn>   busca por nombre en subcarpetas
 //   POST /api/carpetas {contratista, folderUrn, ruta:[{id,nombre}]}
 //        guarda la carpeta de un contratista (quien estima) o la general (contratista vacío: admin)
 // Se navega con la cuenta de Autodesk de quien usa la app (ve solo lo que puede ver en Forma);
@@ -7,7 +9,7 @@
 import { route, readJson, HttpError, cleanText } from "../lib/http.js";
 import { key, getJson, setJson } from "../lib/store.js";
 import { requireUser, can } from "../lib/users.js";
-import { cuentaStatus, cuentaChain, listarCarpetas, folderInfo } from "../lib/forma.js";
+import { cuentaStatus, cuentaChain, listarCarpetas, folderInfo, rutaIfc, buscarCarpetas } from "../lib/forma.js";
 
 const URN = /^urn:adsk\.wip[a-z]+:fs\.folder:co\.[A-Za-z0-9_-]+$/;
 
@@ -24,8 +26,20 @@ export default route(["GET", "POST"], async (req, res) => {
   const chain = await cadena(me);
 
   if (req.method === "GET") {
-    const padre = String((req.query && req.query.padre) || "");
+    const q = req.query || {};
+    const padre = String(q.padre || "");
     if (padre && !URN.test(padre)) throw new HttpError(400, "Carpeta no válida.");
+    if (q.inicio) {
+      res.status(200).json({ ruta: o.lineage ? await rutaIfc(o.projectId, o.lineage, chain) : [] });
+      return;
+    }
+    if (q.buscar) {
+      const texto = cleanText(q.buscar, 60, "La búsqueda");
+      if (texto.length < 2) throw new HttpError(400, "Escribe al menos 2 letras.");
+      if (!padre) throw new HttpError(400, "Entra a una carpeta para buscar dentro de ella.");
+      res.status(200).json({ resultados: await buscarCarpetas(o.projectId, padre, texto, chain) });
+      return;
+    }
     res.status(200).json({ carpetas: await listarCarpetas(o.projectId, padre, chain, { lineage: o.lineage }) });
     return;
   }
