@@ -102,11 +102,15 @@
     $("user-name").textContent = S.me.nombre;
     $("user-rol").textContent = S.me.rolNombre + (S.me.contratista ? " · " + S.me.contratista : "");
     qsa("[data-perm]").forEach(function (n) { if (!S.permisos[n.getAttribute("data-perm")]) n.remove(); });
-    if (S.me.rol === "contratista") $("r-btn").textContent = "Enviar avance para aprobación";
-    else $("r-btn").textContent = "Registrar avance";
-    $("r-hint").textContent = S.me.rol === "contratista"
-      ? "El residente o el superintendente revisa y aprueba tu reporte antes de que cuente para el generador."
-      : "Como puedes aprobar, el avance que registras queda aprobado de inmediato.";
+    if ($("r-btn")) {
+      $("r-btn").textContent = S.permisos.aprobar ? "Registrar avance" : "Enviar avance para aprobación";
+      $("r-hint").textContent = S.permisos.aprobar
+        ? "Como puedes aprobar, el avance que registras queda aprobado de inmediato."
+        : "El residente o el superintendente revisa y aprueba el reporte antes de que cuente para el generador.";
+    }
+    $("ap-intro").textContent = S.permisos.aprobar
+      ? "Avance reportado que espera tu revisión. Revisa en obra o en el modelo y aprueba o rechaza con el motivo."
+      : "Avance reportado que espera la revisión del residente o del superintendente. Solo ellos pueden aprobar o rechazar.";
     fillSelect($("r-estatus"), S.me.rol === "contratista" ? ["En ejecución", "Terminado"] : ["Planeado", "Liberado", "En ejecución", "Terminado"]);
     fillSelect($("f-estatus"), [["", "Todos los estatus"]].concat(ORDEN.map(function (e) { return [e, e]; })));
     renderLegend();
@@ -309,13 +313,16 @@
     var list = pendientes().sort(function (a, b) { return rec(a).pend.at < rec(b).pend.at ? -1 : 1; });
     S.apSel.forEach(function (g) { if (list.indexOf(g) < 0) S.apSel["delete"](g); });
     $("ap-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pendiente" : " pendientes");
-    $("ap-all").checked = list.length > 0 && list.every(function (g) { return S.apSel.has(g); });
+    if ($("ap-all")) $("ap-all").checked = list.length > 0 && list.every(function (g) { return S.apSel.has(g); });
     if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: "No hay avance pendiente de aprobar." })); return; }
     $("lista-ap").replaceChildren.apply($("lista-ap"), list.map(function (g) {
       var p = S.piezas[g], pe = rec(g).pend;
-      var cb = el("input", { type: "checkbox", "aria-label": "Seleccionar " + (p.marca || g) });
-      cb.checked = S.apSel.has(g);
-      cb.addEventListener("click", function (ev) { ev.stopPropagation(); if (cb.checked) S.apSel.add(g); else S.apSel["delete"](g); renderAprobar(); });
+      var cb = el("span"); // sin casilla para quien solo consulta
+      if (S.permisos.aprobar) {
+        cb = el("input", { type: "checkbox", "aria-label": "Seleccionar " + (p.marca || g) });
+        cb.checked = S.apSel.has(g);
+        cb.addEventListener("click", function (ev) { ev.stopPropagation(); if (cb.checked) S.apSel.add(g); else S.apSel["delete"](g); renderAprobar(); });
+      }
       var li = el("li", { class: S.apSel.has(g) ? "sel" : "" }, [
         cb,
         el("span", { class: "m", text: (p.marca || "(sin marca)") + " · " + p.contratista }),

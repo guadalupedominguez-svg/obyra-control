@@ -94,13 +94,13 @@ export default route(["GET", "POST"], async (req, res) => {
       let pct = est === "Terminado" ? 100 : Number(body.pct || 0);
       if (!Number.isFinite(pct) || pct < 0 || pct > 100) throw new HttpError(400, "El porcentaje debe estar entre 0 y 100.");
       pct = Math.round(pct);
-      if (esContratista) {
-        // El contratista propone; queda pendiente hasta que el residente o el superintendente apruebe.
+      if (!can(me, "aprobar")) {
+        // Quien no puede aprobar (contratista, administrador) propone; queda pendiente hasta que el residente o el superintendente apruebe.
         rec.pend = { estatus: est, pct, comentario, por: me.nombre, email: me.email, at: new Date().toISOString() };
         delete rec.rechazo;
         push(rec, evento(me, "reporta", { estatus: est, pct, comentario }));
       } else {
-        // Quien puede aprobar registra el avance directo.
+        // Residente o superintendente registran el avance directo.
         Object.assign(rec, { estatus: est, pct, aprobado: { por: me.nombre, at: new Date().toISOString() } });
         delete rec.pend; delete rec.rechazo;
         push(rec, evento(me, "registra", { estatus: est, pct, comentario }));

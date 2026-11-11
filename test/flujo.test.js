@@ -169,3 +169,13 @@ test("las escrituras sin JSON se rechazan", async () => {
   await handlers.piezas(req, res);
   assert.equal(status, 415);
 });
+
+test("el administrador no aprueba: su reporte queda por aprobar", async () => {
+  let r = await admin("piezas", { action: "reportar", guids: [G(3)], estatus: "En ejecución", pct: 30 });
+  assert.equal(r.json.avance[G(3)].pend.estatus, "En ejecución");
+  assert.equal((await admin("piezas", { action: "aprobar", guids: [G(3)] })).status, 403);
+  const s = await admin("session");
+  assert.equal(s.json.permisos.aprobar, false);
+  r = await resi("piezas", { action: "aprobar", guids: [G(3)] });
+  assert.equal(r.json.avance[G(3)].estatus, "En ejecución");
+});

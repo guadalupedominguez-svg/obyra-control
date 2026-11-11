@@ -46,7 +46,7 @@
       <aside class="panel">
         <nav class="tabs" role="tablist" id="tabs">
           <button role="tab" data-tab="piezas" class="tab" type="button">Piezas</button>
-          <button role="tab" data-tab="aprobar" class="tab" type="button" data-perm="aprobar">Por aprobar <span class="badge" id="badge-aprobar" hidden></span></button>
+          <button role="tab" data-tab="aprobar" class="tab" type="button">Por aprobar <span class="badge" id="badge-aprobar" hidden></span></button>
           <button role="tab" data-tab="generador" class="tab" type="button">Generador</button>
           <button role="tab" data-tab="admin" class="tab" type="button" data-perm="administrar">Configuración</button>
         </nav>
@@ -78,12 +78,12 @@
 
         <!-- Por aprobar -->
         <section class="tabpane" data-pane="aprobar" hidden>
-          <p class="pane-intro">Avance reportado por los contratistas que espera tu revisión. Revisa en obra o en el modelo y aprueba o rechaza con el motivo.</p>
+          <p class="pane-intro" id="ap-intro"></p>
           <div class="list-head">
-            <label class="check"><input type="checkbox" id="ap-all"> <span id="ap-count">0 pendientes</span></label>
+            <label class="check"><input type="checkbox" id="ap-all" data-perm="aprobar"> <span id="ap-count">0 pendientes</span></label>
           </div>
           <ul id="lista-ap" class="lista" aria-label="Avance por aprobar"></ul>
-          <div class="actionbar">
+          <div class="actionbar" data-perm="aprobar">
             <input id="ap-coment" type="text" maxlength="500" placeholder="Comentario o motivo del rechazo" aria-label="Comentario">
             <div class="row">
               <button id="ap-ok" class="btn btn-primary" type="button">Aprobar</button>

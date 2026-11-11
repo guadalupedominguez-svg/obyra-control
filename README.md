@@ -4,7 +4,7 @@ Hermano de OBYRA para el control de obra **por pieza** sobre el modelo IFC que v
 
 1. **Visor** del IFC coloreado por estatus. Cada contratista solo ve sus piezas.
 2. **Reporte de avance**: el contratista selecciona piezas (en la lista o en el modelo) y envía *En ejecución %* o *Terminado*; queda **por aprobar**.
-3. **Aprobación**: residente o superintendente aprueba o rechaza (el rechazo exige motivo). Todo queda en la bitácora de cada pieza.
+3. **Aprobación**: solo residente o superintendente aprueba o rechaza; los demás ven cuántos avances están pendientes (el rechazo exige motivo). Todo queda en la bitácora de cada pieza.
 4. **Generador** por contratista: piezas terminadas y aprobadas, resumen por clave de concepto, Excel (hojas *Resumen* y *Generador*) y **Marcar como estimado** con el número de estimación.
 
 Usuarios y contraseñas propios (no requiere cuenta de Autodesk). Solo el administrador conecta Forma una vez.
@@ -13,7 +13,7 @@ Usuarios y contraseñas propios (no requiere cuenta de Autodesk). Solo el admini
 
 | Rol | Reporta | Aprueba | Estima | Ve todos los contratistas | Administra |
 |---|---|---|---|---|---|
-| Administrador | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Administrador | ✓ (por aprobar) | | ✓ | ✓ | ✓ |
 | Superintendente / Residente | ✓ (queda aprobado) | ✓ | ✓ | ✓ | |
 | Project manager / Administración de obra | | | ✓ | ✓ | |
 | Contratista | ✓ (solo lo suyo, por aprobar) | | | | |
