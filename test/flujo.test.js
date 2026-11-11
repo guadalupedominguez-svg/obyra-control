@@ -171,8 +171,11 @@ test("las escrituras sin JSON se rechazan", async () => {
   assert.equal(status, 415);
 });
 
-test("el administrador no aprueba: su reporte queda por aprobar", async () => {
-  let r = await admin("piezas", { action: "reportar", guids: [G(3)], estatus: "En ejecución", pct: 30 });
+test("solo el contratista reporta; el administrador tampoco aprueba", async () => {
+  assert.equal((await admin("piezas", { action: "reportar", guids: [G(3)], estatus: "En ejecución", pct: 30 })).status, 403);
+  assert.equal((await resi("piezas", { action: "reportar", guids: [G(3)], estatus: "En ejecución", pct: 30 })).status, 403);
+  assert.equal((await resi("session")).json.permisos.reportar, false);
+  let r = await otro("piezas", { action: "reportar", guids: [G(3)], estatus: "En ejecución", pct: 30 });
   assert.equal(r.json.avance[G(3)].pend.estatus, "En ejecución");
   assert.equal((await admin("piezas", { action: "aprobar", guids: [G(3)] })).status, 403);
   const s = await admin("session");

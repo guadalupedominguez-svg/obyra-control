@@ -13,10 +13,10 @@ Usuarios y contraseñas propios (no requiere cuenta de Autodesk). Solo el admini
 
 | Rol | Reporta | Aprueba | Estima | Ve todos los contratistas | Administra |
 |---|---|---|---|---|---|
-| Administrador | ✓ (por aprobar) | | ✓ | ✓ | ✓ |
-| Superintendente / Residente | ✓ (queda aprobado) | ✓ | ✓ | ✓ | |
+| Administrador | | | ✓ | ✓ | ✓ |
+| Superintendente / Residente | | ✓ | ✓ | ✓ | |
 | Project manager / Administración de obra | | | ✓ | ✓ | |
-| Contratista | ✓ (solo lo suyo, por aprobar) | | | | |
+| Contratista | ✓ (solo lo suyo, queda por aprobar) | | | | |
 
 ## Cómo se conecta con el modelo
 
