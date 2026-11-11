@@ -123,6 +123,14 @@ input::placeholder { color: var(--muted); }
 .dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--text); padding: 0; width: min(560px, calc(100% - 32px)); }
 .dialog::backdrop { background: rgba(0, 0, 0, .55); }
 .dialog-body { padding: 20px; display: grid; gap: 12px; }
+.dialog-xl { width: min(1280px, calc(100% - 32px)); max-height: calc(100vh - 32px); }
+.gp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.gp-head p { margin: 4px 0 0; }
+.gp-wrap { max-height: 62vh; }
+.gp-tabla td.ref { vertical-align: top; width: 38%; min-width: 260px; padding: 8px; background: #EEF1F5; white-space: normal; }
+.gp-tabla td.ref img { display: block; width: 100%; height: auto; position: sticky; top: 36px; border-radius: 6px; }
+.gp-tabla td.ref .muted { color: #4A5568; }
+.tabla tfoot td { font-weight: 700; border-top: 2px solid var(--line); }
 .dialog h3, .dialog h4 { margin: 0; }
 .datos { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 13px; }
 .datos dt { color: var(--muted); }

@@ -107,7 +107,7 @@
           <div id="g-resumen" class="g-resumen"></div>
           <div class="tablewrap"><table class="tabla" id="g-tabla"></table></div>
           <div class="actionbar">
-            <button id="g-excel" class="btn btn-ghost" type="button">Descargar Excel</button>
+            <button id="g-ver" class="btn btn-ghost" type="button">Ver generador</button>
             <div class="row" data-perm="estimar">
               <input id="g-est" type="text" maxlength="30" placeholder="Estimación (ej. AD-003)" aria-label="Estimación">
               <button id="g-marcar" class="btn btn-primary" type="button">Marcar como estimado</button>
@@ -172,6 +172,25 @@
       </aside>
     </div>
 
+    <!-- Vista previa del generador -->
+    <dialog id="gen-prev" class="dialog dialog-xl" aria-labelledby="gp-titulo">
+      <div class="dialog-body">
+        <div class="gp-head">
+          <div>
+            <h3 id="gp-titulo">Generador</h3>
+            <p id="gp-sub" class="muted"></p>
+          </div>
+          <div class="row end">
+            <button id="gp-excel" class="btn btn-primary btn-sm" type="button">Descargar Excel</button>
+            <button id="gp-cerrar" class="btn btn-ghost btn-sm" type="button">Cerrar</button>
+          </div>
+        </div>
+        <div class="tablewrap gp-wrap"><table class="tabla gp-tabla" id="gp-tabla"></table></div>
+        <h4>Resumen por concepto</h4>
+        <div class="tablewrap"><table class="tabla" id="gp-resumen"></table></div>
+      </div>
+    </dialog>
+
     <!-- Detalle de pieza -->
     <dialog id="detalle" class="dialog">
       <form method="dialog" class="dialog-body">
@@ -200,7 +219,6 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
   <script src="/app.js" defer></script>
 </body>
 </html>

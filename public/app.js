@@ -433,30 +433,223 @@
   }
   ["g-contratista", "g-vista", "g-estnum"].forEach(function (id) { $(id).addEventListener("change", function () { renderGenerador(); paintModel(true); }); });
 
-  $("g-excel").addEventListener("click", function () {
-    if (!window.XLSX) { toast("No se pudo cargar el generador de Excel. Revisa tu conexión.", true); return; }
-    var filas = genFilas();
-    if (!filas.length) { toast("No hay piezas para exportar."); return; }
-    var datos = filas.map(function (g) {
-      var p = S.piezas[g], r = rec(g);
-      return {
-        Contratista: p.contratista, Partida: p.partida, "Clave concepto": p.clave, Concepto: p.concepto, Marca: p.marca, Zona: p.zona, Eje: p.eje, Nivel: p.nivel,
-        Pzas: 1, "Largo (m)": p.largo, "Espesor (m)": p.espesor, "Alto (m)": p.alto, "Área (m²)": p.area, "Volumen (m³)": p.volumen,
-        Estatus: estado(g), "Aprobado por": r.aprobado ? r.aprobado.por : "", "Fecha aprobación": r.aprobado ? new Date(r.aprobado.at) : "", "Estimación": r.estimacion || "", GlobalId: g,
-      };
-    });
+  // ---------- Vista previa del generador y Excel ----------
+  var GP = null; // { filas, img:{data,w,h}, titulo, sub, archivo }
+  var COLS = [
+    ["Contratista", "contratista"], ["Clave", "clave"], ["Concepto", "concepto"], ["Marca", "marca"], ["Zona", "zona"], ["Eje", "eje"], ["Nivel", "nivel"],
+    ["Largo (m)", "largo", 1], ["Espesor (m)", "espesor", 1], ["Alto (m)", "alto", 1], ["Área (m²)", "area", 1], ["Volumen (m³)", "volumen", 1],
+    ["Estatus", "_estatus"], ["Estimación", "_estimacion"],
+  ];
+  function valor(g, k) {
+    if (k === "_estatus") return estado(g);
+    if (k === "_estimacion") return rec(g).estimacion || "";
+    return S.piezas[g][k];
+  }
+  function resumenDe(filas) {
     var res = {};
-    datos.forEach(function (d) {
-      var k = d.Contratista + "|" + d["Clave concepto"];
-      var x = res[k] || (res[k] = { Contratista: d.Contratista, Partida: d.Partida, "Clave concepto": d["Clave concepto"], Concepto: d.Concepto, Pzas: 0, "Área (m²)": 0, "Volumen (m³)": 0 });
-      x.Pzas++; x["Área (m²)"] += d["Área (m²)"] || 0; x["Volumen (m³)"] += d["Volumen (m³)"] || 0;
+    filas.forEach(function (g) {
+      var p = S.piezas[g], k = p.contratista + "|" + (p.clave || "");
+      var x = res[k] || (res[k] = { contratista: p.contratista, partida: p.partida || "", clave: p.clave || "(sin clave)", concepto: p.concepto || "", pzas: 0, area: 0, volumen: 0 });
+      x.pzas++; x.area += p.area || 0; x.volumen += p.volumen || 0;
     });
-    var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.values(res)), "Resumen");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(datos, { cellDates: true }), "Generador");
-    var c = ($("g-contratista").value || "Todos") + ($("g-vista").value === "estimadas" && $("g-estnum").value ? "_" + $("g-estnum").value : "");
-    XLSX.writeFile(wb, "Generador_" + c.replace(/[^\w-]+/g, "_") + "_" + new Date().toISOString().slice(0, 10) + ".xlsx");
+    return Object.values(res);
+  }
+  function descripcionVista() {
+    var v = $("g-vista").value;
+    if (v === "porestimar") return "Terminado sin estimar";
+    if (v === "estimadas") return $("g-estnum").value ? "Estimación " + $("g-estnum").value : "Todas las estimadas";
+    return "Todas las piezas";
+  }
+
+  // Foto del modelo tal como lo deja la pestaña Generador: solo las piezas de la tabla, con su color de estatus.
+  function capturarModelo() {
+    var v = S.viewer;
+    if (!v || !S.model) return Promise.resolve(null);
+    v.clearSelection();
+    paintModel(true);
+    return new Promise(function (resolve) {
+      var listo = false;
+      function tomar() {
+        if (listo) return; listo = true;
+        v.removeEventListener(Autodesk.Viewing.FINAL_FRAME_RENDERED_CHANGED_EVENT, onFrame);
+        var c = v.canvas || v.container.querySelector("canvas");
+        var w = 1200, h = Math.round(w * ((c && c.clientHeight) || 800) / ((c && c.clientWidth) || 1200));
+        v.getScreenShot(w, h, function (url) {
+          fetch(url).then(function (r) { return r.blob(); }).then(function (b) {
+            var fr = new FileReader();
+            fr.onload = function () { resolve({ data: fr.result, w: w, h: h }); };
+            fr.onerror = function () { resolve(null); };
+            fr.readAsDataURL(b);
+          }).catch(function () { resolve(null); });
+        });
+      }
+      function onFrame(e) { if (e.value && e.value.finalFrame) setTimeout(tomar, 150); }
+      v.addEventListener(Autodesk.Viewing.FINAL_FRAME_RENDERED_CHANGED_EVENT, onFrame);
+      setTimeout(tomar, 3000); // por si el visor no avisa
+    });
+  }
+
+  $("g-ver").addEventListener("click", function () {
+    var filas = genFilas();
+    if (!filas.length) { toast("No hay piezas en el generador con este filtro."); return; }
+    var btn = $("g-ver"); btn.disabled = true; btn.textContent = "Preparando vista…";
+    capturarModelo().then(function (img) {
+      var c = $("g-contratista").value;
+      GP = {
+        filas: filas, img: img,
+        titulo: "Generador" + (c ? " · " + c : ""),
+        sub: [S.obra ? S.obra.nombre : "", descripcionVista(), filas.length + (filas.length === 1 ? " pieza" : " piezas"), new Date().toLocaleDateString("es-MX", { dateStyle: "long" })].filter(Boolean).join(" · "),
+        archivo: "Generador_" + ((c || "Todos") + ($("g-vista").value === "estimadas" && $("g-estnum").value ? "_" + $("g-estnum").value : "")).replace(/[^\w-]+/g, "_") + "_" + new Date().toISOString().slice(0, 10) + ".xlsx",
+      };
+      renderPrevia();
+      $("gen-prev").showModal();
+    }).finally(function () { btn.disabled = false; btn.textContent = "Ver generador"; });
   });
+  $("gp-cerrar").addEventListener("click", function () { $("gen-prev").close(); });
+
+  function renderPrevia() {
+    $("gp-titulo").textContent = GP.titulo;
+    $("gp-sub").textContent = GP.sub;
+    var head = el("tr", null, COLS.map(function (c) { return el("th", { class: c[2] ? "num" : null, text: c[0] }); }).concat([el("th", { text: "Referencia visual" })]));
+    var tot = { area: 0, volumen: 0 };
+    var rows = GP.filas.map(function (g, i) {
+      var p = S.piezas[g]; tot.area += p.area || 0; tot.volumen += p.volumen || 0;
+      var tds = COLS.map(function (c) { var x = valor(g, c[1]); return el("td", { class: c[2] ? "num" : null, text: c[2] ? f2(x) : (x || "—") }); });
+      if (i === 0) {
+        tds.push(el("td", { class: "ref", rowspan: String(GP.filas.length) }, [
+          GP.img ? el("img", { src: GP.img.data, alt: "Vista del modelo con las " + GP.filas.length + " piezas del generador" })
+                 : el("p", { class: "muted", text: "No se pudo tomar la vista del modelo. Espera a que cargue el modelo e intenta de nuevo." }),
+        ]));
+      }
+      var tr = el("tr", { class: "click" }, tds);
+      tr.addEventListener("click", function () { $("gen-prev").close(); focusPieces([g]); });
+      return tr;
+    });
+    var foot = el("tr", null, COLS.map(function (c) {
+      if (c[1] === "contratista") return el("td", { text: "Total" });
+      if (c[1] === "area") return el("td", { class: "num", text: f2(tot.area) });
+      if (c[1] === "volumen") return el("td", { class: "num", text: f2(tot.volumen) });
+      return el("td");
+    }).concat([el("td")]));
+    $("gp-tabla").replaceChildren(el("thead", null, [head]), el("tbody", null, rows), el("tfoot", null, [foot]));
+
+    var res = resumenDe(GP.filas);
+    $("gp-resumen").replaceChildren(
+      el("thead", null, [el("tr", null, ["Contratista", "Partida", "Clave", "Concepto", "Pzas", "Área (m²)", "Volumen (m³)"].map(function (h, i) { return el("th", { class: i >= 4 ? "num" : null, text: h }); }))]),
+      el("tbody", null, res.map(function (x) {
+        return el("tr", null, [el("td", { text: x.contratista }), el("td", { text: x.partida || "—" }), el("td", { text: x.clave }), el("td", { text: x.concepto || "—" }),
+          el("td", { class: "num", text: nf0.format(x.pzas) }), el("td", { class: "num", text: f2(x.area) }), el("td", { class: "num", text: f2(x.volumen) })]);
+      }))
+    );
+  }
+
+  // ExcelJS se carga solo al descargar (permite poner la imagen dentro del archivo).
+  var EXCELJS = "https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js";
+  var excelPromise = null;
+  function loadExcel() {
+    if (window.ExcelJS) return Promise.resolve();
+    if (excelPromise) return excelPromise;
+    excelPromise = new Promise(function (resolve, reject) {
+      var s = el("script", { src: EXCELJS });
+      s.onload = resolve;
+      s.onerror = function () { excelPromise = null; reject(new Error("No se pudo cargar el generador de Excel. Revisa tu conexión.")); };
+      document.head.appendChild(s);
+    });
+    return excelPromise;
+  }
+
+  $("gp-excel").addEventListener("click", function () {
+    if (!GP) return;
+    var btn = $("gp-excel"); btn.disabled = true; btn.textContent = "Generando…";
+    loadExcel().then(construirExcel).then(function (buf) {
+      var url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      var a = el("a", { href: url, download: GP.archivo }); document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+    }).catch(function (e) { toast(e.message || "No se pudo generar el Excel.", true); })
+      .finally(function () { btn.disabled = false; btn.textContent = "Descargar Excel"; });
+  });
+
+  function construirExcel() {
+    var wb = new ExcelJS.Workbook();
+    wb.creator = "OBYRA Control"; wb.created = new Date();
+    var fuente = { name: "Arial", size: 10 };
+    var bordes = { top: { style: "thin", color: { argb: "FFBFC7D5" } }, bottom: { style: "thin", color: { argb: "FFBFC7D5" } }, left: { style: "thin", color: { argb: "FFBFC7D5" } }, right: { style: "thin", color: { argb: "FFBFC7D5" } } };
+    var encabezado = function (row) {
+      row.eachCell(function (c) { c.font = { name: "Arial", size: 10, bold: true, color: { argb: "FFFFFFFF" } }; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF111A2B" } }; c.border = bordes; c.alignment = { vertical: "middle", wrapText: true }; });
+      row.height = 30;
+    };
+
+    // Hoja Generador: título, tabla de piezas y la vista del modelo en una celda combinada.
+    var ws = wb.addWorksheet("Generador", { views: [{ state: "frozen", ySplit: 5 }], pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+    var nCols = COLS.length + 1, refCol = nCols;
+    ws.getCell(1, 1).value = GP.titulo; ws.getCell(1, 1).font = { name: "Arial", size: 14, bold: true };
+    ws.getCell(2, 1).value = GP.sub; ws.getCell(2, 1).font = { name: "Arial", size: 10, color: { argb: "FF4A5568" } };
+    ws.getCell(3, 1).value = "Cantidades tomadas del modelo IFC" + (S.obra && S.obra.modelo ? " (" + S.obra.modelo.archivo + ", versión " + S.obra.modelo.version + ")" : "") + ".";
+    ws.getCell(3, 1).font = { name: "Arial", size: 9, italic: true, color: { argb: "FF4A5568" } };
+    var hg = ws.getRow(5);
+    hg.values = COLS.map(function (c) { return c[0]; }).concat(["Referencia visual"]);
+    encabezado(hg);
+
+    var first = 6;
+    GP.filas.forEach(function (g, i) {
+      var row = ws.getRow(first + i);
+      COLS.forEach(function (c, j) {
+        var cell = row.getCell(j + 1), x = valor(g, c[1]);
+        cell.value = c[2] ? (x == null ? null : x) : (x || "");
+        cell.font = fuente; cell.border = bordes;
+        if (c[2]) cell.numFmt = "#,##0.00";
+      });
+    });
+    var last = first + GP.filas.length - 1;
+    // Totales con fórmula para que se recalculen si editan cantidades.
+    var tot = ws.getRow(last + 1);
+    tot.getCell(1).value = "Total";
+    COLS.forEach(function (c, j) {
+      if (c[1] === "area" || c[1] === "volumen") {
+        var L = ws.getColumn(j + 1).letter;
+        tot.getCell(j + 1).value = { formula: "SUM(" + L + first + ":" + L + last + ")" };
+        tot.getCell(j + 1).numFmt = "#,##0.00";
+      }
+    });
+    tot.eachCell(function (c) { c.font = { name: "Arial", size: 10, bold: true }; c.border = { top: { style: "medium" } }; });
+
+    var widths = { contratista: 14, clave: 10, concepto: 34, marca: 10, zona: 16, eje: 8, nivel: 14, _estatus: 13, _estimacion: 12 };
+    COLS.forEach(function (c, j) { ws.getColumn(j + 1).width = widths[c[1]] || 11; });
+    var imgW = 520, imgH = GP.img ? Math.round(imgW * GP.img.h / GP.img.w) : 0;
+    ws.getColumn(refCol).width = 76;
+    ws.mergeCells(first, refCol, last + 1, refCol);
+    var refCell = ws.getCell(first, refCol);
+    refCell.border = bordes; refCell.alignment = { vertical: "top" };
+    if (GP.img) {
+      // Altura suficiente en los renglones combinados para que la imagen no se encime con lo de abajo.
+      var alto = Math.max(15, Math.ceil((imgH + 16) * 0.75 / (GP.filas.length + 1)));
+      for (var r = first; r <= last + 1; r++) ws.getRow(r).height = Math.max(ws.getRow(r).height || 15, alto);
+      var id = wb.addImage({ base64: GP.img.data, extension: "png" });
+      ws.addImage(id, { tl: { col: refCol - 1 + 0.05, row: first - 1 + 0.1 }, ext: { width: imgW, height: imgH }, editAs: "oneCell" });
+    } else {
+      refCell.value = "Sin vista del modelo";
+    }
+    ws.autoFilter = { from: { row: 5, column: 1 }, to: { row: last, column: COLS.length } };
+
+    // Hoja Resumen por concepto, con totales por fórmula.
+    var rs = wb.addWorksheet("Resumen");
+    rs.getCell(1, 1).value = GP.titulo + " · Resumen por concepto"; rs.getCell(1, 1).font = { name: "Arial", size: 14, bold: true };
+    rs.getCell(2, 1).value = GP.sub; rs.getCell(2, 1).font = { name: "Arial", size: 10, color: { argb: "FF4A5568" } };
+    var hr = rs.getRow(4); hr.values = ["Contratista", "Partida", "Clave", "Concepto", "Pzas", "Área (m²)", "Volumen (m³)"]; encabezado(hr);
+    var res = resumenDe(GP.filas);
+    res.forEach(function (x, i) {
+      var row = rs.getRow(5 + i);
+      row.values = [x.contratista, x.partida, x.clave, x.concepto, x.pzas, Math.round(x.area * 1000) / 1000, Math.round(x.volumen * 1000) / 1000];
+      row.eachCell({ includeEmpty: true }, function (c, j) { c.font = fuente; c.border = bordes; if (j >= 6) c.numFmt = "#,##0.00"; });
+    });
+    var rl = 4 + res.length, rt = rs.getRow(rl + 1);
+    rt.getCell(1).value = "Total";
+    ["E", "F", "G"].forEach(function (L, k) { var c = rt.getCell(5 + k); c.value = { formula: "SUM(" + L + "5:" + L + rl + ")" }; c.numFmt = k ? "#,##0.00" : "0"; });
+    rt.eachCell(function (c) { c.font = { name: "Arial", size: 10, bold: true }; c.border = { top: { style: "medium" } }; });
+    [14, 18, 10, 40, 8, 12, 13].forEach(function (w, j) { rs.getColumn(j + 1).width = w; });
+
+    return wb.xlsx.writeBuffer();
+  }
 
   if ($("g-marcar")) {
     $("g-marcar").addEventListener("click", function () {
