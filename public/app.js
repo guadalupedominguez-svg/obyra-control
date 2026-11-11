@@ -356,13 +356,31 @@
       var p = S.piezas[g], r = rec(g);
       if (c && p.contratista !== c) return false;
       if (vista === "porestimar") return r.estatus === "Terminado" && !r.pend;
+      if (vista === "estimadas") {
+        var n = $("g-estnum").value;
+        return !!r.estimacion && (!n || r.estimacion === n);
+      }
       return true;
     }).sort(function (a, b) {
       var pa = S.piezas[a], pb = S.piezas[b];
       return (pa.contratista + pa.clave + pa.marca).localeCompare(pb.contratista + pb.clave + pb.marca, "es", { numeric: true });
     });
   }
+  // Lista de estimaciones (de las piezas del contratista elegido) para la vista "Estimadas".
+  function syncEstimaciones() {
+    var sel = $("g-estnum"), vista = $("g-vista").value, c = $("g-contratista").value;
+    sel.hidden = vista !== "estimadas";
+    var marcar = $("g-marcar"); if (marcar) marcar.parentNode.hidden = vista !== "porestimar";
+    $("g-hint").hidden = vista !== "porestimar";
+    if (vista !== "estimadas") return;
+    var prev = sel.value;
+    var nums = Array.from(new Set(Object.keys(S.piezas).filter(function (g) { return !c || S.piezas[g].contratista === c; })
+      .map(function (g) { return rec(g).estimacion; }).filter(Boolean))).sort(function (a, b) { return a.localeCompare(b, "es", { numeric: true }); });
+    fillSelect(sel, [["", "Todas las estimaciones"]].concat(nums.map(function (n) { return [n, "Estimación " + n]; })));
+    sel.value = nums.indexOf(prev) >= 0 ? prev : "";
+  }
   function renderGenerador() {
+    syncEstimaciones();
     var filas = genFilas();
     var grupos = {};
     filas.forEach(function (g) {
@@ -376,7 +394,7 @@
         el("b", { text: x.clave + (x.partida ? " · " + x.partida : "") }), el("b", { text: f2(x.area) + " m²" }),
         el("span", { class: "s", text: x.contratista + " · " + x.piezas + (x.piezas === 1 ? " pieza" : " piezas") }), el("span", { class: "s", text: f2(x.volumen) + " m³" }),
       ]);
-    }) : [el("p", { class: "muted", text: $("g-vista").value === "porestimar" ? "No hay piezas terminadas y aprobadas pendientes de estimar." : "No hay piezas." })]);
+    }) : [el("p", { class: "muted", text: { porestimar: "No hay piezas terminadas y aprobadas pendientes de estimar.", estimadas: "Todavía no hay piezas estimadas." }[$("g-vista").value] || "No hay piezas." })]);
     var head = el("tr", null, ["Marca", "Clave", "Zona", "Eje", "Nivel", "Largo", "Alto", "Área m²", "Vol. m³", "Estatus", "Estimación"].map(function (h, i) { return el("th", { class: i >= 5 && i <= 8 ? "num" : null, text: h }); }));
     var rows = filas.map(function (g) {
       var p = S.piezas[g], r = rec(g);
@@ -390,7 +408,7 @@
     });
     $("g-tabla").replaceChildren(el("thead", null, [head]), el("tbody", null, rows));
   }
-  ["g-contratista", "g-vista"].forEach(function (id) { $(id).addEventListener("change", function () { renderGenerador(); paintModel(true); }); });
+  ["g-contratista", "g-vista", "g-estnum"].forEach(function (id) { $(id).addEventListener("change", function () { renderGenerador(); paintModel(true); }); });
 
   $("g-excel").addEventListener("click", function () {
     if (!window.XLSX) { toast("No se pudo cargar el generador de Excel. Revisa tu conexión.", true); return; }
@@ -413,7 +431,7 @@
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.values(res)), "Resumen");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(datos, { cellDates: true }), "Generador");
-    var c = $("g-contratista").value || "Todos";
+    var c = ($("g-contratista").value || "Todos") + ($("g-vista").value === "estimadas" && $("g-estnum").value ? "_" + $("g-estnum").value : "");
     XLSX.writeFile(wb, "Generador_" + c.replace(/[^\w-]+/g, "_") + "_" + new Date().toISOString().slice(0, 10) + ".xlsx");
   });
 

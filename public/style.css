@@ -84,7 +84,7 @@ input::placeholder { color: var(--muted); }
 .tabpane[data-pane="admin"] { display: block; overflow-y: auto; }
 .pane-intro { margin: 0; color: var(--muted); font-size: 13px; }
 .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.filters input[type="search"] { grid-column: 1 / -1; }
+.filters input[type="search"], .filters .full { grid-column: 1 / -1; }
 .list-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
 
 .lista { list-style: none; margin: 0; padding: 0; overflow-y: auto; min-height: 0; border: 1px solid var(--line); border-radius: var(--radius); }
