@@ -418,13 +418,14 @@
         el("span", { class: "s", text: x.contratista + " · " + x.piezas + (x.piezas === 1 ? " pieza" : " piezas") }), el("span", { class: "s", text: f2(x.volumen) + " m³" }),
       ]);
     }) : [el("p", { class: "muted", text: { porestimar: "No quedan piezas por estimar.", estimadas: "Todavía no hay piezas estimadas." }[$("g-vista").value] || "No hay piezas." })]);
-    var head = el("tr", null, ["Marca", "Clave", "Zona", "Eje", "Nivel", "Largo", "Alto", "Área m²", "Vol. m³", "Estatus", "Estimación"].map(function (h, i) { return el("th", { class: i >= 5 && i <= 8 ? "num" : null, text: h }); }));
+    // En el panel solo marca, estatus y estimación; el detalle completo está en "Ver generador".
+    var head = el("tr", null, ["Marca", "Estatus", "Estimación"].map(function (h) { return el("th", { text: h }); }));
     var rows = filas.map(function (g) {
-      var p = S.piezas[g], r = rec(g);
+      var p = S.piezas[g], r = rec(g), est = estado(g);
       var tr = el("tr", { class: "click" }, [
-        el("td", { text: p.marca || "—" }), el("td", { text: p.clave || "—" }), el("td", { text: p.zona || "—" }), el("td", { text: p.eje || "—" }), el("td", { text: p.nivel || "—" }),
-        el("td", { class: "num", text: f2(p.largo) }), el("td", { class: "num", text: f2(p.alto) }), el("td", { class: "num", text: f2(p.area) }), el("td", { class: "num", text: f2(p.volumen) }),
-        el("td", { text: estado(g) }), el("td", { text: r.estimacion || "—" }),
+        el("td", { text: p.marca || "—" }),
+        el("td", null, [pill(est, est + (est === "En ejecución" && r.pct ? " " + r.pct + " %" : ""))]),
+        el("td", { text: r.estimacion || "—" }),
       ]);
       tr.addEventListener("click", function () { focusPieces([g]); });
       return tr;
