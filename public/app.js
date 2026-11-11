@@ -378,7 +378,7 @@
     return Object.keys(S.piezas).filter(function (g) {
       var p = S.piezas[g], r = rec(g);
       if (c && p.contratista !== c) return false;
-      if (vista === "porestimar") return r.estatus === "Terminado" && !r.pend;
+      if (vista === "porestimar") return !r.estimacion; // cualquier estatus: lo que resta por estimar
       if (vista === "estimadas") {
         var n = $("g-estnum").value;
         return !!r.estimacion && (!n || r.estimacion === n);
@@ -417,7 +417,7 @@
         el("b", { text: x.clave + (x.partida ? " · " + x.partida : "") }), el("b", { text: f2(x.area) + " m²" }),
         el("span", { class: "s", text: x.contratista + " · " + x.piezas + (x.piezas === 1 ? " pieza" : " piezas") }), el("span", { class: "s", text: f2(x.volumen) + " m³" }),
       ]);
-    }) : [el("p", { class: "muted", text: { porestimar: "No hay piezas terminadas y aprobadas pendientes de estimar.", estimadas: "Todavía no hay piezas estimadas." }[$("g-vista").value] || "No hay piezas." })]);
+    }) : [el("p", { class: "muted", text: { porestimar: "No quedan piezas por estimar.", estimadas: "Todavía no hay piezas estimadas." }[$("g-vista").value] || "No hay piezas." })]);
     var head = el("tr", null, ["Marca", "Clave", "Zona", "Eje", "Nivel", "Largo", "Alto", "Área m²", "Vol. m³", "Estatus", "Estimación"].map(function (h, i) { return el("th", { class: i >= 5 && i <= 8 ? "num" : null, text: h }); }));
     var rows = filas.map(function (g) {
       var p = S.piezas[g], r = rec(g);
@@ -456,7 +456,7 @@
   }
   function descripcionVista() {
     var v = $("g-vista").value;
-    if (v === "porestimar") return "Terminado sin estimar";
+    if (v === "porestimar") return "Sin estimar";
     if (v === "estimadas") return $("g-estnum").value ? "Estimación " + $("g-estnum").value : "Todas las estimadas";
     return "Todas las piezas";
   }
@@ -731,11 +731,11 @@
       var est = $("g-est").value.trim();
       if (!est) { toast("Escribe la estimación (ej. AD-003)."); $("g-est").focus(); return; }
       var guids = genFilas().filter(function (g) { return rec(g).estatus === "Terminado" && !rec(g).pend; });
-      if (!guids.length) { toast("No hay piezas terminadas sin estimar con este filtro."); return; }
+      if (!guids.length) { toast("No hay piezas terminadas y aprobadas para estimar con este filtro."); return; }
       var btn = $("g-marcar");
       if (btn.getAttribute("data-confirm") !== est) {
         btn.setAttribute("data-confirm", est);
-        btn.textContent = "Confirmar: " + guids.length + " piezas a " + est.toUpperCase();
+        btn.textContent = "Confirmar: " + guids.length + (guids.length === 1 ? " terminada" : " terminadas") + " a " + est.toUpperCase();
         setTimeout(function () { btn.removeAttribute("data-confirm"); btn.textContent = "Marcar como estimado"; }, 6000);
         return;
       }
