@@ -55,7 +55,7 @@
   var S = {
     me: null, permisos: {}, roles: {}, obra: null,
     piezas: {}, avance: {}, version: null,
-    sel: new Set(), apSel: new Set(),
+    sel: new Set(), apSel: new Set(), gSel: new Set(),
     viewer: null, model: null, guid2db: new Map(), db2guid: new Map(),
     syncing: false, tab: "piezas",
   };
@@ -177,6 +177,11 @@
         fillSelect($("f-contratista"), [["", "Todos los contratistas"]].concat(contratistas.map(function (c) { return [c, c]; })));
         $("f-contratista").value = contratistas.indexOf(prev) >= 0 ? prev : "";
       }
+      if ($("ap-contratista")) {
+        var apPrev = $("ap-contratista").value;
+        fillSelect($("ap-contratista"), [["", "Todos los contratistas"]].concat(contratistas.map(function (c) { return [c, c]; })));
+        $("ap-contratista").value = contratistas.indexOf(apPrev) >= 0 ? apPrev : "";
+      }
       var gPrev = $("g-contratista").value;
       if (S.me.rol === "contratista") fillSelect($("g-contratista"), [[S.me.contratista, S.me.contratista]]);
       else fillSelect($("g-contratista"), [["", "Todos los contratistas"]].concat(contratistas.map(function (c) { return [c, c]; })));
@@ -274,7 +279,6 @@
   }
   function updateSel() {
     if ($("reporte")) { $("reporte").hidden = !S.sel.size; $("sel-count").textContent = nf0.format(S.sel.size); }
-    if ($("revision")) { $("revision").hidden = !S.sel.size; $("rv-count").textContent = nf0.format(S.sel.size); }
     var list = filtradas();
     $("sel-all").checked = list.length > 0 && list.every(function (g) { return S.sel.has(g); });
   }
@@ -298,36 +302,6 @@
     });
   }
 
-  // Residente / superintendente: desde Piezas solo liberan o rechazan; el rechazo regresa la pieza a En ejecución.
-  if ($("revision")) {
-    var syncRv = function () {
-      var rech = $("rv-decision").value === "Rechazado";
-      $("rv-btn").textContent = rech ? "Rechazar" : "Liberar";
-      $("rv-btn").className = "btn " + (rech ? "btn-danger" : "btn-primary");
-      $("rv-coment").placeholder = rech ? "Indicaciones para el contratista (obligatorio)" : "Comentario (opcional)";
-      $("rv-hint").textContent = rech
-        ? "La pieza regresa a En ejecución y el contratista ve tus indicaciones."
-        : "Libera las piezas para que el contratista pueda ejecutarlas.";
-    };
-    $("rv-decision").addEventListener("change", syncRv); syncRv();
-    $("revision").addEventListener("submit", function (ev) {
-      ev.preventDefault();
-      var dec = $("rv-decision").value;
-      if (dec === "Rechazado" && !$("rv-coment").value.trim()) { toast("Escribe las indicaciones para el contratista."); $("rv-coment").focus(); return; }
-      $("rv-btn").disabled = true;
-      api("/api/piezas", { action: "revisar", guids: Array.from(S.sel), decision: dec, comentario: $("rv-coment").value })
-        .then(function (r) {
-          Object.assign(S.avance, r.avance);
-          toast(nf0.format(r.actualizadas) + (dec === "Liberado" ? (r.actualizadas === 1 ? " pieza liberada" : " piezas liberadas") : (r.actualizadas === 1 ? " pieza rechazada" : " piezas rechazadas"))
-            + (r.omitidas ? " · " + r.omitidas + " sin cambio (ya estimadas, ya liberadas o con avance por aprobar)" : "") + ".");
-          S.sel.clear(); $("rv-coment").value = "";
-          updateBadge(); renderLista(); paintModel(); selectInViewer();
-        })
-        .catch(function (e) { toast(e.message, true); })
-        .finally(function () { $("rv-btn").disabled = false; });
-    });
-  }
-
   function showDetalle(g) {
     var p = S.piezas[g], r = rec(g);
     $("d-titulo").textContent = (p.marca || "(sin marca)") + " · " + (p.clave || "sin clave");
@@ -340,7 +314,7 @@
     $("d-datos").replaceChildren.apply($("d-datos"), datos.reduce(function (acc, d) { acc.push(el("dt", { text: d[0] }), el("dd", { text: d[1] || "—" })); return acc; }, []));
     var h = (r.hist || []).slice().reverse();
     $("d-hist").replaceChildren.apply($("d-hist"), h.length ? h.map(function (e) {
-      var verbo = { reporta: "reportó", registra: "registró", aprueba: "aprobó", rechaza: "rechazó", libera: "liberó", estima: "asignó a la estimación" }[e.accion] || e.accion;
+      var verbo = { reporta: "reportó", registra: "registró", aprueba: "aprobó", rechaza: "rechazó", estima: "asignó a la estimación" }[e.accion] || e.accion;
       var que = e.accion === "estima" ? e.estimacion : (e.estatus || "") + (e.pct && e.estatus !== "Terminado" ? " " + e.pct + " %" : "");
       return el("li", null, [e.por + " " + verbo + " " + que, el("small", { text: fecha(e.at) + (e.comentario ? " · " + e.comentario : "") })]);
     }) : [el("li", { text: "Sin movimientos." })]);
@@ -349,17 +323,22 @@
 
   // ---------- Por aprobar ----------
   function pendientes() { return Object.keys(S.piezas).filter(function (g) { return rec(g).pend; }); }
+  // Pendientes que se ven en la pestaña, según el filtro de contratista.
+  function pendientesVista() {
+    var c = $("ap-contratista") ? $("ap-contratista").value : "";
+    return pendientes().filter(function (g) { return !c || S.piezas[g].contratista === c; });
+  }
   function updateBadge() {
     var b = $("badge-aprobar"); if (!b) return;
     var n = pendientes().length; b.textContent = n; b.hidden = !n;
   }
   function renderAprobar() {
     if (!$("lista-ap")) return;
-    var list = pendientes().sort(function (a, b) { return rec(a).pend.at < rec(b).pend.at ? -1 : 1; });
+    var list = pendientesVista().sort(function (a, b) { return rec(a).pend.at < rec(b).pend.at ? -1 : 1; });
     S.apSel.forEach(function (g) { if (list.indexOf(g) < 0) S.apSel["delete"](g); });
     $("ap-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pendiente" : " pendientes");
     if ($("ap-all")) $("ap-all").checked = list.length > 0 && list.every(function (g) { return S.apSel.has(g); });
-    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: "No hay avance pendiente de aprobar." })); return; }
+    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: $("ap-contratista") && $("ap-contratista").value ? "Este contratista no tiene avance pendiente de aprobar." : "No hay avance pendiente de aprobar." })); return; }
     $("lista-ap").replaceChildren.apply($("lista-ap"), list.map(function (g) {
       var p = S.piezas[g], pe = rec(g).pend;
       var cb = el("span"); // sin casilla para quien solo consulta
@@ -380,9 +359,10 @@
       return li;
     }));
   }
+  if ($("ap-contratista")) $("ap-contratista").addEventListener("change", function () { S.apSel.clear(); renderAprobar(); });
   if ($("ap-all")) {
     $("ap-all").addEventListener("change", function () {
-      pendientes().forEach(function (g) { if ($("ap-all").checked) S.apSel.add(g); else S.apSel["delete"](g); });
+      pendientesVista().forEach(function (g) { if ($("ap-all").checked) S.apSel.add(g); else S.apSel["delete"](g); });
       renderAprobar();
     });
     var decide = function (action) {
@@ -448,20 +428,55 @@
       ]);
     }) : [el("p", { class: "muted", text: { porestimar: "No quedan piezas por estimar.", estimadas: "Todavía no hay piezas estimadas." }[$("g-vista").value] || "No hay piezas." })]);
     // En el panel solo marca, estatus y estimación; el detalle completo está en "Ver generador".
-    var head = el("tr", null, ["Marca", "Estatus", "Estimación"].map(function (h) { return el("th", { text: h }); }));
+    // En "Sin estimar", quien estima puede marcar las piezas que van en una misma estimación.
+    var conCasillas = !!(S.permisos.estimar && $("g-vista").value === "porestimar");
+    var elegibles = filas.filter(estimable);
+    S.gSel.forEach(function (g) { if (!conCasillas || elegibles.indexOf(g) < 0) S.gSel["delete"](g); });
+    var todas = null;
+    if (conCasillas) {
+      todas = el("input", { type: "checkbox", "aria-label": "Seleccionar todas las terminadas" });
+      todas.checked = elegibles.length > 0 && elegibles.every(function (g) { return S.gSel.has(g); });
+      todas.disabled = !elegibles.length;
+      todas.addEventListener("change", function () { elegibles.forEach(function (g) { if (todas.checked) S.gSel.add(g); else S.gSel["delete"](g); }); renderGenerador(); selectGenEnModelo(); });
+    }
+    var head = el("tr", null, (conCasillas ? [el("th", { class: "chk" }, [todas])] : []).concat(["Marca", "Estatus", "Estimación"].map(function (h) { return el("th", { text: h }); })));
     var rows = filas.map(function (g) {
       var p = S.piezas[g], r = rec(g), est = estado(g);
-      var tr = el("tr", { class: "click" }, [
+      var celdas = [];
+      if (conCasillas) {
+        var ok = estimable(g);
+        var cb = el("input", { type: "checkbox", "aria-label": "Incluir " + (p.marca || g) + " en la estimación", title: ok ? "" : "Solo se estiman piezas terminadas y aprobadas" });
+        cb.checked = S.gSel.has(g); cb.disabled = !ok;
+        cb.addEventListener("click", function (ev) { ev.stopPropagation(); if (cb.checked) S.gSel.add(g); else S.gSel["delete"](g); renderGenerador(); selectGenEnModelo(); });
+        celdas.push(el("td", { class: "chk" }, [cb]));
+      }
+      var tr = el("tr", { class: "click" + (S.gSel.has(g) ? " sel" : "") }, celdas.concat([
         el("td", { text: p.marca || "—" }),
         el("td", null, [pill(est, est + (est === "En ejecución" && r.pct ? " " + r.pct + " %" : ""))]),
         el("td", { text: r.estimacion || "—" }),
-      ]);
+      ]));
       tr.addEventListener("click", function () { focusPieces([g]); });
       return tr;
     });
     $("g-tabla").replaceChildren(el("thead", null, [head]), el("tbody", null, rows));
+    actualizarMarcar();
   }
-  ["g-contratista", "g-vista", "g-estnum"].forEach(function (id) { $(id).addEventListener("change", function () { renderGenerador(); paintModel(true); }); });
+  function estimable(g) { var r = rec(g); return r.estatus === "Terminado" && !r.pend; }
+  // Piezas seleccionadas con la casilla (si hay); si no, null.
+  function genSeleccion() { var sel = genFilas().filter(function (g) { return S.gSel.has(g); }); return sel.length ? sel : null; }
+  function actualizarMarcar() {
+    var b = $("g-marcar"); if (!b || b.getAttribute("data-confirm")) return;
+    var n = S.gSel.size;
+    b.textContent = n ? "Marcar " + n + (n === 1 ? " seleccionada" : " seleccionadas") + " como estimado" : "Marcar como estimado";
+    $("g-ver").textContent = n ? "Ver generador (" + n + (n === 1 ? " seleccionada)" : " seleccionadas)") : "Ver generador";
+  }
+  function selectGenEnModelo() {
+    if (!S.viewer || !S.model) return;
+    S.syncing = true;
+    S.viewer.select(Array.from(S.gSel).map(function (g) { return S.guid2db.get(g); }).filter(function (x) { return x != null; }), S.model);
+    S.syncing = false;
+  }
+  ["g-contratista", "g-vista", "g-estnum"].forEach(function (id) { $(id).addEventListener("change", function () { S.gSel.clear(); renderGenerador(); paintModel(true); }); });
 
   // ---------- Vista previa del generador y Excel ----------
   var GP = null; // { filas, img:{data,w,h}, titulo, sub, archivo }
@@ -566,7 +581,7 @@
     var v = S.viewer;
     if (!v || !S.model) return Promise.resolve(null);
     v.clearSelection();
-    paintModel(true);
+    paintModel(true, guids && guids.length ? guids : null); // solo las piezas que van en el generador
     return new Promise(function (resolve) {
       var listo = false;
       function tomar() {
@@ -595,10 +610,11 @@
   }
 
   $("g-ver").addEventListener("click", function () {
-    var filas = genFilas();
+    var filas = genSeleccion() || genFilas();
     if (!filas.length) { toast("No hay piezas en el generador con este filtro."); return; }
     var btn = $("g-ver"); btn.disabled = true; btn.textContent = "Preparando vista…";
     capturarModelo(filas).then(function (img) {
+      if (genSeleccion()) { paintModel(false); selectGenEnModelo(); } // regresa el modelo a como estaba
       var c = $("g-contratista").value;
       GP = {
         filas: filas, img: img,
@@ -608,7 +624,7 @@
       };
       renderPrevia();
       $("gen-prev").showModal();
-    }).finally(function () { btn.disabled = false; btn.textContent = "Ver generador"; });
+    }).finally(function () { btn.disabled = false; btn.textContent = "Ver generador"; actualizarMarcar(); });
   });
   $("gp-cerrar").addEventListener("click", function () { $("gen-prev").close(); });
 
@@ -760,20 +776,22 @@
     $("g-marcar").addEventListener("click", function () {
       var est = $("g-est").value.trim();
       if (!est) { toast("Escribe la estimación (ej. AD-003)."); $("g-est").focus(); return; }
-      var guids = genFilas().filter(function (g) { return rec(g).estatus === "Terminado" && !rec(g).pend; });
+      var guids = (genSeleccion() || genFilas()).filter(estimable);
       if (!guids.length) { toast("No hay piezas terminadas y aprobadas para estimar con este filtro."); return; }
       var btn = $("g-marcar");
       if (btn.getAttribute("data-confirm") !== est) {
         btn.setAttribute("data-confirm", est);
         btn.textContent = "Confirmar: " + guids.length + (guids.length === 1 ? " terminada" : " terminadas") + " a " + est.toUpperCase();
-        setTimeout(function () { btn.removeAttribute("data-confirm"); btn.textContent = "Marcar como estimado"; }, 6000);
+        setTimeout(function () { btn.removeAttribute("data-confirm"); actualizarMarcar(); }, 6000);
         return;
       }
-      btn.removeAttribute("data-confirm"); btn.textContent = "Marcar como estimado";
+      btn.removeAttribute("data-confirm");
+      actualizarMarcar();
       api("/api/piezas", { action: "estimar", guids: guids, estimacion: est })
         .then(function (r) {
           Object.assign(S.avance, r.avance);
           toast(nf0.format(r.actualizadas) + " piezas asignadas a " + est.toUpperCase() + ".");
+          S.gSel.clear();
           renderGenerador(); renderLista(); paintModel();
         })
         .catch(function (e) { toast(e.message, true); });
@@ -948,12 +966,12 @@
   // Colorea cada pieza por su estatus y deja en gris translúcido lo que no está en seguimiento.
   // En Piezas y Generador solo se ven las piezas de su lista (según sus filtros);
   // en las demás pestañas, todas las piezas en seguimiento.
-  function paintModel(encuadrar) {
+  function paintModel(encuadrar, soloEstas) {
     var v = S.viewer, m = S.model;
     if (!v || !m || !S.guid2db.size) return;
     v.clearThemingColors(m);
     var ids = [];
-    var visibles = S.tab === "generador" ? genFilas() : S.tab === "piezas" ? filtradas() : Object.keys(S.piezas);
+    var visibles = soloEstas || (S.tab === "generador" ? genFilas() : S.tab === "piezas" ? filtradas() : Object.keys(S.piezas));
     visibles.forEach(function (g) {
       var id = S.guid2db.get(g);
       if (id == null) return;

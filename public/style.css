@@ -79,7 +79,9 @@ input::placeholder { color: var(--muted); }
 .tab { flex: 1 0 auto; background: none; border: 0; border-bottom: 2px solid transparent; padding: 11px 12px; color: var(--muted); cursor: pointer; }
 .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
 .tabpane { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 10px; padding: 12px 14px; min-height: 0; overflow: hidden; }
-.tabpane[data-pane="aprobar"] { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+/* Por aprobar cambia de elementos según el rol (filtro, acciones): columna flexible y la lista toma el resto. */
+.tabpane[data-pane="aprobar"]:not([hidden]) { display: flex; flex-direction: column; }
+.tabpane[data-pane="aprobar"] .lista { flex: 1 1 0; }
 .tabpane[data-pane="generador"] { grid-template-rows: auto auto minmax(0, 1fr) auto; }
 .tabpane[data-pane="admin"] { display: block; overflow-y: auto; }
 .pane-intro { margin: 0; color: var(--muted); font-size: 13px; }
@@ -160,3 +162,6 @@ input::placeholder { color: var(--muted); }
   #user-rol { display: none; }
   .legend { font-size: 11px; gap: 4px 10px; }
 }
+.tabla .chk { width: 30px; padding-right: 0; }
+.tabla .chk input { vertical-align: middle; }
+.tabla tr.sel td { background: rgba(34, 211, 238, .08); }

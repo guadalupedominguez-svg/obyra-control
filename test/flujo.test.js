@@ -183,24 +183,3 @@ test("solo el contratista reporta; el administrador tampoco aprueba", async () =
   r = await resi("piezas", { action: "aprobar", guids: [G(3)] });
   assert.equal(r.json.avance[G(3)].estatus, "En ejecución");
 });
-
-test("desde Piezas el residente solo libera o rechaza; rechazar regresa a En ejecución", async () => {
-  const cat = await admin("piezas", { action: "catalogo", version: "4", piezas: [
-    { guid: G(1), marca: "MP-01", contratista: "COPRESA", clave: "MU-01", area: 12.5 },
-    { guid: G(3), marca: "MP-03", contratista: "AD-001", clave: "MU-02", area: 8 },
-    { guid: G(4), marca: "MP-04", contratista: "AD-001", clave: "MU-02", area: 5 },
-  ] });
-  assert.equal(cat.status, 200);
-  assert.equal((await resi("piezas", { action: "revisar", guids: [G(4)], decision: "Terminado" })).status, 400);
-  assert.equal((await otro("piezas", { action: "revisar", guids: [G(4)], decision: "Liberado" })).status, 403);
-  let r = await resi("piezas", { action: "revisar", guids: [G(4), G(1)], decision: "Liberado" });
-  assert.equal(r.json.actualizadas, 1); // G(1) ya está estimada
-  assert.equal(r.json.avance[G(4)].estatus, "Liberado");
-  assert.equal((await resi("piezas", { action: "revisar", guids: [G(4)], decision: "Rechazado" })).status, 400); // sin indicaciones
-  await otro("piezas", { action: "reportar", guids: [G(4)], estatus: "Terminado" });
-  r = await resi("piezas", { action: "revisar", guids: [G(4)], decision: "Rechazado", comentario: "Falta sellador" });
-  const a = r.json.avance[G(4)];
-  assert.equal(a.estatus, "En ejecución");
-  assert.equal(a.pend, undefined);
-  assert.equal(a.rechazo.motivo, "Falta sellador");
-});

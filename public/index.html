@@ -75,22 +75,12 @@
             <button id="r-btn" class="btn btn-primary" type="submit">Enviar avance</button>
             <p class="hint" id="r-hint"></p>
           </form>
-
-          <form id="revision" class="actionbar" data-perm="aprobar" hidden>
-            <div class="actionbar-title"><span id="rv-count">0</span> seleccionadas</div>
-            <select id="rv-decision" aria-label="Decisión">
-              <option value="Liberado">Liberado</option>
-              <option value="Rechazado">Rechazado</option>
-            </select>
-            <input id="rv-coment" type="text" maxlength="500" placeholder="Comentario (opcional)" aria-label="Comentario">
-            <button id="rv-btn" class="btn btn-primary" type="submit">Liberar</button>
-            <p class="hint" id="rv-hint"></p>
-          </form>
         </section>
 
         <!-- Por aprobar -->
         <section class="tabpane" data-pane="aprobar" hidden>
           <p class="pane-intro" id="ap-intro"></p>
+          <select id="ap-contratista" aria-label="Contratista" data-perm="verTodo"></select>
           <div class="list-head">
             <label class="check"><input type="checkbox" id="ap-all" data-perm="aprobar"> <span id="ap-count">0 pendientes</span></label>
           </div>

@@ -6,7 +6,6 @@
 //   POST /api/piezas {action:"reportar", guids, estatus, pct?, comentario?}
 //   POST /api/piezas {action:"aprobar", guids, comentario?}
 //   POST /api/piezas {action:"rechazar", guids, comentario}
-//   POST /api/piezas {action:"revisar", guids, decision:"Liberado"|"Rechazado", comentario?}  residente/superintendente desde Piezas
 //   POST /api/piezas {action:"estimar", guids, estimacion}
 import { route, readJson, HttpError, cleanText } from "../lib/http.js";
 import { key, getJson, setJson, hgetallJson, hmgetJson, hsetJson } from "../lib/store.js";
@@ -128,20 +127,6 @@ export default route(["GET", "POST"], async (req, res) => {
         rechazar(rec, me, comentario, rec.pend.estatus);
       }
       delete rec.pend;
-    } else if (body.action === "revisar") {
-      // Desde Piezas, quien aprueba solo puede liberar una pieza o rechazarla (regresa a En ejecución).
-      if (!can(me, "aprobar")) throw new HttpError(403, "Tu rol no puede liberar ni rechazar piezas.");
-      const decision = String(body.decision || "");
-      if (!["Liberado", "Rechazado"].includes(decision)) throw new HttpError(400, "Elige Liberado o Rechazado.");
-      if (["Estimado", "Pagado"].includes(rec.estatus)) { omitidas.push(g); return; }
-      if (decision === "Liberado") {
-        if (rec.pend || rec.estatus === "Liberado") { omitidas.push(g); return; } // lo pendiente se resuelve en Por aprobar
-        Object.assign(rec, { estatus: "Liberado", pct: 0, aprobado: { por: me.nombre, at: new Date().toISOString() } });
-        delete rec.rechazo;
-        push(rec, evento(me, "libera", { estatus: "Liberado", comentario }));
-      } else {
-        rechazar(rec, me, comentario, rec.pend ? rec.pend.estatus : rec.estatus);
-      }
     } else if (body.action === "estimar") {
       if (!can(me, "estimar")) throw new HttpError(403, "Tu rol no puede asignar estimaciones.");
       const est = cleanText(body.estimacion, 30, "La estimación", { required: true }).toUpperCase();
