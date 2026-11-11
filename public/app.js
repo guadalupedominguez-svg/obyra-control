@@ -461,8 +461,78 @@
     return "Todas las piezas";
   }
 
-  // Foto del modelo tal como lo deja la pestaña Generador: solo las piezas de la tabla, con su color de estatus.
-  function capturarModelo() {
+  // Centro de cada pieza en pantalla (pixeles del visor), para poner su marca sobre la foto.
+  function puntosDePiezas(guids) {
+    var v = S.viewer, m = S.model, it = m.getInstanceTree(), fl = m.getFragmentList(), out = [];
+    var caja = new THREE.Box3(), tmp = new THREE.Box3();
+    guids.forEach(function (g) {
+      var id = S.guid2db.get(g); if (id == null) return;
+      caja.makeEmpty();
+      it.enumNodeFragments(id, function (f) { fl.getWorldBounds(f, tmp); caja.union(tmp); }, true);
+      if (caja.isEmpty()) return;
+      var p = v.worldToClient(caja.getCenter(new THREE.Vector3()));
+      out.push({ marca: S.piezas[g].marca || "(sin marca)", x: p.x, y: p.y, color: COLOR[estado(g)] || COLOR.Planeado });
+    });
+    return out;
+  }
+
+  // Dibuja las etiquetas de marca sobre la foto, moviéndolas si se enciman, con una línea hacia la pieza.
+  function etiquetar(dataUrl, w, h, puntos, sx, sy) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () {
+        var cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+        var ctx = cv.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        ctx.font = "bold 15px Arial"; ctx.textBaseline = "middle";
+        var padX = 7, alto = 24, gap = 4;
+        var dentro = puntos.map(function (pt) { return { marca: pt.marca, color: pt.color, x: pt.x * sx, y: pt.y * sy }; })
+          .filter(function (pt) { return pt.x >= 0 && pt.y >= 0 && pt.x <= w && pt.y <= h; }); // fuera de cuadro: sin etiqueta
+        // Obstáculos: los puntos de todas las piezas (para no taparlos) y las etiquetas ya colocadas.
+        var puestas = dentro.map(function (pt) { return { x: pt.x - 6, y: pt.y - 6, w: 12, h: 12 }; });
+        var choca = function (r) { return puestas.some(function (q) { return r.x < q.x + q.w + gap && q.x < r.x + r.w + gap && r.y < q.y + q.h + gap && q.y < r.y + r.h + gap; }); };
+        var coloc = [];
+        dentro.slice().sort(function (a, b) { return a.y - b.y; }).forEach(function (pt) {
+          var tw = ctx.measureText(pt.marca).width + padX * 2;
+          var caja = function (dx, dy) { return { x: Math.min(Math.max(pt.x - tw / 2 + dx, 2), w - tw - 2), y: Math.min(Math.max(pt.y + dy, 2), h - alto - 2), w: tw, h: alto }; };
+          var r = null, lado = tw / 2 + 22;
+          // Primero arriba, luego a los lados y abajo, cada vez más lejos.
+          [-36, -66, -96, -126, -156].some(function (dy, k) {
+            var dyAbajo = [14, 44, 74, 104, 134][k];
+            return [[0, dy], [-lado, -12 + dy / 3], [lado, -12 + dy / 3], [0, dyAbajo], [-lado, dy], [lado, dy]].some(function (d) {
+              var c = caja(d[0], d[1]); if (!choca(c)) { r = c; return true; } return false;
+            });
+          });
+          if (!r) r = caja(0, -36);
+          puestas.push(r); coloc.push({ pt: pt, r: r });
+        });
+        // Líneas con contorno blanco para que se vean sobre piezas oscuras, después los puntos y al final las etiquetas.
+        var ancla = function (c) { var r = c.r, cx = Math.min(Math.max(c.pt.x, r.x + 4), r.x + r.w - 4); return { x: cx, y: r.y > c.pt.y ? r.y : (r.y + r.h < c.pt.y ? r.y + r.h : r.y + r.h / 2) }; };
+        [["#FFFFFF", 4], ["#111A2B", 1.5]].forEach(function (st) {
+          ctx.strokeStyle = st[0]; ctx.lineWidth = st[1];
+          coloc.forEach(function (c) { var a = ancla(c); ctx.beginPath(); ctx.moveTo(c.pt.x, c.pt.y); ctx.lineTo(a.x, a.y); ctx.stroke(); });
+        });
+        coloc.forEach(function (c) {
+          ctx.beginPath(); ctx.arc(c.pt.x, c.pt.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = "#111A2B"; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#FFFFFF"; ctx.stroke();
+        });
+        coloc.forEach(function (c) {
+          var r = c.r;
+          ctx.fillStyle = "rgba(17,26,43,.94)";
+          if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 5); ctx.fill(); } else ctx.fillRect(r.x, r.y, r.w, r.h);
+          ctx.fillStyle = c.pt.color; ctx.fillRect(r.x + 3, r.y + r.h - 3, r.w - 6, 3);
+          ctx.fillStyle = "#FFFFFF"; ctx.fillText(c.pt.marca, r.x + padX, r.y + r.h / 2 - 1);
+        });
+        resolve(cv.toDataURL("image/png"));
+      };
+      img.onerror = function () { resolve(dataUrl); };
+      img.src = dataUrl;
+    });
+  }
+
+  // Foto del modelo tal como lo deja la pestaña Generador: solo las piezas de la tabla, con su color de estatus
+  // y una etiqueta con la marca de cada pieza para ubicarla en la tabla.
+  function capturarModelo(guids) {
     var v = S.viewer;
     if (!v || !S.model) return Promise.resolve(null);
     v.clearSelection();
@@ -473,11 +543,16 @@
         if (listo) return; listo = true;
         v.removeEventListener(Autodesk.Viewing.FINAL_FRAME_RENDERED_CHANGED_EVENT, onFrame);
         var c = v.canvas || v.container.querySelector("canvas");
-        var w = 1200, h = Math.round(w * ((c && c.clientHeight) || 800) / ((c && c.clientWidth) || 1200));
+        var cw = (c && c.clientWidth) || 1200, ch = (c && c.clientHeight) || 800;
+        var w = 1600, h = Math.round(w * ch / cw);
+        var puntos = [];
+        try { puntos = puntosDePiezas(guids || []); } catch (e) { puntos = []; }
         v.getScreenShot(w, h, function (url) {
           fetch(url).then(function (r) { return r.blob(); }).then(function (b) {
             var fr = new FileReader();
-            fr.onload = function () { resolve({ data: fr.result, w: w, h: h }); };
+            fr.onload = function () {
+              etiquetar(fr.result, w, h, puntos, w / cw, h / ch).then(function (data) { resolve({ data: data, w: w, h: h }); });
+            };
             fr.onerror = function () { resolve(null); };
             fr.readAsDataURL(b);
           }).catch(function () { resolve(null); });
@@ -493,7 +568,7 @@
     var filas = genFilas();
     if (!filas.length) { toast("No hay piezas en el generador con este filtro."); return; }
     var btn = $("g-ver"); btn.disabled = true; btn.textContent = "Preparando vista…";
-    capturarModelo().then(function (img) {
+    capturarModelo(filas).then(function (img) {
       var c = $("g-contratista").value;
       GP = {
         filas: filas, img: img,
