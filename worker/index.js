@@ -8,6 +8,7 @@ const API = {
   users: () => import("../api/users.js"),
   obra: () => import("../api/obra.js"),
   piezas: () => import("../api/piezas.js"),
+  envio: () => import("../api/envio.js"),
 };
 const FORMA = () => import("../api/forma/[action].js");
 

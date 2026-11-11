@@ -620,13 +620,15 @@
     capturarModelo(filas).then(function (img) {
       if (genSeleccion()) { paintModel(false); selectGenEnModelo(); } // regresa el modelo a como estaba
       var c = $("g-contratista").value;
+      var grupos = agrupar(filas);
       GP = {
-        filas: filas, img: img,
+        filas: filas, img: img, grupos: grupos,
         titulo: "Generador" + (c ? " · " + c : ""),
-        sub: [S.obra ? S.obra.nombre : "", descripcionVista(), filas.length + (filas.length === 1 ? " pieza" : " piezas"), new Date().toLocaleDateString("es-MX", { dateStyle: "long" })].filter(Boolean).join(" · "),
-        archivo: "Generador_" + ((c || "Todos") + ($("g-vista").value === "estimadas" && $("g-estnum").value ? "_" + $("g-estnum").value : "")).replace(/[^\w-]+/g, "_") + "_" + new Date().toISOString().slice(0, 10) + ".xlsx",
+        sub: [S.obra ? S.obra.nombre : "", descripcionVista(), filas.length + (filas.length === 1 ? " pieza" : " piezas"),
+          grupos.length > 1 ? grupos.length + " generadores" : "", new Date().toLocaleDateString("es-MX", { dateStyle: "long" })].filter(Boolean).join(" · "),
       };
-      renderPrevia();
+      if (grupos.length === 1) grupos[0].img = img; // la foto ya es justo de ese generador
+      renderPrevia(); textoBotones();
       $("gen-prev").showModal();
     }).finally(function () { btn.disabled = false; btn.textContent = "Ver generador"; actualizarMarcar(); });
   });
@@ -748,18 +750,99 @@
     return excelPromise;
   }
 
+  // Un generador por cada combinación de contratista y estimación (las piezas sin estimación van juntas).
+  function agrupar(filas) {
+    var m = {}, hoy = new Date().toISOString().slice(0, 10);
+    filas.forEach(function (g) {
+      var p = S.piezas[g], est = rec(g).estimacion || "";
+      var k = p.contratista + "|" + est;
+      (m[k] || (m[k] = { contratista: p.contratista, estimacion: est, filas: [] })).filas.push(g);
+    });
+    return Object.values(m).sort(function (a, b) { return (a.contratista + a.estimacion).localeCompare(b.contratista + b.estimacion, "es", { numeric: true }); })
+      .map(function (x) {
+        var etiqueta = x.estimacion ? "Estimación " + x.estimacion : "Sin estimar";
+        x.titulo = "Generador · " + x.contratista + " · " + etiqueta;
+        x.sub = [S.obra ? S.obra.nombre : "", x.filas.length + (x.filas.length === 1 ? " pieza" : " piezas"), new Date().toLocaleDateString("es-MX", { dateStyle: "long" })].filter(Boolean).join(" · ");
+        x.archivo = ("Generador_" + x.contratista + "_" + (x.estimacion || "SinEstimar")).replace(/[^\w-]+/g, "_") + "_" + hoy + ".xlsx";
+        return x;
+      });
+  }
+
+  // Arma el Excel de cada generador; la foto de cada uno se toma con solo sus piezas.
+  function prepararArchivos(btn, verbo) {
+    var gs = GP.grupos, out = [], i = 0;
+    var siguiente = function () {
+      if (i >= gs.length) return Promise.resolve(out);
+      var G = gs[i++];
+      btn.textContent = gs.length > 1 ? verbo + " " + i + " de " + gs.length + "…" : verbo + "…";
+      var foto = G.img !== undefined || !S.viewer ? Promise.resolve(G.img || GP.img) : capturarModelo(G.filas).then(function (img) { G.img = img; return img; });
+      return foto.then(function () { return construirExcel(G); }).then(function (buf) { out.push({ archivo: G.archivo, buf: buf }); return siguiente(); });
+    };
+    return loadExcel().then(siguiente).finally(function () { if (gs.length > 1 && S.viewer) paintModel(false); });
+  }
+  function textoBotones() {
+    var n = GP ? GP.grupos.length : 1;
+    $("gp-excel").textContent = n > 1 ? "Descargar " + n + " Excel" : "Descargar Excel";
+    if ($("gp-forma")) {
+      $("gp-forma").textContent = n > 1 ? "Enviar " + n + " a Forma" : "Enviar a Forma";
+      var carpeta = S.obra && S.obra.carpeta;
+      $("gp-forma").disabled = !carpeta;
+      $("gp-forma").title = carpeta ? "Se guardan en la carpeta «" + carpeta.nombre + "» de Forma" : "Un administrador debe configurar la carpeta de Forma en Configuración";
+    }
+  }
+
   $("gp-excel").addEventListener("click", function () {
     if (!GP) return;
-    var btn = $("gp-excel"); btn.disabled = true; btn.textContent = "Generando…";
-    loadExcel().then(construirExcel).then(function (buf) {
-      var url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-      var a = el("a", { href: url, download: GP.archivo }); document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+    var btn = $("gp-excel"); btn.disabled = true;
+    prepararArchivos(btn, "Generando").then(function (archivos) {
+      // Varias descargas seguidas: el navegador puede pedir permiso la primera vez.
+      archivos.forEach(function (f, k) {
+        setTimeout(function () {
+          var url = URL.createObjectURL(new Blob([f.buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+          var a = el("a", { href: url, download: f.archivo }); document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+        }, k * 600);
+      });
+      if (archivos.length > 1) toast(archivos.length + " archivos descargados. Si el navegador lo pregunta, permite las descargas múltiples.");
     }).catch(function (e) { toast(e.message || "No se pudo generar el Excel.", true); })
-      .finally(function () { btn.disabled = false; btn.textContent = "Descargar Excel"; });
+      .finally(function () { btn.disabled = false; textoBotones(); });
   });
 
-  function construirExcel() {
+  function aBase64(buf) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () { resolve(String(fr.result).split(",")[1]); };
+      fr.onerror = function () { reject(new Error("No se pudo preparar el archivo.")); };
+      fr.readAsDataURL(new Blob([buf]));
+    });
+  }
+  if ($("gp-forma")) {
+    $("gp-forma").addEventListener("click", function () {
+      if (!GP) return;
+      var btn = $("gp-forma"); btn.disabled = true;
+      var enviados = [];
+      prepararArchivos(btn, "Preparando").then(function (archivos) {
+        var k = 0;
+        var uno = function () {
+          if (k >= archivos.length) return Promise.resolve();
+          var f = archivos[k++];
+          btn.textContent = archivos.length > 1 ? "Enviando " + k + " de " + archivos.length + "…" : "Enviando…";
+          return aBase64(f.buf).then(function (b64) { return api("/api/envio", { nombre: f.archivo, base64: b64 }); })
+            .then(function (r) { enviados.push(r); return uno(); });
+        };
+        return uno();
+      }).then(function () {
+        var c = enviados[0] && enviados[0].carpeta;
+        toast(enviados.length === 1
+          ? "«" + enviados[0].nombre + "» quedó en la carpeta «" + c + "» de Forma" + (enviados[0].nuevo ? "." : " como versión " + enviados[0].version + ".")
+          : enviados.length + " generadores quedaron en la carpeta «" + c + "» de Forma.");
+      }).catch(function (e) {
+        toast((enviados.length ? enviados.length + " enviados antes del error. " : "") + (e.message || "No se pudo enviar a Forma."), true);
+      }).finally(function () { btn.disabled = false; textoBotones(); });
+    });
+  }
+
+  function construirExcel(G) {
     var wb = new ExcelJS.Workbook();
     wb.creator = "OBYRA Control"; wb.created = new Date();
     var fuente = { name: "Arial", size: 10 };
@@ -772,8 +855,8 @@
     // Hoja Generador: título, tabla de piezas y la vista del modelo en una celda combinada.
     var ws = wb.addWorksheet("Generador", { views: [{ state: "frozen", ySplit: 5 }], pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
     var nCols = COLS.length + 1, refCol = nCols;
-    ws.getCell(1, 1).value = GP.titulo; ws.getCell(1, 1).font = { name: "Arial", size: 14, bold: true };
-    ws.getCell(2, 1).value = GP.sub; ws.getCell(2, 1).font = { name: "Arial", size: 10, color: { argb: "FF4A5568" } };
+    ws.getCell(1, 1).value = G.titulo; ws.getCell(1, 1).font = { name: "Arial", size: 14, bold: true };
+    ws.getCell(2, 1).value = G.sub; ws.getCell(2, 1).font = { name: "Arial", size: 10, color: { argb: "FF4A5568" } };
     ws.getCell(3, 1).value = "Cantidades tomadas del modelo IFC" + (S.obra && S.obra.modelo ? " (" + S.obra.modelo.archivo + ", versión " + S.obra.modelo.version + ")" : "") + ".";
     ws.getCell(3, 1).font = { name: "Arial", size: 9, italic: true, color: { argb: "FF4A5568" } };
     var hg = ws.getRow(5);
@@ -781,7 +864,7 @@
     encabezado(hg);
 
     var first = 6;
-    GP.filas.forEach(function (g, i) {
+    G.filas.forEach(function (g, i) {
       var row = ws.getRow(first + i);
       COLS.forEach(function (c, j) {
         var cell = row.getCell(j + 1), x = valor(g, c[1]);
@@ -790,7 +873,7 @@
         if (c[2]) cell.numFmt = "#,##0.00";
       });
     });
-    var last = first + GP.filas.length - 1;
+    var last = first + G.filas.length - 1;
     // Totales con fórmula para que se recalculen si editan cantidades.
     var tot = ws.getRow(last + 1);
     tot.getCell(1).value = "Total";
@@ -805,16 +888,16 @@
 
     var widths = { contratista: 14, clave: 10, concepto: 34, marca: 10, zona: 16, eje: 8, nivel: 14, _estatus: 13, _estimacion: 12 };
     COLS.forEach(function (c, j) { ws.getColumn(j + 1).width = widths[c[1]] || 11; });
-    var imgW = 520, imgH = GP.img ? Math.round(imgW * GP.img.h / GP.img.w) : 0;
+    var imgW = 520, imgH = G.img ? Math.round(imgW * G.img.h / G.img.w) : 0;
     ws.getColumn(refCol).width = 76;
     ws.mergeCells(first, refCol, last + 1, refCol);
     var refCell = ws.getCell(first, refCol);
     refCell.border = bordes; refCell.alignment = { vertical: "top" };
-    if (GP.img) {
+    if (G.img) {
       // Altura suficiente en los renglones combinados para que la imagen no se encime con lo de abajo.
-      var alto = Math.max(15, Math.ceil((imgH + 16) * 0.75 / (GP.filas.length + 1)));
+      var alto = Math.max(15, Math.ceil((imgH + 16) * 0.75 / (G.filas.length + 1)));
       for (var r = first; r <= last + 1; r++) ws.getRow(r).height = Math.max(ws.getRow(r).height || 15, alto);
-      var id = wb.addImage({ base64: GP.img.data, extension: "png" });
+      var id = wb.addImage({ base64: G.img.data, extension: "png" });
       ws.addImage(id, { tl: { col: refCol - 1 + 0.05, row: first - 1 + 0.1 }, ext: { width: imgW, height: imgH }, editAs: "oneCell" });
     } else {
       refCell.value = "Sin vista del modelo";
@@ -823,10 +906,10 @@
 
     // Hoja Resumen por concepto, con totales por fórmula.
     var rs = wb.addWorksheet("Resumen");
-    rs.getCell(1, 1).value = GP.titulo + " · Resumen por concepto"; rs.getCell(1, 1).font = { name: "Arial", size: 14, bold: true };
-    rs.getCell(2, 1).value = GP.sub; rs.getCell(2, 1).font = { name: "Arial", size: 10, color: { argb: "FF4A5568" } };
+    rs.getCell(1, 1).value = G.titulo + " · Resumen por concepto"; rs.getCell(1, 1).font = { name: "Arial", size: 14, bold: true };
+    rs.getCell(2, 1).value = G.sub; rs.getCell(2, 1).font = { name: "Arial", size: 10, color: { argb: "FF4A5568" } };
     var hr = rs.getRow(4); hr.values = ["Contratista", "Partida", "Clave", "Concepto", "Pzas", "Área (m²)", "Volumen (m³)"]; encabezado(hr);
-    var res = resumenDe(GP.filas);
+    var res = resumenDe(G.filas);
     res.forEach(function (x, i) {
       var row = rs.getRow(5 + i);
       row.values = [x.contratista, x.partida, x.clave, x.concepto, x.pzas, Math.round(x.area * 1000) / 1000, Math.round(x.volumen * 1000) / 1000];
@@ -872,9 +955,14 @@
     var o = S.obra;
     $("obra-input").value = o.nombre;
     var f = o.forma || {};
-    $("forma-estado").textContent = f.conectado ? "Conectado con la cuenta de " + f.por + " desde " + fecha(f.desde) + ". La app solo lee el IFC y lo muestra; los usuarios no ven tu cuenta." : "Sin conectar. Conecta una cuenta de Autodesk con acceso al proyecto donde está el IFC.";
+    $("forma-estado").textContent = f.conectado
+      ? "Conectado con la cuenta de " + f.por + " desde " + fecha(f.desde).replace(/\.$/, "") + ". La app lee el IFC y guarda los generadores en la carpeta configurada; los usuarios no ven tu cuenta."
+        + (f.escritura ? "" : " Esta conexión es anterior al envío de generadores y solo puede leer: vuelve a conectar Forma para poder enviarlos.")
+      : "Sin conectar. Conecta una cuenta de Autodesk con acceso al proyecto donde está el IFC.";
     $("forma-btn").textContent = f.conectado ? "Volver a conectar" : "Conectar Forma";
     $("modelo-url").value = o.formaUrl || "";
+    $("carpeta-url").value = o.carpetaUrl || "";
+    $("carpeta-estado").textContent = o.carpeta ? "Los generadores se guardan en «" + o.carpeta.nombre + "»." : "Sin carpeta.";
     $("modelo-estado").textContent = o.modelo ? o.modelo.archivo + " · versión " + o.modelo.version + " · revisado " + fecha(o.modelo.actualizado) : "Sin modelo.";
     $("cat-estado").textContent = S.version ? Object.keys(S.piezas).length + " piezas leídas de la versión " + S.version + "." : "Aún no se han leído piezas.";
   }
@@ -888,6 +976,7 @@
   if ($("obra-form")) {
     $("obra-form").addEventListener("submit", function (ev) { ev.preventDefault(); saveObra({ action: "nombre", nombre: $("obra-input").value }, "Nombre guardado."); });
     $("modelo-form").addEventListener("submit", function (ev) { ev.preventDefault(); saveObra({ action: "modelo", url: $("modelo-url").value }, "Modelo guardado."); });
+    $("carpeta-form").addEventListener("submit", function (ev) { ev.preventDefault(); saveObra({ action: "carpeta", url: $("carpeta-url").value }, "Carpeta guardada."); });
     $("modelo-act").addEventListener("click", function () { saveObra({ action: "actualizar" }, "Versión revisada."); });
     $("cat-btn").addEventListener("click", leerCatalogo);
     $("u-nuevo").addEventListener("click", resetUserForm);

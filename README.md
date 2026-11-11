@@ -6,6 +6,7 @@ Hermano de OBYRA para el control de obra **por pieza** sobre el modelo IFC que v
 2. **Reporte de avance**: el contratista selecciona piezas (en la lista o en el modelo) y envía *En ejecución %* o *Terminado*; queda **por aprobar**.
 3. **Aprobación**: solo residente o superintendente aprueba o rechaza; los demás ven cuántos avances están pendientes (el rechazo exige motivo). Todo queda en la bitácora de cada pieza.
 4. **Generador** por contratista: lo que resta por estimar (en cualquier estatus), lo ya estimado por número de estimación, resumen por clave de concepto, Excel (hojas *Resumen* y *Generador*) y **Marcar como estimado** con el número de estimación.
+5. **Envío a Forma**: desde «Ver generador» se descargan o se envían a una carpeta fija de Forma los Excel, uno por cada combinación de contratista y estimación. Si el archivo ya existe en la carpeta, se guarda como versión nueva.
 
 Usuarios y contraseñas propios (no requiere cuenta de Autodesk). Solo el administrador conecta Forma una vez.
 
@@ -43,8 +44,9 @@ Usuarios y contraseñas propios (no requiere cuenta de Autodesk). Solo el admini
 5. Entra con `ADMIN_EMAIL`, y en **Configuración**:
    1. **Conectar Forma** con una cuenta que tenga acceso al proyecto.
    2. Pega la **liga del IFC** de Forma Docs (la de la barra del navegador) y guarda.
-   3. **Leer piezas del modelo**.
-   4. Da de alta residentes, superintendentes y contratistas.
+   3. Pega la **liga de la carpeta** de Forma donde se guardarán los generadores.
+   4. **Leer piezas del modelo**.
+   5. Da de alta residentes, superintendentes y contratistas.
 
 Después de crear los usuarios puedes borrar `ADMIN_PASSWORD`.
 
@@ -53,7 +55,7 @@ Después de crear los usuarios puedes borrar `ADMIN_PASSWORD`.
 - Contraseñas con PBKDF2-SHA256 (100,000 iteraciones), mínimo 10 caracteres; 8 intentos por correo y 30 por IP cada 15 min.
 - Sesión cifrada (AES-GCM) en cookie `HttpOnly; Secure; SameSite=Lax` de 12 h. Desactivar a un usuario o cambiar su contraseña cierra sus sesiones al instante.
 - Las escrituras solo aceptan JSON (bloquea envíos de formularios desde otros sitios).
-- El navegador solo recibe un token de Autodesk de **solo visualización** (`viewables:read`); el token que lee archivos (`data:read`) nunca sale del servidor.
+- El navegador solo recibe un token de Autodesk de **solo visualización** (`viewables:read`); el token que lee el IFC y sube los generadores (`data:read data:write data:create`) nunca sale del servidor. Las conexiones hechas antes del envío a Forma solo leen: hay que volver a conectar.
 - El filtro por contratista se aplica en el servidor, no solo en la pantalla.
 
 ## Desarrollo

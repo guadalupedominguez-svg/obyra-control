@@ -144,6 +144,15 @@
             <p id="modelo-estado" class="muted"></p>
           </div>
           <div class="card">
+            <h3>Carpeta de generadores en Forma</h3>
+            <p class="muted">Aquí llegan los Excel que se envían desde «Ver generador». En Forma Docs abre la carpeta y copia la liga de la barra del navegador.</p>
+            <form id="carpeta-form" class="stack">
+              <input id="carpeta-url" type="url" placeholder="https://acc.autodesk.com/docs/files/projects/…?folderUrn=…" aria-label="Liga de la carpeta en Forma">
+              <div class="row"><button class="btn btn-ghost btn-sm" type="submit">Guardar carpeta</button></div>
+            </form>
+            <p id="carpeta-estado" class="muted"></p>
+          </div>
+          <div class="card">
             <h3>Piezas del modelo</h3>
             <p class="muted">Lee del modelo las piezas que tienen contratista o clave de concepto, con su marca, zona, eje y cantidades. Hazlo cada vez que cambie la versión del IFC.</p>
             <button class="btn btn-primary btn-sm" type="button" id="cat-btn">Leer piezas del modelo</button>
@@ -182,6 +191,7 @@
             <p id="gp-sub" class="muted"></p>
           </div>
           <div class="row end">
+            <button id="gp-forma" class="btn btn-ghost btn-sm" type="button" data-perm="estimar">Enviar a Forma</button>
             <button id="gp-excel" class="btn btn-primary btn-sm" type="button">Descargar Excel</button>
             <button id="gp-cerrar" class="btn btn-ghost btn-sm" type="button">Cerrar</button>
           </div>
