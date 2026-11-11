@@ -10,6 +10,7 @@ const API = {
   piezas: () => import("../api/piezas.js"),
   envio: () => import("../api/envio.js"),
   carpetas: () => import("../api/carpetas.js"),
+  lean: () => import("../api/lean.js"),
 };
 const FORMA = () => import("../api/forma/[action].js");
 
