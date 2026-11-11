@@ -23,16 +23,22 @@
     return fetch(path, opt).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
         if (r.status === 401 && path !== "/api/session") { showLogin(); }
-        if (!r.ok) { var e = new Error(j.error || "Error " + r.status); e.status = r.status; throw e; }
+        if (!r.ok) {
+          var e = new Error(j.error || "El servidor no respondió correctamente (código " + r.status + ")" + (r.status === 413 || r.status >= 500 ? ". Puede ser por el tamaño del archivo." : "."));
+          e.status = r.status; throw e;
+        }
         return j;
       });
     });
   }
   var toastT = null;
-  function toast(msg, err) {
+  function toast(msg, err, ms) {
     var t = $("toast");
+    // Con una ventana abierta (modal), el aviso tiene que ir dentro de ella; si no, queda oculto detrás.
+    var host = document.querySelector("dialog[open]") || document.body;
+    if (t.parentNode !== host) host.appendChild(t);
     t.textContent = msg; t.className = "toast" + (err ? " err" : ""); t.hidden = false;
-    clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, err ? 6000 : 3500);
+    clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, ms || (err ? 8000 : 3500));
   }
   var nf2 = new Intl.NumberFormat("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   var nf0 = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
@@ -841,7 +847,7 @@
           ? "«" + enviados[0].nombre + "» quedó en la carpeta «" + c + "» de Forma" + (enviados[0].nuevo ? "." : " como versión " + enviados[0].version + ".")
           : enviados.length + " generadores quedaron en la carpeta «" + c + "» de Forma.");
       }).catch(function (e) {
-        toast((enviados.length ? enviados.length + " enviados antes del error. " : "") + (e.message || "No se pudo enviar a Forma."), true);
+        toast((enviados.length ? enviados.length + " enviados antes del error. " : "") + (e.message || "No se pudo enviar a Forma."), true, 20000);
       }).finally(function () { btn.disabled = false; textoBotones(); cargarEnvios().then(renderGruposPrevia); });
     });
   }
