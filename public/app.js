@@ -127,6 +127,7 @@
       document.title = S.obra.nombre + " · OBYRA Control";
       if (S.permisos.administrar) renderAdmin();
       startViewer();
+      (window.OBYRA.alIniciar || []).forEach(function (f) { try { f(); } catch (e) { console.error(e); } });
     }).catch(function (e) { toast(e.message, true); });
   }
 
@@ -1374,6 +1375,16 @@
     var v = S.viewer, m = S.model;
     if (!v || !m || !S.guid2db.size) return;
     v.clearThemingColors(m);
+    // En el módulo Lean, los colores los decide el plan (lean.js).
+    if (S.modulo === "lean" && window.OBYRA_LEAN) {
+      var col = window.OBYRA_LEAN.colores() || {}, lids = [];
+      Object.keys(col).forEach(function (g) {
+        var id = S.guid2db.get(g); if (id == null) return;
+        lids.push(id); v.setThemingColor(id, hexToVec(col[g]), m, true);
+      });
+      if (lids.length) { v.isolate(lids, m); if (encuadrar) v.fitToView(lids, m); } else v.showAll();
+      return;
+    }
     var ids = [];
     var visibles = soloEstas || (S.tab === "generador" ? genFilas() : S.tab === "piezas" ? filtradas() : Object.keys(S.piezas));
     visibles.forEach(function (g) {
@@ -1491,5 +1502,11 @@
       .finally(function () { btn.disabled = false; });
   }
 
+  // Puente para el módulo Lean (public/lean.js).
+  window.OBYRA = {
+    S: S, api: api, el: el, $: $, qsa: qsa, toast: toast, fecha: fecha, f2: f2, nf0: nf0, pill: pill, COLOR: COLOR,
+    paintModel: paintModel, focusPieces: focusPieces, renderLegend: renderLegend,
+    alIniciar: [], // funciones que corren cuando la app ya cargó obra y piezas
+  };
   boot();
 })();

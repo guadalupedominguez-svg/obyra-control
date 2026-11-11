@@ -28,6 +28,10 @@
     <header class="top">
       <div class="brand" aria-label="OBYRA Control">OBYRA <span>Control</span></div>
       <div class="top-obra" id="obra-nombre"></div>
+      <nav class="modulos" id="modulos" aria-label="Módulo">
+        <button type="button" data-mod="control" aria-pressed="true">Control de obra</button>
+        <button type="button" data-mod="lean" aria-pressed="false">Lean</button>
+      </nav>
       <div class="top-user">
         <span id="user-name"></span>
         <span id="user-rol" class="chip"></span>
@@ -43,7 +47,28 @@
         <div class="legend" id="legend" aria-label="Colores por estatus"></div>
       </section>
 
-      <aside class="panel">
+      <!-- Módulo Lean (public/lean.js) -->
+      <aside class="panel lean-panel" id="lean-panel" hidden>
+        <nav class="tabs" role="tablist" id="ln-tabs">
+          <button role="tab" data-ln="dash" class="tab" type="button" data-perm="dashboardLean">Dashboard</button>
+          <button role="tab" data-ln="la" class="tab" type="button">Look-ahead</button>
+          <button role="tab" data-ln="pull" class="tab" type="button">Sesión Pull</button>
+        </nav>
+        <div class="ln-body">
+          <div class="ln-toolbar" id="ln-semanabar">
+            <button type="button" class="btn btn-ghost btn-sm" id="ln-prev" aria-label="Semana anterior">‹</button>
+            <b id="ln-semana"></b>
+            <button type="button" class="btn btn-ghost btn-sm" id="ln-next" aria-label="Semana siguiente">›</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="ln-hoy">Hoy</button>
+            <span class="muted" id="ln-modo"></span>
+          </div>
+          <section data-lnpane="dash" id="ln-dash" hidden></section>
+          <section data-lnpane="la" id="ln-la" hidden></section>
+          <section data-lnpane="pull" id="ln-pull" hidden></section>
+        </div>
+      </aside>
+
+      <aside class="panel" id="control-panel">
         <nav class="tabs" role="tablist" id="tabs">
           <button role="tab" data-tab="piezas" class="tab" type="button">Piezas</button>
           <button role="tab" data-tab="aprobar" class="tab" type="button">Por aprobar <span class="badge" id="badge-aprobar" hidden></span></button>
@@ -252,6 +277,95 @@
       </div>
     </dialog>
 
+    <!-- Lean: actividad -->
+    <dialog id="ln-act" class="dialog dialog-lg" aria-labelledby="ln-act-t">
+      <form class="dialog-body" id="ln-act-form" novalidate>
+        <div class="gp-head"><h3 id="ln-act-t">Actividad</h3><button type="button" class="btn btn-ghost btn-sm" id="ln-act-x">Cerrar</button></div>
+        <div class="ln-grid2">
+          <label>Partida<input id="la-partida" list="la-partidas" maxlength="60"></label>
+          <label>Contratista<input id="la-contr" list="la-contrs" maxlength="60"></label>
+          <label>Ubicación<input id="la-ubic" list="la-ubics" maxlength="60" required></label>
+          <label>Eje<input id="la-eje" maxlength="30"></label>
+          <label>Semana de inicio<select id="la-ini"></select></label>
+          <label>Semana de fin<select id="la-fin"></select></label>
+        </div>
+        <label>Descripción<input id="la-desc" maxlength="300"></label>
+        <datalist id="la-partidas"></datalist><datalist id="la-contrs"></datalist><datalist id="la-ubics"></datalist>
+        <div class="row" id="la-piezas-row">
+          <span class="muted" id="la-piezas"></span>
+          <button type="button" class="btn btn-ghost btn-sm" id="la-usar">Usar piezas seleccionadas</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="la-ver">Ver en el modelo</button>
+        </div>
+        <div class="row end" id="la-acciones">
+          <button type="button" class="btn btn-danger btn-sm" id="la-borrar">Borrar</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="la-guardar">Guardar actividad</button>
+        </div>
+        <div class="card" id="la-plan"></div>
+        <div class="card">
+          <h4>Restricciones</h4>
+          <ul class="ln-restr" id="la-restr"></ul>
+          <div class="ln-grid2" id="la-restr-form">
+            <label class="span2">Nueva restricción<input id="lr-texto" maxlength="300" placeholder="Ej. paneles en tránsito desde planta"></label>
+            <label>Tipo<select id="lr-tipo"></select></label>
+            <label>Responsable<input id="lr-resp" maxlength="60"></label>
+            <label>Liberar antes de<input id="lr-fecha" type="date"></label>
+            <div class="row end"><button type="button" class="btn btn-ghost btn-sm" id="lr-add">Agregar restricción</button></div>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Lean: tarjeta de sesión pull -->
+    <dialog id="ln-tar" class="dialog" aria-labelledby="ln-tar-t">
+      <form class="dialog-body" id="ln-tar-form" novalidate>
+        <h3 id="ln-tar-t">Tarjeta</h3>
+        <label>Entregable<input id="lt-entregable" maxlength="120" required></label>
+        <div class="ln-grid2">
+          <label>Contratista<input id="lt-contr" list="la-contrs" maxlength="60"></label>
+          <label>Semana de entrega<select id="lt-semana"></select></label>
+          <label>Duración (días)<input id="lt-dur" type="number" min="1" max="365"></label>
+          <label>Entrega a<input id="lt-entrega" maxlength="60" list="la-contrs"></label>
+          <label>Ubicación<input id="lt-ubic" maxlength="60" list="la-ubics"></label>
+          <label>Partida<input id="lt-partida" maxlength="60" list="la-partidas"></label>
+        </div>
+        <label>Necesito para empezar<input id="lt-necesita" maxlength="300" placeholder="Pasa al look-ahead como restricción"></label>
+        <div class="row end">
+          <button type="button" class="btn btn-danger btn-sm" id="lt-borrar">Borrar</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="lt-cancelar">Cancelar</button>
+          <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Lean: hito y ajustes -->
+    <dialog id="ln-hito" class="dialog" aria-labelledby="ln-hito-t">
+      <form class="dialog-body" id="ln-hito-form" novalidate>
+        <h3 id="ln-hito-t">Hito</h3>
+        <label>Nombre<input id="lh-nombre" maxlength="120" required placeholder="Ej. Fachadas terminadas"></label>
+        <label>Fecha<input id="lh-fecha" type="date" required></label>
+        <div class="row end">
+          <button type="button" class="btn btn-danger btn-sm" id="lh-borrar">Borrar hito</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="lh-cancelar">Cancelar</button>
+          <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="ln-cfg" class="dialog" aria-labelledby="ln-cfg-t">
+      <form class="dialog-body" id="ln-cfg-form" novalidate>
+        <h3 id="ln-cfg-t">Ajustes de Lean</h3>
+        <label>Modo de planeación
+          <select id="lc-modo"><option value="zonas">Por zonas</option><option value="takt">Takt (áreas)</option></select>
+        </label>
+        <label>Ubicaciones (una por renglón, en orden)<textarea id="lc-ubic" rows="6"></textarea></label>
+        <label>Causas de no cumplimiento (una por renglón)<textarea id="lc-causas" rows="6"></textarea></label>
+        <label>Meta de PPC (%)<input id="lc-meta" type="number" min="1" max="100"></label>
+        <div class="row end">
+          <button type="button" class="btn btn-ghost btn-sm" id="lc-cancelar">Cancelar</button>
+          <button type="submit" class="btn btn-primary btn-sm">Guardar ajustes</button>
+        </div>
+      </form>
+    </dialog>
+
     <!-- Detalle de pieza -->
     <dialog id="detalle" class="dialog">
       <form method="dialog" class="dialog-body">
@@ -281,5 +395,6 @@
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="/app.js" defer></script>
+  <script src="/lean.js" defer></script>
 </body>
 </html>
