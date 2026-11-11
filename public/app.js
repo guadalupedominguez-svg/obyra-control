@@ -49,7 +49,7 @@
     "Estimado": "#22D3EE",
     "Pagado": "#A78BFA",
   };
-  var ORDEN = ["Planeado", "Liberado", "En ejecución", "Por aprobar", "Terminado", "Estimado", "Pagado"];
+  var ORDEN = ["Planeado", "Liberado", "En ejecución", "Terminado", "Por aprobar", "Estimado", "Pagado"];
 
   // ---------- Estado ----------
   var S = {
