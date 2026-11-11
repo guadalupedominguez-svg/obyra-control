@@ -154,6 +154,10 @@ input::placeholder { color: var(--muted); }
 .dialog-lg { width: min(1100px, calc(100% - 32px)); }
 .ev-wrap { max-height: 65vh; }
 .ok-txt { color: var(--ok); }
+.carpeta-contr { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px 8px; align-items: center; padding-top: 8px; border-top: 1px solid var(--line); }
+.carpeta-contr b { font-size: 13px; grid-column: 1 / -1; }
+.carpeta-contr .muted { grid-column: 1 / -1; }
+.linklike { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; font: inherit; }
 .gp-wrap { min-height: 0; }
 .gp-tabla td.ref { vertical-align: top; width: 38%; min-width: 260px; padding: 8px; background: #EEF1F5; white-space: normal; }
 .gp-tabla td.ref img { display: block; width: 100%; height: auto; position: sticky; top: 36px; border-radius: 6px; }

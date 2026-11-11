@@ -74,12 +74,12 @@
     var forma = q.get("forma");
     if (forma) {
       history.replaceState(null, "", "/");
-      var msg = { conectado: "Forma quedó conectado.", cancelado: "Se canceló la conexión con Forma.", invalido: "La conexión con Forma no se pudo verificar. Inténtalo de nuevo.", error: "Autodesk rechazó la conexión. Revisa la app de APS y la URL de retorno.", "sin-permiso": "Solo un administrador puede conectar Forma." }[forma];
-      if (msg) setTimeout(function () { toast(msg, forma !== "conectado"); }, 300);
+      var msg = { cuenta: "Tu cuenta de Autodesk quedó conectada. Ya puedes enviar generadores a Forma.", conectado: "Forma quedó conectado.", cancelado: "Se canceló la conexión con Forma.", invalido: "La conexión con Forma no se pudo verificar. Inténtalo de nuevo.", error: "Autodesk rechazó la conexión. Revisa la app de APS y la URL de retorno.", "sin-permiso": "Tu usuario no tiene permiso para esa conexión." }[forma];
+      if (msg) setTimeout(function () { toast(msg, forma !== "conectado" && forma !== "cuenta"); }, 300);
     }
     api("/api/session").then(function (s) {
       if (!s.loggedIn) { showLogin(s.config); return; }
-      S.me = s.user; S.permisos = s.permisos; S.roles = s.roles;
+      S.me = s.user; S.permisos = s.permisos; S.roles = s.roles; S.autodesk = s.autodesk || { conectada: false };
       startApp();
     }).catch(function () { showLogin(); });
   }
@@ -119,6 +119,7 @@
       : "Avance reportado que espera la revisión del residente o del superintendente. Solo ellos pueden aprobar o rechazar.";
     fillSelect($("f-estatus"), [["", "Todos los estatus"]].concat(ORDEN.map(function (e) { return [e, e]; })));
     renderLegend();
+    renderCuenta();
     setupTabs();
     Promise.all([api("/api/obra"), loadPiezas()]).then(function (r) {
       S.obra = r[0];
@@ -791,10 +792,36 @@
     var n = GP ? GP.grupos.length : 1;
     $("gp-excel").textContent = n > 1 ? "Descargar " + n + " Excel" : "Descargar Excel";
     if ($("gp-forma")) {
-      $("gp-forma").textContent = n > 1 ? "Enviar " + n + " a Forma" : "Enviar a Forma";
-      var carpeta = S.obra && S.obra.carpeta;
-      $("gp-forma").disabled = !carpeta;
-      $("gp-forma").title = carpeta ? "Se guardan en la carpeta «" + carpeta.nombre + "» de Forma" : "Un administrador debe configurar la carpeta de Forma en Configuración";
+      var b = $("gp-forma");
+      if (!S.autodesk.conectada) {
+        // Sin cuenta propia de Autodesk no se puede enviar: el botón lleva a conectarla.
+        b.textContent = "Conectar mi cuenta de Autodesk"; b.disabled = false;
+        b.title = "Los generadores se suben a Forma con tu propia cuenta de Autodesk";
+        return;
+      }
+      b.textContent = n > 1 ? "Enviar " + n + " a Forma" : "Enviar a Forma";
+      var falta = GP ? GP.grupos.filter(function (G) { return !carpetaDe(G.contratista); }).map(function (G) { return G.contratista; }) : [];
+      b.disabled = falta.length > 0;
+      b.title = falta.length
+        ? "Falta configurar la carpeta de Forma de " + falta.join(", ") + " (Configuración)"
+        : "Se suben con tu cuenta de Autodesk a: " + Array.from(new Set(GP.grupos.map(function (G) { return "«" + carpetaDe(G.contratista).nombre + "»"; }))).join(", ");
+    }
+  }
+  // Carpeta de Forma de un contratista; si no tiene, la general.
+  function carpetaDe(c) {
+    var o = S.obra || {};
+    return (o.carpetas && o.carpetas[c]) || o.carpeta || null;
+  }
+  function renderCuenta() {
+    var p = $("g-cuenta"); if (!p) return;
+    if (S.autodesk.conectada) {
+      p.replaceChildren("Tu cuenta de Autodesk está conectada para enviar generadores a Forma · ",
+        el("button", { class: "linklike", type: "button", text: "Desconectar", onclick: function () {
+          api("/api/session", { action: "autodesk-desconectar" }).then(function () { S.autodesk = { conectada: false }; renderCuenta(); toast("Tu cuenta de Autodesk se desconectó de la app."); })
+            .catch(function (e) { toast(e.message, true); });
+        } }));
+    } else {
+      p.replaceChildren("Para enviar generadores a Forma ", el("a", { href: "/api/forma/cuenta", text: "conecta tu cuenta de Autodesk" }), ".");
     }
   }
 
@@ -826,6 +853,7 @@
   if ($("gp-forma")) {
     $("gp-forma").addEventListener("click", function () {
       if (!GP) return;
+      if (!S.autodesk.conectada) { location.href = "/api/forma/cuenta"; return; }
       var btn = $("gp-forma"); btn.disabled = true;
       var enviados = [];
       prepararArchivos(btn, "Preparando").then(function (archivos) {
@@ -842,10 +870,10 @@
         };
         return uno();
       }).then(function () {
-        var c = enviados[0] && enviados[0].carpeta;
+        var cs = Array.from(new Set(enviados.map(function (x) { return "«" + x.carpeta + "»"; }))).join(", ");
         toast(enviados.length === 1
-          ? "«" + enviados[0].nombre + "» quedó en la carpeta «" + c + "» de Forma" + (enviados[0].nuevo ? "." : " como versión " + enviados[0].version + ".")
-          : enviados.length + " generadores quedaron en la carpeta «" + c + "» de Forma.");
+          ? "«" + enviados[0].nombre + "» quedó en la carpeta " + cs + " de Forma" + (enviados[0].nuevo ? "." : " como versión " + enviados[0].version + ".")
+          : enviados.length + " generadores quedaron en Forma: " + cs + ".", false, 8000);
       }).catch(function (e) {
         toast((enviados.length ? enviados.length + " enviados antes del error. " : "") + (e.message || "No se pudo enviar a Forma."), true, 20000);
       }).finally(function () { btn.disabled = false; textoBotones(); cargarEnvios().then(renderGruposPrevia); });
@@ -864,7 +892,8 @@
   function renderGruposPrevia() {
     if (!GP) return;
     $("gp-grupos").replaceChildren.apply($("gp-grupos"), GP.grupos.map(function (G) {
-      var e = ultimoEnvio(G), nombre = G.contratista + " · " + (G.estimacion || "Sin estimar");
+      var dest = carpetaDe(G.contratista);
+      var e = ultimoEnvio(G), nombre = G.contratista + " · " + (G.estimacion || "Sin estimar") + (dest ? " → «" + dest.nombre + "»" : " → sin carpeta");
       if (!e) return pill("Planeado", nombre + " — no enviado a Forma");
       var mismo = e.nombre === G.archivo;
       var txt = nombre + " — enviado " + fecha(e.ultimo.at) + " por " + e.ultimo.por + (e.ultimo.version ? " (versión " + e.ultimo.version + ")" : "");
@@ -1010,15 +1039,35 @@
     $("obra-input").value = o.nombre;
     var f = o.forma || {};
     $("forma-estado").textContent = f.conectado
-      ? "Conectado con la cuenta de " + f.por + " desde " + fecha(f.desde).replace(/\.$/, "") + ". La app lee el IFC y guarda los generadores en la carpeta configurada; los usuarios no ven tu cuenta."
-        + (f.escritura ? "" : " Esta conexión es anterior al envío de generadores y solo puede leer: vuelve a conectar Forma para poder enviarlos.")
+      ? "Conectado con la cuenta de " + f.por + " desde " + fecha(f.desde).replace(/\.$/, "") + ". Esta conexión solo lee el IFC y las carpetas; los generadores los sube cada residente con su propia cuenta."
       : "Sin conectar. Conecta una cuenta de Autodesk con acceso al proyecto donde está el IFC.";
     $("forma-btn").textContent = f.conectado ? "Volver a conectar" : "Conectar Forma";
     $("modelo-url").value = o.formaUrl || "";
     $("carpeta-url").value = o.carpetaUrl || "";
-    $("carpeta-estado").textContent = o.carpeta ? "Los generadores se guardan en «" + o.carpeta.nombre + "»." : "Sin carpeta.";
+    $("carpeta-estado").textContent = o.carpeta ? "Carpeta general: «" + o.carpeta.nombre + "»." : "Sin carpeta general.";
+    renderCarpetasContr();
     $("modelo-estado").textContent = o.modelo ? o.modelo.archivo + " · versión " + o.modelo.version + " · revisado " + fecha(o.modelo.actualizado) : "Sin modelo.";
     $("cat-estado").textContent = S.version ? Object.keys(S.piezas).length + " piezas leídas de la versión " + S.version + "." : "Aún no se han leído piezas.";
+  }
+  // Una fila por contratista (los del modelo y los que ya tienen carpeta).
+  function renderCarpetasContr() {
+    var o = S.obra || {}, urls = o.carpetasUrl || {}, cs = o.carpetas || {};
+    var lista = Array.from(new Set(Object.values(S.piezas).map(function (p) { return p.contratista; }).filter(Boolean).concat(Object.keys(cs)))).sort();
+    if (!lista.length) { $("carpetas-contr").replaceChildren(el("p", { class: "muted", text: "Cuando se lean las piezas del modelo aparecerán aquí los contratistas." })); return; }
+    $("carpetas-contr").replaceChildren.apply($("carpetas-contr"), lista.map(function (c) {
+      var inp = el("input", { type: "url", value: urls[c] || "", placeholder: "Liga de la carpeta de " + c, "aria-label": "Carpeta de Forma de " + c });
+      var guardar = el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Guardar", onclick: function () {
+        if (!inp.value.trim()) { toast("Pega la liga de la carpeta de " + c + "."); inp.focus(); return; }
+        saveObra({ action: "carpeta", contratista: c, url: inp.value }, "Carpeta de " + c + " guardada.");
+      } });
+      var quitar = el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Quitar", disabled: cs[c] ? null : "disabled", onclick: function () {
+        saveObra({ action: "carpeta", contratista: c, url: "" }, c + " usará la carpeta general.");
+      } });
+      return el("div", { class: "carpeta-contr" }, [
+        el("b", { text: c }), inp, guardar, quitar,
+        el("p", { class: "muted", text: cs[c] ? "→ «" + cs[c].nombre + "»" : (o.carpeta ? "Usa la carpeta general «" + o.carpeta.nombre + "»" : "Sin carpeta") }),
+      ]);
+    }));
   }
   function saveObra(body, okMsg) {
     return api("/api/obra", body).then(function () { return api("/api/obra"); }).then(function (o) {

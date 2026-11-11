@@ -3,7 +3,8 @@
 //   POST /api/obra {action:"nombre", nombre}     admin
 //   POST /api/obra {action:"modelo", url}        admin: liga del IFC en Forma Docs
 //   POST /api/obra {action:"actualizar"}         admin: toma la versión más reciente del IFC
-//   POST /api/obra {action:"carpeta", url}       admin: carpeta de Forma donde se envían los generadores
+//   POST /api/obra {action:"carpeta", url, contratista?}  admin: carpeta de Forma para los generadores
+//        (con contratista: la de ese contratista; url vacía la quita; sin contratista: la carpeta general)
 import { route, readJson, HttpError, cleanText } from "../lib/http.js";
 import { key, getJson, setJson } from "../lib/store.js";
 import { requireUser, can } from "../lib/users.js";
@@ -21,11 +22,13 @@ export default route(["GET", "POST"], async (req, res) => {
         ? { urn: b64url(o.versionUrn), version: o.versionNumber, archivo: o.fileName, fecha: o.fecha, actualizado: o.actualizado }
         : null,
       carpeta: o.carpeta ? { nombre: o.carpeta.nombre } : null,
+      carpetas: Object.fromEntries(Object.entries(o.carpetas || {}).map(([c, x]) => [c, { nombre: x.nombre }])),
     };
     if (can(me, "administrar")) {
       out.forma = await formaStatus();
       out.formaUrl = o.formaUrl || "";
       out.carpetaUrl = (o.carpeta && o.carpeta.url) || "";
+      out.carpetasUrl = Object.fromEntries(Object.entries(o.carpetas || {}).map(([c, x]) => [c, x.url]));
     }
     res.status(200).json(out);
     return;
@@ -45,10 +48,17 @@ export default route(["GET", "POST"], async (req, res) => {
     if (!/\.ifc$/i.test(v.fileName)) throw new HttpError(400, `El archivo "${v.fileName}" no es un IFC.`);
     Object.assign(o, { formaUrl: link, projectId, lineage, ...v, actualizado: new Date().toISOString(), actualizadoPor: me.email });
   } else if (body.action === "carpeta") {
-    const url = cleanText(body.url, 2000, "La liga", { required: true });
-    const { projectId, folderUrn } = parseFolderLink(url);
-    const { nombre } = await folderInfo(projectId, folderUrn);
-    o.carpeta = { url, projectId, folderUrn, nombre, actualizado: new Date().toISOString(), por: me.email };
+    const contratista = cleanText(body.contratista, 60, "El contratista").toUpperCase();
+    const url = cleanText(body.url, 2000, "La liga", { required: !contratista });
+    if (contratista && !url) {
+      if (o.carpetas) delete o.carpetas[contratista]; // vuelve a usar la carpeta general
+    } else {
+      const { projectId, folderUrn } = parseFolderLink(url);
+      const { nombre } = await folderInfo(projectId, folderUrn);
+      const c = { url, projectId, folderUrn, nombre, actualizado: new Date().toISOString(), por: me.email };
+      if (contratista) o.carpetas = { ...(o.carpetas || {}), [contratista]: c };
+      else o.carpeta = c;
+    }
   } else {
     throw new HttpError(400, "Acción no reconocida.");
   }

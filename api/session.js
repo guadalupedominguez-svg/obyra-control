@@ -6,6 +6,7 @@
 import { route, readJson, HttpError } from "../lib/http.js";
 import { saveSession, clearSession } from "../lib/session.js";
 import { hit, storeConfigured, key, cmd } from "../lib/store.js";
+import { cuentaStatus, borrarCuenta } from "../lib/forma.js";
 import {
   ROLES, CAN, currentUser, getUser, saveUser, verifyPassword, hashPassword, normEmail, checkPassword, ensureBootstrapAdmin,
 } from "../lib/users.js";
@@ -23,11 +24,21 @@ export default route(["GET", "POST"], async (req, res) => {
     const u = await currentUser(req);
     if (!u) { res.status(200).json({ loggedIn: false, config }); return; }
     const permisos = Object.fromEntries(Object.entries(CAN).map(([k, roles]) => [k, roles.includes(u.rol)]));
-    res.status(200).json({ loggedIn: true, user: { ...u, rolNombre: ROLES[u.rol] || u.rol }, permisos, roles: ROLES, config });
+    // Cuenta de Autodesk propia (para enviar generadores a Forma).
+    const autodesk = permisos.estimar ? await cuentaStatus(u.email) : null;
+    res.status(200).json({ loggedIn: true, user: { ...u, rolNombre: ROLES[u.rol] || u.rol }, permisos, roles: ROLES, config, autodesk });
     return;
   }
 
   const body = await readJson(req);
+  if (body.action === "autodesk-desconectar") {
+    const u = await currentUser(req);
+    if (!u) throw new HttpError(401, "Tu sesión terminó. Vuelve a entrar.");
+    await borrarCuenta(u.email);
+    res.status(200).json({ ok: true });
+    return;
+  }
+
   if (body.action === "logout") {
     clearSession(res);
     res.status(200).json({ ok: true });

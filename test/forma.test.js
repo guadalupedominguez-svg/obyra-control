@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { _setStoreForTests } from "../lib/store.js";
-import { parseFolderLink, subirArchivo, formaStatus } from "../lib/forma.js";
+import { parseFolderLink, subirArchivo, cuentaStatus } from "../lib/forma.js";
 
 process.env.KV_REST_API_URL = "http://memoria";
 process.env.KV_REST_API_TOKEN = "t";
@@ -25,11 +25,10 @@ test("lee la liga de una carpeta de Forma", () => {
   assert.throws(() => parseFolderLink("https://acc.autodesk.com/docs/files/projects/7cace05a-1111-2222-3333-444455556666"), /carpeta/);
 });
 
-test("la conexión indica si puede escribir", async () => {
-  assert.equal((await formaStatus()).escritura, true);
-  db.set("ctrl:forma:data", token("data:read"));
-  assert.equal((await formaStatus()).escritura, false);
-  db.set("ctrl:forma:data", token("data:read data:write data:create"));
+test("cada residente tiene su propia cuenta de Autodesk", async () => {
+  assert.equal((await cuentaStatus("res@obra.mx")).conectada, false);
+  db.set("ctrl:forma:cuenta:res@obra.mx", token("data:read data:write data:create"));
+  assert.equal((await cuentaStatus("res@obra.mx")).conectada, true);
 });
 
 function fakeFetch(existe) {

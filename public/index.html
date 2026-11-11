@@ -108,6 +108,7 @@
           <div id="g-resumen" class="g-resumen"></div>
           <div class="tablewrap"><table class="tabla" id="g-tabla"></table></div>
           <div class="actionbar">
+            <p class="hint" id="g-cuenta" data-perm="estimar"></p>
             <div class="row">
               <button id="g-ver" class="btn btn-ghost" type="button">Ver generador</button>
               <button id="g-envios" class="btn btn-ghost" type="button">Enviados a Forma</button>
@@ -147,13 +148,16 @@
             <p id="modelo-estado" class="muted"></p>
           </div>
           <div class="card">
-            <h3>Carpeta de generadores en Forma</h3>
-            <p class="muted">Aquí llegan los Excel que se envían desde «Ver generador». En Forma Docs abre la carpeta y copia la liga de la barra del navegador.</p>
+            <h3>Carpetas de generadores en Forma</h3>
+            <p class="muted">Cada residente sube los generadores con su propia cuenta de Autodesk a la carpeta del contratista. En Forma Docs abre la carpeta y copia la liga de la barra del navegador. Los residentes necesitan permiso para subir archivos en esas carpetas.</p>
+            <h4>Carpeta general (para contratistas sin carpeta propia)</h4>
             <form id="carpeta-form" class="stack">
-              <input id="carpeta-url" type="url" placeholder="https://acc.autodesk.com/docs/files/projects/…?folderUrn=…" aria-label="Liga de la carpeta en Forma">
-              <div class="row"><button class="btn btn-ghost btn-sm" type="submit">Guardar carpeta</button></div>
+              <input id="carpeta-url" type="url" placeholder="https://acc.autodesk.com/docs/files/projects/…?folderUrn=…" aria-label="Liga de la carpeta general en Forma">
+              <div class="row"><button class="btn btn-ghost btn-sm" type="submit">Guardar carpeta general</button></div>
             </form>
             <p id="carpeta-estado" class="muted"></p>
+            <h4>Carpeta por contratista</h4>
+            <div id="carpetas-contr" class="stack"></div>
           </div>
           <div class="card">
             <h3>Piezas del modelo</h3>

@@ -2,11 +2,12 @@
 //   GET /api/forma/connect    (admin) inicia la conexión con Autodesk
 //   GET /api/forma/callback   recibe cada autorización; pide primero data:read y luego viewables:read
 //   GET /api/forma/token      token de solo visualización para el visor (cualquier usuario con sesión)
+//   GET /api/forma/cuenta     (quien estima) conecta su propia cuenta de Autodesk para enviar generadores
 import crypto from "node:crypto";
 import { route, HttpError } from "../../lib/http.js";
 import { parseCookies, setCookie } from "../../lib/session.js";
-import { currentUser, requireUser } from "../../lib/users.js";
-import { CHAINS, callbackUrl, tokenRequest, saveChain, getToken } from "../../lib/forma.js";
+import { currentUser, requireUser, can } from "../../lib/users.js";
+import { CHAINS, callbackUrl, tokenRequest, saveChain, getToken, cuentaChain } from "../../lib/forma.js";
 
 function authorize(req, res, chain, by) {
   const state = chain + "." + crypto.randomBytes(16).toString("hex");
@@ -19,7 +20,7 @@ function authorize(req, res, chain, by) {
     scope: CHAINS[chain],
     state,
   };
-  if (chain === "data") params.prompt = "login"; // que el admin elija con qué cuenta de Autodesk conecta
+  if (chain === "data" || chain === "cuenta") params.prompt = "login"; // que elija con qué cuenta de Autodesk conecta
   url.search = new URLSearchParams(params).toString();
   res.redirect(302, url.toString());
 }
@@ -31,6 +32,13 @@ async function connect(req, res) {
   authorize(req, res, "data", me.email);
 }
 
+async function cuenta(req, res) {
+  const me = await currentUser(req);
+  if (!me || !can(me, "estimar")) { res.redirect(302, "/?forma=sin-permiso"); return; }
+  if (!process.env.APS_CLIENT_ID) throw new HttpError(500, "Falta APS_CLIENT_ID en las variables del servidor.");
+  authorize(req, res, "cuenta", me.email);
+}
+
 async function callback(req, res) {
   const { code, state, error } = req.query || {};
   const cookie = parseCookies(req).ctrl_forma || "";
@@ -39,13 +47,14 @@ async function callback(req, res) {
   const by = byB64 ? Buffer.from(byB64, "base64url").toString("utf8") : "";
   const me = await currentUser(req);
   if (error || !code) { res.redirect(302, "/?forma=cancelado"); return; }
-  if (!chain || !CHAINS[chain] || state !== chain + "." + rnd || !me || me.rol !== "admin" || me.email !== by) {
+  const permitido = me && me.email === by && (chain === "cuenta" ? can(me, "estimar") : me.rol === "admin");
+  if (!chain || !CHAINS[chain] || state !== chain + "." + rnd || !permitido) {
     res.redirect(302, "/?forma=invalido");
     return;
   }
   try {
     const tokens = await tokenRequest({ grant_type: "authorization_code", code, redirect_uri: callbackUrl(req) });
-    await saveChain(chain, tokens, me.email);
+    await saveChain(chain === "cuenta" ? cuentaChain(me.email) : chain, tokens, me.email);
   } catch (e) {
     console.error("forma callback", e.message, JSON.stringify(e.detail || ""));
     res.redirect(302, "/?forma=error");
@@ -53,6 +62,7 @@ async function callback(req, res) {
   }
   // La primera autorización (data:read) encadena la segunda (viewables:read); Autodesk ya no pide contraseña.
   if (chain === "data") { authorize(req, res, "view", me.email); return; }
+  if (chain === "cuenta") { res.redirect(302, "/?forma=cuenta"); return; }
   res.redirect(302, "/?forma=conectado");
 }
 
@@ -66,6 +76,7 @@ const pages = route(["GET"], async (req, res) => {
   const action = (req.query && req.query.action) || "";
   if (action === "connect") return connect(req, res);
   if (action === "callback") return callback(req, res);
+  if (action === "cuenta") return cuenta(req, res);
   res.status(404).json({ error: "No encontrado." });
 });
 

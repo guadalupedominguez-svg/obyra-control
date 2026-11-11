@@ -186,12 +186,16 @@ test("solo el contratista reporta; el administrador tampoco aprueba", async () =
 });
 
 test("el envío a Forma queda en la bitácora", async () => {
-  db.set("ctrl:obra", JSON.stringify({ nombre: "Obra", carpeta: { projectId: "b.p", folderUrn: "urn:adsk.wipprod:fs.folder:co.x", nombre: "05 Generadores" } }));
-  db.set("ctrl:forma:data", JSON.stringify({ access: "tok", refresh: "r", exp: Date.now() + 3_600_000, scope: "data:read data:write data:create" }));
-  db.set("ctrl:forma:view", JSON.stringify({ access: "tok", refresh: "r", exp: Date.now() + 3_600_000, scope: "viewables:read" }));
+  db.set("ctrl:obra", JSON.stringify({ nombre: "Obra",
+    carpeta: { projectId: "b.p", folderUrn: "urn:adsk.wipprod:fs.folder:co.x", nombre: "05 Generadores" },
+    carpetas: { "AD-001": { projectId: "b.p", folderUrn: "urn:adsk.wipprod:fs.folder:co.ad1", nombre: "Generadores AD-001" } } }));
+  let carpetaUsada = null, tokenUsado = null;
   const ok = (j) => new Response(JSON.stringify(j), { status: 200 });
   globalThis.fetch = async (url, opt = {}) => {
-    if (url.endsWith("/storage")) return ok({ data: { id: "urn:adsk.objects:os.object:wip.dm.prod/a.xlsx" } });
+    if (url.endsWith("/storage")) {
+      carpetaUsada = JSON.parse(opt.body).data.relationships.target.data.id; tokenUsado = opt.headers.Authorization;
+      return ok({ data: { id: "urn:adsk.objects:os.object:wip.dm.prod/a.xlsx" } });
+    }
     if (url.includes("signeds3upload")) return ok({ uploadKey: "K", urls: ["https://s3/put"] });
     if (url === "https://s3/put") return new Response("", { status: 200 });
     if (url.includes("/contents?")) return ok({ data: [] });
@@ -200,9 +204,15 @@ test("el envío a Forma queda en la bitácora", async () => {
   };
   const xlsx = Buffer.from("PK\u0003\u0004 prueba").toString("base64");
   assert.equal((await otro("envio", { nombre: "G.xlsx", base64: xlsx })).status, 403); // contratista no envía
+  const sinCuenta = await resi("envio", { nombre: "G.xlsx", base64: xlsx, contratista: "AD-001" });
+  assert.equal(sinCuenta.status, 409); // el residente no ha conectado su cuenta de Autodesk
+  assert.match(sinCuenta.json.error, /tu cuenta de Autodesk/);
+  db.set("ctrl:forma:cuenta:res@obra.mx", JSON.stringify({ access: "tok-residente", refresh: "r", exp: Date.now() + 3_600_000 }));
   const r = await resi("envio", { nombre: "Generador_AD-001_AD-004_2026-11-11.xlsx", base64: xlsx, contratista: "ad-001", estimacion: "ad-004", piezas: 2, area: 13 });
   assert.equal(r.status, 200, JSON.stringify(r.json));
-  assert.equal(r.json.carpeta, "05 Generadores");
+  assert.equal(r.json.carpeta, "Generadores AD-001"); // carpeta del contratista
+  assert.equal(carpetaUsada, "urn:adsk.wipprod:fs.folder:co.ad1");
+  assert.equal(tokenUsado, "Bearer tok-residente"); // con la cuenta del residente
   const lista = (await resi("envio")).json.envios;
   assert.equal(lista.length, 1);
   assert.equal(lista[0].contratista, "AD-001");
