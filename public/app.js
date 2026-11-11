@@ -57,7 +57,7 @@
     piezas: {}, avance: {}, version: null,
     sel: new Set(), apSel: new Set(),
     viewer: null, model: null, guid2db: new Map(), db2guid: new Map(),
-    syncing: false,
+    syncing: false, tab: "piezas",
   };
   var rec = function (g) { return S.avance[g] || { estatus: "Planeado", pct: 0 }; };
   var estado = function (g) { var r = rec(g); return r.pend ? "Por aprobar" : (r.estatus || "Planeado"); };
@@ -141,6 +141,9 @@
       if (name === "generador") renderGenerador();
       if (name === "aprobar") renderAprobar();
       if (name === "admin") loadUsers();
+      var antes = S.tab; S.tab = name;
+      // El modelo muestra lo mismo que el generador; al salir de esa pestaña vuelve a mostrar todas las piezas.
+      if (name === "generador" || antes === "generador") paintModel(true);
       try { localStorage.setItem("ctrl_tab", name); } catch (e) { /* sin almacenamiento */ }
     }
     tabs.forEach(function (t) { t.addEventListener("click", function () { open(t.getAttribute("data-tab")); }); });
@@ -387,7 +390,7 @@
     });
     $("g-tabla").replaceChildren(el("thead", null, [head]), el("tbody", null, rows));
   }
-  ["g-contratista", "g-vista"].forEach(function (id) { $(id).addEventListener("change", renderGenerador); });
+  ["g-contratista", "g-vista"].forEach(function (id) { $(id).addEventListener("change", function () { renderGenerador(); paintModel(true); }); });
 
   $("g-excel").addEventListener("click", function () {
     if (!window.XLSX) { toast("No se pudo cargar el generador de Excel. Revisa tu conexión.", true); return; }
@@ -604,18 +607,28 @@
     return new THREE.Vector4(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1);
   }
   // Colorea cada pieza por su estatus y deja en gris translúcido lo que no está en seguimiento.
-  function paintModel() {
+  // En la pestaña Generador solo se ven las piezas de la tabla (mismo contratista y vista);
+  // en las demás, todas las piezas en seguimiento.
+  function paintModel(encuadrar) {
     var v = S.viewer, m = S.model;
     if (!v || !m || !S.guid2db.size) return;
     v.clearThemingColors(m);
     var ids = [];
-    Object.keys(S.piezas).forEach(function (g) {
+    var visibles = S.tab === "generador" ? genFilas() : Object.keys(S.piezas);
+    visibles.forEach(function (g) {
       var id = S.guid2db.get(g);
       if (id == null) return;
       ids.push(id);
       v.setThemingColor(id, hexToVec(COLOR[estado(g)] || COLOR.Planeado), m, true);
     });
-    if (ids.length) v.isolate(ids, m); else v.showAll();
+    if (ids.length) {
+      v.isolate(ids, m);
+      if (encuadrar) v.fitToView(ids, m);
+    } else if (S.tab === "generador") {
+      v.isolate([], m); v.hide(m.getRootId(), m); // tabla vacía: modelo vacío
+    } else {
+      v.showAll();
+    }
   }
 
   function onViewerSelect(ev) {
