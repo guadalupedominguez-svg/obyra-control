@@ -146,8 +146,8 @@
       if (name === "aprobar") renderAprobar();
       if (name === "admin") loadUsers();
       var antes = S.tab; S.tab = name;
-      // El modelo muestra lo mismo que el generador; al salir de esa pestaña vuelve a mostrar todas las piezas.
-      if (name === "generador" || antes === "generador") paintModel(true);
+      // Piezas y Generador muestran en el modelo lo mismo que su lista; las demás pestañas, todas las piezas.
+      if (antes !== name) paintModel(name === "piezas" || name === "generador");
       try { localStorage.setItem("ctrl_tab", name); } catch (e) { /* sin almacenamiento */ }
     }
     tabs.forEach(function (t) { t.addEventListener("click", function () { open(t.getAttribute("data-tab")); }); });
@@ -257,8 +257,8 @@
     updateSel();
   }
 
-  ["f-contratista", "f-estatus", "f-estnum"].forEach(function (id) { if ($(id)) $(id).addEventListener("change", renderLista); });
-  $("f-buscar").addEventListener("input", renderLista);
+  ["f-contratista", "f-estatus", "f-estnum"].forEach(function (id) { if ($(id)) $(id).addEventListener("change", function () { renderLista(); paintModel(true); }); });
+  $("f-buscar").addEventListener("input", function () { renderLista(); paintModel(false); });
   $("sel-all").addEventListener("change", function () {
     var list = filtradas();
     if ($("sel-all").checked) list.forEach(function (g) { S.sel.add(g); }); else S.sel.clear();
@@ -648,14 +648,14 @@
     return new THREE.Vector4(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1);
   }
   // Colorea cada pieza por su estatus y deja en gris translúcido lo que no está en seguimiento.
-  // En la pestaña Generador solo se ven las piezas de la tabla (mismo contratista y vista);
-  // en las demás, todas las piezas en seguimiento.
+  // En Piezas y Generador solo se ven las piezas de su lista (según sus filtros);
+  // en las demás pestañas, todas las piezas en seguimiento.
   function paintModel(encuadrar) {
     var v = S.viewer, m = S.model;
     if (!v || !m || !S.guid2db.size) return;
     v.clearThemingColors(m);
     var ids = [];
-    var visibles = S.tab === "generador" ? genFilas() : Object.keys(S.piezas);
+    var visibles = S.tab === "generador" ? genFilas() : S.tab === "piezas" ? filtradas() : Object.keys(S.piezas);
     visibles.forEach(function (g) {
       var id = S.guid2db.get(g);
       if (id == null) return;
@@ -665,8 +665,8 @@
     if (ids.length) {
       v.isolate(ids, m);
       if (encuadrar) v.fitToView(ids, m);
-    } else if (S.tab === "generador") {
-      v.isolate([], m); v.hide(m.getRootId(), m); // tabla vacía: modelo vacío
+    } else if (Object.keys(S.piezas).length && (S.tab === "generador" || S.tab === "piezas")) {
+      v.isolate([], m); v.hide(m.getRootId(), m); // filtro sin piezas: modelo vacío
     } else {
       v.showAll();
     }
