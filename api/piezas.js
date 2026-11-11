@@ -113,7 +113,12 @@ export default route(["GET", "POST"], async (req, res) => {
         push(rec, evento(me, "aprueba", { estatus: rec.pend.estatus, pct: rec.pend.pct, comentario }));
       } else {
         if (!comentario) throw new HttpError(400, "Escribe el motivo del rechazo para que el contratista sepa qué corregir.");
+        // Un avance rechazado regresa la pieza a En ejecución: hay trabajo por corregir o terminar.
+        // Se conserva el % que tenía si ya estaba en ejecución.
+        const pct = rec.estatus === "En ejecución" ? rec.pct || 0 : 0;
         rec.rechazo = { motivo: comentario, por: me.nombre, at: new Date().toISOString(), estatus: rec.pend.estatus };
+        Object.assign(rec, { estatus: "En ejecución", pct });
+        delete rec.aprobado;
         push(rec, evento(me, "rechaza", { estatus: rec.pend.estatus, comentario }));
       }
       delete rec.pend;

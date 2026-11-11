@@ -129,6 +129,7 @@ test("rechazar exige motivo; aprobar aplica el estatus", async () => {
   assert.equal((await resi("piezas", { action: "rechazar", guids: [G(2)] })).status, 400);
   let r = await resi("piezas", { action: "rechazar", guids: [G(2)], comentario: "Falta aplanado" });
   assert.equal(r.json.avance[G(2)].rechazo.motivo, "Falta aplanado");
+  assert.equal(r.json.avance[G(2)].estatus, "En ejecución"); // rechazado: regresa a En ejecución
   assert.equal(r.json.avance[G(2)].pend, undefined);
   r = await resi("piezas", { action: "aprobar", guids: [G(1)] });
   assert.equal(r.json.avance[G(1)].estatus, "Terminado");
