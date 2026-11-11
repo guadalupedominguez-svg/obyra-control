@@ -102,16 +102,15 @@
     $("user-name").textContent = S.me.nombre;
     $("user-rol").textContent = S.me.rolNombre + (S.me.contratista ? " · " + S.me.contratista : "");
     qsa("[data-perm]").forEach(function (n) { if (!S.permisos[n.getAttribute("data-perm")]) n.remove(); });
-    if ($("r-btn")) {
-      $("r-btn").textContent = S.permisos.aprobar ? "Registrar avance" : "Enviar avance para aprobación";
-      $("r-hint").textContent = S.permisos.aprobar
-        ? "Como puedes aprobar, el avance que registras queda aprobado de inmediato."
-        : "El residente o el superintendente revisa y aprueba el reporte antes de que cuente para el generador.";
+    // El formulario de avance solo existe para el contratista (los demás no tienen el permiso "reportar").
+    if ($("reporte")) {
+      $("r-btn").textContent = "Enviar avance para aprobación";
+      $("r-hint").textContent = "El residente o el superintendente revisa y aprueba el reporte antes de que cuente para el generador.";
+      fillSelect($("r-estatus"), ["En ejecución", "Terminado"]);
     }
     $("ap-intro").textContent = S.permisos.aprobar
       ? "Avance reportado que espera tu revisión. Revisa en obra o en el modelo y aprueba o rechaza con el motivo."
       : "Avance reportado que espera la revisión del residente o del superintendente. Solo ellos pueden aprobar o rechazar.";
-    fillSelect($("r-estatus"), S.me.rol === "contratista" ? ["En ejecución", "Terminado"] : ["Planeado", "Liberado", "En ejecución", "Terminado"]);
     fillSelect($("f-estatus"), [["", "Todos los estatus"]].concat(ORDEN.map(function (e) { return [e, e]; })));
     renderLegend();
     setupTabs();
@@ -274,8 +273,8 @@
     renderLista(); selectInViewer();
   }
   function updateSel() {
-    $("sel-count").textContent = nf0.format(S.sel.size);
-    if ($("reporte")) $("reporte").hidden = !S.sel.size;
+    if ($("reporte")) { $("reporte").hidden = !S.sel.size; $("sel-count").textContent = nf0.format(S.sel.size); }
+    if ($("revision")) { $("revision").hidden = !S.sel.size; $("rv-count").textContent = nf0.format(S.sel.size); }
     var list = filtradas();
     $("sel-all").checked = list.length > 0 && list.every(function (g) { return S.sel.has(g); });
   }
@@ -299,6 +298,36 @@
     });
   }
 
+  // Residente / superintendente: desde Piezas solo liberan o rechazan; el rechazo regresa la pieza a En ejecución.
+  if ($("revision")) {
+    var syncRv = function () {
+      var rech = $("rv-decision").value === "Rechazado";
+      $("rv-btn").textContent = rech ? "Rechazar" : "Liberar";
+      $("rv-btn").className = "btn " + (rech ? "btn-danger" : "btn-primary");
+      $("rv-coment").placeholder = rech ? "Indicaciones para el contratista (obligatorio)" : "Comentario (opcional)";
+      $("rv-hint").textContent = rech
+        ? "La pieza regresa a En ejecución y el contratista ve tus indicaciones."
+        : "Libera las piezas para que el contratista pueda ejecutarlas.";
+    };
+    $("rv-decision").addEventListener("change", syncRv); syncRv();
+    $("revision").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var dec = $("rv-decision").value;
+      if (dec === "Rechazado" && !$("rv-coment").value.trim()) { toast("Escribe las indicaciones para el contratista."); $("rv-coment").focus(); return; }
+      $("rv-btn").disabled = true;
+      api("/api/piezas", { action: "revisar", guids: Array.from(S.sel), decision: dec, comentario: $("rv-coment").value })
+        .then(function (r) {
+          Object.assign(S.avance, r.avance);
+          toast(nf0.format(r.actualizadas) + (dec === "Liberado" ? (r.actualizadas === 1 ? " pieza liberada" : " piezas liberadas") : (r.actualizadas === 1 ? " pieza rechazada" : " piezas rechazadas"))
+            + (r.omitidas ? " · " + r.omitidas + " sin cambio (ya estimadas, ya liberadas o con avance por aprobar)" : "") + ".");
+          S.sel.clear(); $("rv-coment").value = "";
+          updateBadge(); renderLista(); paintModel(); selectInViewer();
+        })
+        .catch(function (e) { toast(e.message, true); })
+        .finally(function () { $("rv-btn").disabled = false; });
+    });
+  }
+
   function showDetalle(g) {
     var p = S.piezas[g], r = rec(g);
     $("d-titulo").textContent = (p.marca || "(sin marca)") + " · " + (p.clave || "sin clave");
@@ -311,7 +340,7 @@
     $("d-datos").replaceChildren.apply($("d-datos"), datos.reduce(function (acc, d) { acc.push(el("dt", { text: d[0] }), el("dd", { text: d[1] || "—" })); return acc; }, []));
     var h = (r.hist || []).slice().reverse();
     $("d-hist").replaceChildren.apply($("d-hist"), h.length ? h.map(function (e) {
-      var verbo = { reporta: "reportó", registra: "registró", aprueba: "aprobó", rechaza: "rechazó", estima: "asignó a la estimación" }[e.accion] || e.accion;
+      var verbo = { reporta: "reportó", registra: "registró", aprueba: "aprobó", rechaza: "rechazó", libera: "liberó", estima: "asignó a la estimación" }[e.accion] || e.accion;
       var que = e.accion === "estima" ? e.estimacion : (e.estatus || "") + (e.pct && e.estatus !== "Terminado" ? " " + e.pct + " %" : "");
       return el("li", null, [e.por + " " + verbo + " " + que, el("small", { text: fecha(e.at) + (e.comentario ? " · " + e.comentario : "") })]);
     }) : [el("li", { text: "Sin movimientos." })]);

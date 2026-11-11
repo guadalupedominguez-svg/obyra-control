@@ -6,6 +6,7 @@
 //   POST /api/piezas {action:"reportar", guids, estatus, pct?, comentario?}
 //   POST /api/piezas {action:"aprobar", guids, comentario?}
 //   POST /api/piezas {action:"rechazar", guids, comentario}
+//   POST /api/piezas {action:"revisar", guids, decision:"Liberado"|"Rechazado", comentario?}  residente/superintendente desde Piezas
 //   POST /api/piezas {action:"estimar", guids, estimacion}
 import { route, readJson, HttpError, cleanText } from "../lib/http.js";
 import { key, getJson, setJson, hgetallJson, hmgetJson, hsetJson } from "../lib/store.js";
@@ -42,6 +43,17 @@ const evento = (me, accion, extra) => ({ at: new Date().toISOString(), por: me.n
 function push(rec, ev) {
   rec.hist = [...(rec.hist || []), ev].slice(-50);
   return rec;
+}
+
+// Un rechazo regresa la pieza a En ejecución para que el contratista atienda las indicaciones.
+// Conserva el % que tenía si ya estaba en ejecución.
+function rechazar(rec, me, comentario, propuesto) {
+  if (!comentario) throw new HttpError(400, "Escribe el motivo del rechazo para que el contratista sepa qué corregir.");
+  const pct = rec.estatus === "En ejecución" ? rec.pct || 0 : 0;
+  rec.rechazo = { motivo: comentario, por: me.nombre, at: new Date().toISOString(), estatus: propuesto };
+  Object.assign(rec, { estatus: "En ejecución", pct });
+  delete rec.aprobado; delete rec.pend;
+  push(rec, evento(me, "rechaza", { estatus: propuesto, comentario }));
 }
 
 export default route(["GET", "POST"], async (req, res) => {
@@ -113,15 +125,23 @@ export default route(["GET", "POST"], async (req, res) => {
         push(rec, evento(me, "aprueba", { estatus: rec.pend.estatus, pct: rec.pend.pct, comentario }));
       } else {
         if (!comentario) throw new HttpError(400, "Escribe el motivo del rechazo para que el contratista sepa qué corregir.");
-        // Un avance rechazado regresa la pieza a En ejecución: hay trabajo por corregir o terminar.
-        // Se conserva el % que tenía si ya estaba en ejecución.
-        const pct = rec.estatus === "En ejecución" ? rec.pct || 0 : 0;
-        rec.rechazo = { motivo: comentario, por: me.nombre, at: new Date().toISOString(), estatus: rec.pend.estatus };
-        Object.assign(rec, { estatus: "En ejecución", pct });
-        delete rec.aprobado;
-        push(rec, evento(me, "rechaza", { estatus: rec.pend.estatus, comentario }));
+        rechazar(rec, me, comentario, rec.pend.estatus);
       }
       delete rec.pend;
+    } else if (body.action === "revisar") {
+      // Desde Piezas, quien aprueba solo puede liberar una pieza o rechazarla (regresa a En ejecución).
+      if (!can(me, "aprobar")) throw new HttpError(403, "Tu rol no puede liberar ni rechazar piezas.");
+      const decision = String(body.decision || "");
+      if (!["Liberado", "Rechazado"].includes(decision)) throw new HttpError(400, "Elige Liberado o Rechazado.");
+      if (["Estimado", "Pagado"].includes(rec.estatus)) { omitidas.push(g); return; }
+      if (decision === "Liberado") {
+        if (rec.pend || rec.estatus === "Liberado") { omitidas.push(g); return; } // lo pendiente se resuelve en Por aprobar
+        Object.assign(rec, { estatus: "Liberado", pct: 0, aprobado: { por: me.nombre, at: new Date().toISOString() } });
+        delete rec.rechazo;
+        push(rec, evento(me, "libera", { estatus: "Liberado", comentario }));
+      } else {
+        rechazar(rec, me, comentario, rec.pend ? rec.pend.estatus : rec.estatus);
+      }
     } else if (body.action === "estimar") {
       if (!can(me, "estimar")) throw new HttpError(403, "Tu rol no puede asignar estimaciones.");
       const est = cleanText(body.estimacion, 30, "La estimación", { required: true }).toUpperCase();
