@@ -191,11 +191,13 @@
   function filtradas() {
     var c = $("f-contratista") ? $("f-contratista").value : "";
     var e = $("f-estatus").value;
+    var n = e === "Estimado" ? $("f-estnum").value : "";
     var q = $("f-buscar").value.trim().toLowerCase();
     return Object.keys(S.piezas).filter(function (g) {
       var p = S.piezas[g];
       if (c && p.contratista !== c) return false;
       if (e && estado(g) !== e) return false;
+      if (n && rec(g).estimacion !== n) return false;
       if (q && [p.marca, p.clave, p.zona, p.eje, p.concepto].join(" ").toLowerCase().indexOf(q) < 0) return false;
       return true;
     }).sort(function (a, b) {
@@ -208,7 +210,21 @@
     return el("span", { class: "pill" }, [el("i", { class: "dot", style: "background:" + (COLOR[est] || COLOR.Planeado) }), label || est]);
   }
 
+  // Con el estatus "Estimado" aparece el filtro por número de estimación.
+  function syncEstnumPiezas() {
+    var sel = $("f-estnum"), c = $("f-contratista") ? $("f-contratista").value : "";
+    sel.hidden = $("f-estatus").value !== "Estimado";
+    if (sel.hidden) return;
+    var prev = sel.value;
+    var nums = Array.from(new Set(Object.keys(S.piezas).filter(function (g) { return !c || S.piezas[g].contratista === c; })
+      .map(function (g) { return rec(g).estatus === "Estimado" ? rec(g).estimacion : ""; }).filter(Boolean)))
+      .sort(function (a, b) { return a.localeCompare(b, "es", { numeric: true }); });
+    fillSelect(sel, [["", "Todas las estimaciones"]].concat(nums.map(function (x) { return [x, "Estimación " + x]; })));
+    sel.value = nums.indexOf(prev) >= 0 ? prev : "";
+  }
+
   function renderLista() {
+    syncEstnumPiezas();
     var list = filtradas();
     var ul = $("lista");
     $("list-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pieza" : " piezas");
@@ -241,7 +257,7 @@
     updateSel();
   }
 
-  ["f-contratista", "f-estatus"].forEach(function (id) { if ($(id)) $(id).addEventListener("change", renderLista); });
+  ["f-contratista", "f-estatus", "f-estnum"].forEach(function (id) { if ($(id)) $(id).addEventListener("change", renderLista); });
   $("f-buscar").addEventListener("input", renderLista);
   $("sel-all").addEventListener("change", function () {
     var list = filtradas();
