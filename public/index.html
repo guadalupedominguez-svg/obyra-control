@@ -343,6 +343,10 @@
           <button type="button" class="btn btn-ghost btn-sm" id="lt-usar">Usar piezas seleccionadas</button>
           <button type="button" class="btn btn-ghost btn-sm" id="lt-quitar">Quitar piezas</button>
         </div>
+        <div class="row ln-warn" id="lt-rep-row" hidden>
+          <span id="lt-rep"></span>
+          <button type="button" class="btn btn-ghost btn-sm" id="lt-rep-quitar">Quitar las repetidas de esta tarjeta</button>
+        </div>
         <p class="hint">El orden de las marcas es el orden de ejecución: así se reparten en los días de la tarea en la simulación. Escríbelas en ese orden o selecciónalas en el modelo una por una (Selección múltiple) y usa «Usar piezas seleccionadas».</p>
         <div class="lt-secuencia" id="lt-secuencia"></div>
         <label class="check"><input type="checkbox" id="lt-auto" checked> Acomodar los días automáticamente (lunes a sábado, desde la fecha de inicio)</label>
@@ -351,6 +355,25 @@
           <button type="button" class="btn btn-danger btn-sm" id="lt-borrar">Borrar</button>
           <button type="button" class="btn btn-ghost btn-sm" id="lt-cancelar">Cancelar</button>
           <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Lean: resolver piezas repetidas entre tarjetas -->
+    <dialog id="ln-rep" class="dialog" aria-labelledby="ln-rep-t">
+      <form class="dialog-body" id="ln-rep-form" novalidate>
+        <h3 id="ln-rep-t">Piezas repetidas</h3>
+        <p class="hint">Cada pieza debe ejecutarse en una sola tarea. Elige en cuál se queda; se quitará de las demás. Si la pieza venía por su marca, se quita esa marca de las otras tarjetas.</p>
+        <div class="row">
+          <span class="muted">Dejar todas en:</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="lr2-primera">La que empieza primero</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="lr2-ultima">La que empieza al último</button>
+        </div>
+        <div class="ln-rep-lista" id="ln-rep-lista"></div>
+        <p class="hint ln-warn" id="ln-rep-aviso"></p>
+        <div class="row end">
+          <button type="button" class="btn btn-ghost btn-sm" id="lr2-cancelar">Cancelar</button>
+          <button type="submit" class="btn btn-primary btn-sm">Aplicar</button>
         </div>
       </form>
     </dialog>

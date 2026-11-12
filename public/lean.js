@@ -506,6 +506,26 @@
     $("lt-borrar").addEventListener("click", function () {
       accion({ action: "tarjeta-borrar", hitoId: L.hitoId, id: L.tar.id }, "Tarjeta borrada.").then(function () { $("ln-tar").close(); });
     });
+    // Piezas repetidas
+    $("lr2-cancelar").addEventListener("click", function () { $("ln-rep").close(); });
+    var elegir = function (ultima) { O.qsa("#ln-rep-lista select").forEach(function (s) { s.selectedIndex = ultima ? s.options.length - 1 : 0; }); avisoRepetidas(); };
+    $("lr2-primera").addEventListener("click", function () { elegir(false); });
+    $("lr2-ultima").addEventListener("click", function () { elegir(true); });
+    $("ln-rep-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var p = planRepetidas();
+      if (!p.quitar.length) { toast("No hay nada que quitar con esta selección.", true); return; }
+      var n = p.quitar.reduce(function (s, q) { return s + q.guids.length; }, 0);
+      accion({ action: "quitar-piezas", hitoId: L.hitoId, quitar: p.quitar }, n + (n === 1 ? " asignación repetida quitada." : " asignaciones repetidas quitadas.")).then(function () { $("ln-rep").close(); O.paintModel(false); });
+    });
+    $("lt-rep-quitar").addEventListener("click", function () {
+      var rep = repetidasTarjeta(); if (!rep.length) return;
+      var mFuera = rep.map(function (g) { return String((S.piezas[g] && S.piezas[g].marca) || "").toUpperCase(); }).filter(Boolean);
+      $("lt-marcas").value = marcasEscritas().filter(function (m) { return mFuera.indexOf(m) < 0; }).join(", ");
+      L.tarGuids = L.tarGuids.filter(function (g) { return rep.indexOf(g) < 0; });
+      piezasTarjeta();
+      toast("Se quitaron " + rep.length + (rep.length === 1 ? " pieza repetida" : " piezas repetidas") + ". Guarda la tarjeta para aplicar.");
+    });
     // Hito
     $("lh-cancelar").addEventListener("click", function () { $("ln-hito").close(); });
     $("ln-hito-form").addEventListener("submit", function (ev) {
@@ -618,7 +638,7 @@
     var cuenta = {};
     tars.forEach(function (t) { (t.guids || []).forEach(function (g) { (cuenta[g] = cuenta[g] || []).push(t); }); });
     var rep = Object.keys(cuenta).filter(function (g) { return cuenta[g].length > 1; });
-    if (rep.length) issues.push({ tipo: "Piezas repetidas", grave: false, tars: Array.from(new Set([].concat.apply([], rep.map(function (g) { return cuenta[g].map(function (t) { return t.id; }); })))),
+    if (rep.length) issues.push({ tipo: "Piezas repetidas", grave: false, repetidas: rep, guids: rep, tars: Array.from(new Set([].concat.apply([], rep.map(function (g) { return cuenta[g].map(function (t) { return t.id; }); })))),
       texto: rep.length + (rep.length === 1 ? " pieza está" : " piezas están") + " en más de una tarjeta: " + rep.slice(0, 6).map(etiquetaPieza).join(", ") + (rep.length > 6 ? "…" : "") });
     // Piezas del alcance sin tarea.
     if ((hito.alcance || []).length) {
@@ -679,9 +699,12 @@
         return el("li", null, [
           el("span", { class: "tag" + (x.grave ? "" : " warn"), text: x.tipo }),
           el("span", { text: x.texto }),
-          x.dia || (x.guids && x.guids.length) ? el("button", { class: "btn btn-ghost btn-sm", type: "button", text: x.dia ? "Ver ese día" : "Ver en el modelo", onclick: function () {
-            if (x.dia) { simPausa(); simIr(x.dia); } else { O.focusPieces(x.guids); }
-          } }) : el("span"),
+          el("span", { class: "row" }, [
+            x.dia || (x.guids && x.guids.length) ? el("button", { class: "btn btn-ghost btn-sm", type: "button", text: x.dia ? "Ver ese día" : "Ver en el modelo", onclick: function () {
+              if (x.dia) { simPausa(); simIr(x.dia); } else { O.focusPieces(x.guids); }
+            } }) : null,
+            x.repetidas ? el("button", { class: "btn btn-primary btn-sm", type: "button", text: "Resolver", onclick: function () { abrirRepetidas(x.repetidas); } }) : null,
+          ]),
         ]);
       }) : [el("li", { style: "grid-template-columns:1fr" }, [el("span", { class: "ln-ok", text: "No se detectaron embudos con las tarjetas actuales." })])]),
     ]);
@@ -868,6 +891,10 @@
     var n = todas.size;
     $("lt-piezas").textContent = (n ? "◆ " + n + (n === 1 ? " pieza del modelo ligada" : " piezas del modelo ligadas") : "Sin piezas del modelo") + (sin.length ? " · no están en el modelo: " + sin.join(", ") : "");
     $("lt-quitar").hidden = !n && !ms.length;
+    var rep = repetidasTarjeta(Array.from(todas));
+    $("lt-rep-row").hidden = !rep.length;
+    $("lt-rep").textContent = rep.length ? "⚠ " + rep.length + (rep.length === 1 ? " pieza también está" : " piezas también están") + " en otra tarjeta: " + rep.slice(0, 6).map(etiquetaPieza).join(", ") + (rep.length > 6 ? "…" : "") : "";
+    $("lt-rep-quitar").hidden = !!(L.tar && !puedeMover(L.tar));
     $("lt-usar").textContent = "Usar piezas seleccionadas" + (S.sel && S.sel.size ? " (" + S.sel.size + ")" : "");
     // Vista previa: cómo se reparten las piezas en los días de la tarea (en orden).
     var orden = []; ms.forEach(function (m) { guidsDeMarcas([m]).forEach(function (g) { if (orden.indexOf(g) < 0) orden.push(g); }); });
@@ -878,6 +905,13 @@
       var gs = rep[f] || [];
       return el("div", null, [el("b", { text: "Día " + (k + 1) + " · " + f.split("-").reverse().slice(0, 2).join("/") + ": " }), gs.length ? gs.map(etiquetaPieza).join(", ") : "—"]);
     })) : []);
+  }
+  // Piezas de la tarjeta abierta que también están en otra tarjeta del hito.
+  function repetidasTarjeta(gs) {
+    var hito = hitoActual(); if (!hito) return [];
+    if (!gs) { var porMarca = guidsDeMarcas(marcasEscritas()); gs = L.tarGuids.concat(porMarca.filter(function (g) { return L.tarGuids.indexOf(g) < 0; })); }
+    var otras = new Set(); (hito.tarjetas || []).forEach(function (t) { if (!L.tar || t.id !== L.tar.id) (t.guids || []).forEach(function (g) { otras.add(g); }); });
+    return gs.filter(function (g) { return otras.has(g); });
   }
   function etiquetaPieza(g) { return (S.piezas[g] && S.piezas[g].marca) || "pieza " + g.slice(-4); }
   function textoDias(ds, manual) {
@@ -925,6 +959,43 @@
     $("lt-borrar").hidden = !t || !ed;
     $("ln-tar-form").querySelector("button[type=submit]").hidden = !ed;
     $("ln-tar").showModal();
+  }
+  // ---------- Desasignar piezas repetidas ----------
+  function hitoActual() { return L.hitos.find(function (h) { return h.id === L.hitoId; }) || null; }
+  function inicioDe(t) { return diasDe(t)[0] || "9999"; }
+  function nombreTar(t) { var d = diasDe(t)[0]; return t.contratista + " · " + t.entregable + (d ? " (" + d.split("-").reverse().slice(0, 2).join("/") + ")" : ""); }
+  function tarjetasDe(hito, g) { return (hito.tarjetas || []).filter(function (t) { return (t.guids || []).indexOf(g) >= 0; }); }
+  function abrirRepetidas(rep) {
+    var hito = hitoActual(); if (!hito) return;
+    L.rep = rep.filter(function (g) { return tarjetasDe(hito, g).length > 1; });
+    var lista = $("ln-rep-lista");
+    lista.replaceChildren.apply(lista, L.rep.map(function (g) {
+      var ts = tarjetasDe(hito, g).sort(function (a, b) { return inicioDe(a) < inicioDe(b) ? -1 : 1; });
+      var s = el("select", { "data-guid": g, "aria-label": "Tarea que conserva " + etiquetaPieza(g) }, ts.map(function (t) {
+        return el("option", { value: t.id, text: "Se queda en: " + nombreTar(t) + (puedeMover(t) ? "" : " · no editable") });
+      }));
+      s.addEventListener("change", avisoRepetidas);
+      return el("div", { class: "fila-rep" }, [el("b", { text: etiquetaPieza(g) }), s]);
+    }));
+    avisoRepetidas();
+    $("ln-rep").showModal();
+  }
+  // Lo que se quitará: por tarjeta, las piezas repetidas que no se quedan en ella.
+  function planRepetidas() {
+    var hito = hitoActual(), por = {}, bloqueadas = [];
+    O.qsa("#ln-rep-lista select").forEach(function (s) {
+      var g = s.getAttribute("data-guid");
+      tarjetasDe(hito, g).forEach(function (t) {
+        if (t.id === s.value) return;
+        if (!puedeMover(t)) { if (bloqueadas.indexOf(t) < 0) bloqueadas.push(t); return; }
+        (por[t.id] = por[t.id] || []).push(g);
+      });
+    });
+    return { quitar: Object.keys(por).map(function (id) { return { tarId: id, guids: por[id] }; }), bloqueadas: bloqueadas };
+  }
+  function avisoRepetidas() {
+    var p = planRepetidas();
+    $("ln-rep-aviso").textContent = p.bloqueadas.length ? "No puedes cambiar " + p.bloqueadas.map(nombreTar).join(", ") + (p.bloqueadas.length === 1 ? " (ya pasó al look-ahead o es de otro contratista); esa tarjeta conservará sus piezas." : " (ya pasaron al look-ahead o son de otro contratista); conservarán sus piezas.") : "";
   }
   function abrirHito(h) {
     $("ln-hito").setAttribute("data-id", h ? h.id : "");

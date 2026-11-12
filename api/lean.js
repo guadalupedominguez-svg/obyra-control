@@ -18,6 +18,8 @@
 //                     marcas: marcas de pieza (parámetro Marca); se ligan solas a las piezas del catálogo con esa marca
 //                     contratista: solo sus tarjetas; PM / admin: todas
 //     tarjeta-borrar  {hitoId, id}
+//     quitar-piezas   {hitoId, quitar:[{tarId, guids[]}]}               desasigna piezas (repetidas) de tarjetas;
+//                     si la pieza venía por marca se quita esa marca     PM / admin; contratista: solo sus tarjetas
 //     pasar           {hitoId}                                          PM / admin: tarjetas → actividades del look-ahead
 import crypto from "node:crypto";
 import { route, readJson, HttpError, cleanText } from "../lib/http.js";
@@ -308,6 +310,35 @@ export default route(["GET", "POST"], async (req, res) => {
         out.tarjeta = tarjeta;
       }
       await hsetJson(HITOS(), { [hito.id]: hito });
+      out.hito = hito;
+      break;
+    }
+
+    case "quitar-piezas": {
+      const hito = await hgetJson(HITOS(), String(b.hitoId || ""));
+      if (!hito) throw new HttpError(404, "El hito ya no existe.");
+      const pedidos = Array.isArray(b.quitar) ? b.quitar.slice(0, 300) : [];
+      if (!pedidos.length) throw new HttpError(400, "No hay piezas que quitar.");
+      const cat = (await getJson(key("piezas", "catalogo"))) || { piezas: {} };
+      const marcaDe = (g) => String((cat.piezas[g] && cat.piezas[g].marca) || "").toUpperCase();
+      let cambiadas = 0;
+      for (const q of pedidos) {
+        const t = (hito.tarjetas || []).find((x) => x.id === q.tarId);
+        if (!t) continue;
+        if (!can(me, "planear") && !(me.rol === "contratista" && t.contratista === me.contratista)) throw new HttpError(403, "Solo puedes cambiar tus tarjetas.");
+        if (t.actId) throw new HttpError(409, `«${t.entregable}» ya pasó al look-ahead; quita las piezas desde la actividad.`);
+        const fuera = new Set((Array.isArray(q.guids) ? q.guids : []).map(String));
+        if (!fuera.size) continue;
+        // Las piezas que venían por marca se quitan quitando la marca; las sueltas, quitando la pieza.
+        const marcasFuera = new Set([...fuera].map(marcaDe).filter(Boolean));
+        const marcas = (t.marcas || []).filter((m) => !marcasFuera.has(String(m).toUpperCase()));
+        const porMarca = new Set(Object.keys(cat.piezas || {}).filter((g) => (t.marcas || []).map((m) => String(m).toUpperCase()).includes(marcaDe(g))));
+        const sueltas = (t.guids || []).filter((g) => !porMarca.has(g) && !fuera.has(g));
+        Object.assign(t, await ligarPiezas(marcas, sueltas), { actualizada: firma(me) });
+        cambiadas++;
+      }
+      await hsetJson(HITOS(), { [hito.id]: hito });
+      out.cambiadas = cambiadas;
       out.hito = hito;
       break;
     }

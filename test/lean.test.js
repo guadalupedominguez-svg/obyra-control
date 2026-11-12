@@ -155,3 +155,21 @@ test("sesión pull: el contratista mueve solo sus tarjetas y el PM las pasa al l
   assert.equal(nueva.guids.length, 3); // las piezas de la tarjeta pasan a la actividad
   assert.equal((await copresa("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { id: tid, entregable: "x", inicio: "2026-11-16", duracion: 1 } })).status, 409);
 });
+
+test("desasignar piezas repetidas entre tarjetas", async () => {
+  await admin("piezas", { action: "catalogo", version: "2", piezas: [
+    { guid: "0000000000000000000011", marca: "MP-11", contratista: "COPRESA" },
+    { guid: "0000000000000000000012", marca: "MP-12", contratista: "COPRESA" },
+  ] });
+  let r = await pm("lean", { action: "hito-guardar", hito: { nombre: "Azotea", fecha: "2026-12-04" } });
+  const hitoId = r.json.hito.id;
+  const a = (await pm("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { contratista: "COPRESA", entregable: "A", inicio: "2026-11-16", duracion: 2, marcas: "MP-11, MP-12" } })).json.tarjeta;
+  const b = (await pm("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { contratista: "AD-001", entregable: "B", inicio: "2026-11-18", duracion: 2, marcas: "MP-12", guids: ["0000000000000000000099"] } })).json.tarjeta;
+  assert.equal((await copresa("lean", { action: "quitar-piezas", hitoId, quitar: [{ tarId: b.id, guids: ["0000000000000000000012"] }] })).status, 403); // tarjeta ajena
+  r = await pm("lean", { action: "quitar-piezas", hitoId, quitar: [{ tarId: b.id, guids: ["0000000000000000000012", "0000000000000000000099"] }] });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  const nb = r.json.hito.tarjetas.find((t) => t.id === b.id), na = r.json.hito.tarjetas.find((t) => t.id === a.id);
+  assert.deepEqual(nb.marcas, []); // MP-12 venía por marca: se quitó la marca
+  assert.deepEqual(nb.guids, []); // y la suelta también
+  assert.equal(na.guids.length, 2); // la otra tarjeta conserva sus piezas
+});
