@@ -12,7 +12,8 @@
 //     validar         {semana, actId, ok, comentario?}                  superintendente (paso 2: valida o regresa)
 //     hito-guardar    {hito:{id?, nombre, fecha}}                       PM / admin
 //     hito-borrar     {id}                                              PM / admin
-//     tarjeta-guardar {hitoId, tarjeta:{id?, contratista, entregable, duracion, semana, entregaA, necesita, ubicacion, partida}}
+//     tarjeta-guardar {hitoId, tarjeta:{id?, contratista, entregable, inicio, duracion, dias?[], entregaA, necesita, ubicacion, partida}}
+//                     dias: fechas hábiles (lunes a sábado) acomodadas a mano; sin dias se acomodan solas desde inicio + duracion
 //                     contratista: solo sus tarjetas; PM / admin: todas
 //     tarjeta-borrar  {hitoId, id}
 //     pasar           {hitoId}                                          PM / admin: tarjetas → actividades del look-ahead
@@ -39,6 +40,31 @@ function semana(v, name) {
   if (!SEMANA.test(s)) throw new HttpError(400, `${name}: semana no válida (formato 2026-W46).`);
   return s;
 }
+// Días hábiles de obra: lunes a sábado.
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
+const aFecha = (s) => new Date(s + "T12:00:00Z");
+const deFecha = (d) => d.toISOString().slice(0, 10);
+const habil = (s) => aFecha(s).getUTCDay() !== 0;
+export function diasHabiles(inicio, n) {
+  const out = [], d = aFecha(inicio);
+  while (out.length < n && out.length < 400) { if (d.getUTCDay() !== 0) out.push(deFecha(d)); d.setUTCDate(d.getUTCDate() + 1); }
+  return out;
+}
+export function semanaDe(fecha) {
+  const t = aFecha(fecha), dia = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - dia);
+  const n = Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7);
+  return t.getUTCFullYear() + "-W" + String(n).padStart(2, "0");
+}
+// Tarjetas anteriores sin días: se acomodan desde el lunes de su semana.
+export function diasDeTarjeta(t) {
+  if (Array.isArray(t.dias) && t.dias.length) return t.dias;
+  if (!t.semana) return [];
+  const m = /^(\d{4})-W(\d{2})$/.exec(t.semana), d = new Date(Date.UTC(+m[1], 0, 4));
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() || 7) - 1) + (+m[2] - 1) * 7);
+  return diasHabiles(deFecha(d), t.duracion || 1);
+}
+
 function lista(v, max, maxLen) {
   return (Array.isArray(v) ? v : []).map((x) => String(x).replace(/[\u0000-\u001f]/g, " ").trim().slice(0, maxLen)).filter(Boolean).slice(0, max);
 }
@@ -225,13 +251,26 @@ export default route(["GET", "POST"], async (req, res) => {
       } else {
         const contratista = me.rol === "contratista" ? me.contratista : upper(t.contratista, 60, "El contratista");
         if (!contratista) throw new HttpError(400, "Elige el contratista.");
-        const dur = Number(t.duracion);
+        // Días: a mano (lista de fechas) o automáticos desde el inicio y la duración.
+        let dias;
+        if (Array.isArray(t.dias) && t.dias.length) {
+          dias = [...new Set(t.dias.map(String))].filter((f) => FECHA.test(f) && !isNaN(aFecha(f)));
+          if (dias.some((f) => !habil(f))) throw new HttpError(400, "Los domingos no son días de trabajo; mueve ese día.");
+          dias.sort();
+        } else {
+          const dur = Math.round(Number(t.duracion));
+          if (!Number.isFinite(dur) || dur < 1 || dur > 300) throw new HttpError(400, "La duración debe ser de 1 a 300 días.");
+          let inicio = String(t.inicio || "");
+          if (!FECHA.test(inicio)) throw new HttpError(400, "Pon la fecha de inicio.");
+          dias = diasHabiles(inicio, dur);
+        }
+        if (!dias.length || dias.length > 300) throw new HttpError(400, "La tarea debe tener de 1 a 300 días.");
         const tarjeta = {
           ...(prev || { id: id(), creada: firma(me) }),
           contratista,
           entregable: cleanText(t.entregable, 120, "El entregable", { required: true }),
-          duracion: Number.isFinite(dur) && dur > 0 ? Math.min(Math.round(dur), 365) : null,
-          semana: semana(t.semana, "Semana"),
+          dias, inicio: dias[0], fin: dias[dias.length - 1], duracion: dias.length,
+          semana: semanaDe(dias[dias.length - 1]), // semana de entrega
           entregaA: cleanText(t.entregaA, 60, "Entrega a"),
           necesita: cleanText(t.necesita, 300, "Lo que necesita"),
           ubicacion: cleanText(t.ubicacion, 60, "La ubicación"),
@@ -257,7 +296,7 @@ export default route(["GET", "POST"], async (req, res) => {
           id: id(), restricciones: [], creada: firma(me), actualizada: firma(me),
           partida: t.partida, contratista: t.contratista, ubicacion: t.ubicacion || hito.nombre, eje: "",
           descripcion: t.entregable + (t.entregaA ? " · entrega a " + t.entregaA : ""),
-          semanaIni: t.semana, semanaFin: t.semana, guids: [], origen: { hito: hito.id, tarjeta: t.id },
+          semanaIni: semanaDe(diasDeTarjeta(t)[0] || t.inicio), semanaFin: t.semana, guids: [], origen: { hito: hito.id, tarjeta: t.id },
         };
         if (t.necesita) act.restricciones.push({ id: id(), texto: t.necesita, tipo: "Otro", responsable: t.contratista, fecha: "", estado: "abierta", creada: firma(me) });
         nuevas[act.id] = act;

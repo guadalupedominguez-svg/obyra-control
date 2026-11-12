@@ -466,8 +466,10 @@
     $("lt-cancelar").addEventListener("click", function () { $("ln-tar").close(); });
     $("ln-tar-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
-      var t = { id: L.tar && L.tar.id, contratista: $("lt-contr").value, entregable: $("lt-entregable").value, duracion: $("lt-dur").value, semana: $("lt-semana").value,
+      var auto = $("lt-auto").checked;
+      var t = { id: L.tar && L.tar.id, contratista: $("lt-contr").value, entregable: $("lt-entregable").value,
         entregaA: $("lt-entrega").value, necesita: $("lt-necesita").value, ubicacion: $("lt-ubic").value, partida: $("lt-partida").value };
+      if (auto) { t.inicio = $("lt-inicio").value; t.duracion = $("lt-dur").value; } else { t.dias = diasDe(L.tar); }
       accion({ action: "tarjeta-guardar", hitoId: L.hitoId, tarjeta: t }, "Tarjeta guardada.").then(function () { $("ln-tar").close(); });
     });
     $("lt-borrar").addEventListener("click", function () {
@@ -502,7 +504,33 @@
     $("ln-cfg").showModal();
   }
 
-  // ---------- Sesión Pull ----------
+  // ---------- Sesión Pull (semanas de 6 días: lunes a sábado) ----------
+  var DIA = ["D", "L", "M", "M", "J", "V", "S"];
+  var fISO = function (d) { return d.toISOString().slice(0, 10); };
+  var aF = function (s) { return new Date(s + "T12:00:00Z"); };
+  function diasHabiles(inicio, n) {
+    var out = [], d = aF(inicio);
+    while (out.length < n && out.length < 400) { if (d.getUTCDay() !== 0) out.push(fISO(d)); d.setUTCDate(d.getUTCDate() + 1); }
+    return out;
+  }
+  function moverHabiles(f, n) { // n días hábiles hacia adelante (o atrás)
+    var d = aF(f), paso = n < 0 ? -1 : 1, k = Math.abs(n);
+    while (k > 0) { d.setUTCDate(d.getUTCDate() + paso); if (d.getUTCDay() !== 0) k--; }
+    return fISO(d);
+  }
+  function entreHabiles(a, b) { // días hábiles de a hasta b (con signo)
+    if (a === b) return 0;
+    var paso = a < b ? 1 : -1, n = 0, d = aF(a);
+    while (fISO(d) !== b && Math.abs(n) < 2000) { d.setUTCDate(d.getUTCDate() + paso); if (d.getUTCDay() !== 0) n += paso; }
+    return n;
+  }
+  function diasDe(t) {
+    if (t.dias && t.dias.length) return t.dias;
+    return t.semana ? diasHabiles(fISO(lunes(t.semana)), t.duracion || 1) : [];
+  }
+  function diasSemana(sem) { var l = lunes(sem); return [0, 1, 2, 3, 4, 5].map(function (k) { var d = new Date(l); d.setUTCDate(d.getUTCDate() + k); return fISO(d); }); }
+  var hoyF = hoyISO;
+
   function renderPull() {
     var hito = L.hitos.find(function (h) { return h.id === L.hitoId; }) || null;
     var sel = el("select", { "aria-label": "Hito" }, L.hitos.length ? L.hitos.map(function (h) { return el("option", { value: h.id, text: h.nombre + " · " + h.fecha.split("-").reverse().join("/") }); }) : [el("option", { value: "", text: "Sin hitos" })]);
@@ -523,64 +551,110 @@
       $("ln-pull").replaceChildren(el("div", { class: "ln-ctrl" }, ctrl), el("div", { class: "ln-vacio", text: P("planear") ? "Crea un hito (por ejemplo «Fachadas terminadas») para empezar la sesión pull." : "El PM aún no crea hitos para la sesión pull." }));
       return;
     }
+    // Semanas: de la actual a la del hito, más las que ocupen las tarjetas.
     var fin = isoSemana(new Date(hito.fecha + "T12:00:00"));
     var semanas = [], s = HOY;
     for (var i = 0; i < 16 && s <= fin; i++) { semanas.push(s); s = sumar(s, 1); }
-    (hito.tarjetas || []).forEach(function (t) { if (semanas.indexOf(t.semana) < 0) semanas.push(t.semana); });
+    (hito.tarjetas || []).forEach(function (t) { diasDe(t).forEach(function (f) { var w = isoSemana(aF(f)); if (semanas.indexOf(w) < 0) semanas.push(w); }); });
     semanas.sort();
-    var cols = "grid-template-columns: 130px repeat(" + semanas.length + ", minmax(110px, 1fr)) 100px";
-    var head = el("div", { class: "fila", style: cols }, [el("div", { text: "Contratista" })].concat(semanas.map(function (w) { return el("div", null, [corta(w), el("span", { style: "font-weight:400", text: rango(w) })]); }))
-      .concat([el("div", { class: "hito", text: "Hito · " + hito.fecha.split("-").reverse().slice(0, 2).join("/") })]));
-    var filas = contratistas().map(function (c) {
-      return el("div", { class: "fila", style: cols }, [el("div", null, [el("span", { style: "display:inline-flex;gap:8px;align-items:center" }, [el("i", { class: "dot", style: "border-radius:3px;background:" + colorDe(c) }), c])])]
-        .concat(semanas.map(function (w) { return celdaPull(hito, c, w); })).concat([el("div", { class: "hito" })]));
+    var dias = [];
+    semanas.forEach(function (w) { dias = dias.concat(diasSemana(w)); });
+    var cols = "grid-template-columns: 130px repeat(" + dias.length + ", minmax(84px, 1fr)) 84px";
+    var hoy = hoyF();
+    var cabDias = dias.map(function (f) {
+      var d = aF(f);
+      return el("div", { class: "dia" + (d.getUTCDay() === 6 ? " sab" : "") + (f === hoy ? " hoy" : "") + (f === hito.fecha ? " dhito" : "") }, [DIA[d.getUTCDay()] + " " + d.getUTCDate()]);
     });
-    $("ln-pull").replaceChildren(el("div", { class: "ln-ctrl" }, ctrl), el("div", { class: "ln-pull" }, [head].concat(filas)),
-      el("p", { class: "muted", style: "margin:0;font-size:12px", text: "Arrastra una tarjeta a la semana en que se entrega. Doble clic en una celda vacía para crear una tarjeta ahí. Las tarjetas ya pasadas al look-ahead quedan atenuadas." }));
+    // La fila de días va en la misma rejilla que la de semanas (debajo).
+    var cab = el("div", { class: "fila cab", style: cols }, [el("div", { style: "grid-row: span 2", text: "Contratista" })]
+      .concat(semanas.map(function (w) { return el("div", { class: "sem", style: "grid-column: span 6" }, [el("b", { text: corta(w) }), " ", el("span", { text: rango(w) })]); }))
+      .concat([el("div", { class: "hito", style: "grid-row: span 2", text: "Hito · " + hito.fecha.split("-").reverse().slice(0, 2).join("/") })])
+      .concat(cabDias));
+    var filas = contratistas().map(function (c) {
+      return el("div", { class: "fila", style: cols }, [el("div", { class: "contr" }, [el("span", { style: "display:inline-flex;gap:8px;align-items:center" }, [el("i", { class: "dot", style: "border-radius:3px;background:" + colorDe(c) }), c])])]
+        .concat(dias.map(function (f) { return celdaPull(hito, c, f); })).concat([el("div", { class: "hito" })]));
+    });
+    $("ln-pull").replaceChildren(el("div", { class: "ln-ctrl" }, ctrl), el("div", { class: "ln-pull" }, [cab].concat(filas)),
+      el("p", { class: "muted", style: "margin:0;font-size:12px", text: "Cada post-it es un día de la tarea. Arrastra un post-it para mover ese día; con Shift + arrastrar se mueve la tarea completa. Doble clic en un día vacío crea una tarjeta que empieza ahí. Las tarjetas ya pasadas al look-ahead quedan atenuadas." }));
   }
   var TINTE = ["#BFDBFE", "#DDD6FE", "#FBCFE8", "#FDE68A", "#BBF7D0", "#A5F3FC", "#FECACA", "#E2E8F0"];
   function tinte(c) { var i = contratistas().indexOf(c); return i < 0 ? "#E2E8F0" : TINTE[i % TINTE.length]; }
   function puedeMover(t) { return !t.actId && (P("planear") || (esContratista() && t.contratista === S.me.contratista)); }
-  function celdaPull(hito, c, w) {
-    var cel = el("div", { "data-c": c, "data-w": w }, (hito.tarjetas || []).filter(function (t) { return t.contratista === c && t.semana === w; }).map(function (t) {
-      var b = el("button", { type: "button", class: "ln-tarjeta" + (t.actId ? " pasada" : ""), style: "background:" + tinte(c), draggable: puedeMover(t) ? "true" : null, title: t.necesita ? "Necesita: " + t.necesita : "" }, [
-        el("b", { text: t.entregable }), el("span", { text: t.duracion ? t.duracion + " días" : "" }), el("small", { text: t.entregaA ? "Entrega a " + t.entregaA : (t.actId ? "En el look-ahead" : "") }),
+  function celdaPull(hito, c, f) {
+    var dow = aF(f).getUTCDay();
+    var postits = [];
+    (hito.tarjetas || []).forEach(function (t) {
+      if (t.contratista !== c) return;
+      var ds = diasDe(t), k = ds.indexOf(f);
+      if (k < 0) return;
+      var b = el("button", { type: "button", class: "ln-postit" + (t.actId ? " pasada" : "") + (k === ds.length - 1 ? " ultimo" : ""), style: "background:" + tinte(c), draggable: puedeMover(t) ? "true" : null,
+        title: t.entregable + " · día " + (k + 1) + " de " + ds.length + (t.entregaA ? " · entrega a " + t.entregaA : "") + (t.necesita ? " · necesita: " + t.necesita : "") }, [
+        el("b", { text: t.entregable }), el("small", { text: (k + 1) + "/" + ds.length + (k === ds.length - 1 && t.entregaA ? " → " + t.entregaA : "") }),
       ]);
       b.addEventListener("click", function () { abrirTarjeta(t, null, null); });
-      b.addEventListener("dragstart", function (ev) { ev.dataTransfer.setData("text/plain", t.id); ev.dataTransfer.effectAllowed = "move"; });
-      return b;
-    }));
+      b.addEventListener("dragstart", function (ev) { ev.dataTransfer.setData("text/plain", t.id + "|" + f); ev.dataTransfer.effectAllowed = "move"; });
+      postits.push(b);
+    });
+    var cel = el("div", { class: "dia" + (dow === 6 ? " sab" : "") + (f === hito.fecha ? " dhito" : ""), "data-c": c, "data-f": f }, postits);
     var permitido = P("planear") || (esContratista() && c === S.me.contratista);
     if (permitido) {
       cel.addEventListener("dragover", function (ev) { ev.preventDefault(); cel.classList.add("soltar"); });
       cel.addEventListener("dragleave", function () { cel.classList.remove("soltar"); });
       cel.addEventListener("drop", function (ev) {
         ev.preventDefault(); cel.classList.remove("soltar");
-        var t = (hito.tarjetas || []).find(function (x) { return x.id === ev.dataTransfer.getData("text/plain"); });
-        if (!t || !puedeMover(t) || (t.semana === w && t.contratista === c)) return;
-        var nt = Object.assign({}, t, { semana: w, contratista: c });
+        var dato = ev.dataTransfer.getData("text/plain").split("|");
+        var t = (hito.tarjetas || []).find(function (x) { return x.id === dato[0]; });
+        if (!t || !puedeMover(t)) return;
+        var ds = diasDe(t).slice(), desde = dato[1];
+        var nuevos;
+        if (ev.shiftKey) {
+          // Mueve la tarea completa los mismos días hábiles.
+          var delta = entreHabiles(desde, f);
+          nuevos = ds.map(function (x) { return moverHabiles(x, delta); });
+        } else {
+          if (ds.indexOf(f) >= 0 && f !== desde) { toast("Esa tarea ya tiene ese día."); return; }
+          nuevos = ds.map(function (x) { return x === desde ? f : x; });
+        }
+        var cambioC = P("planear") && c !== t.contratista;
+        if (nuevos.join() === ds.join() && !cambioC) return;
+        var nt = Object.assign({}, t, { dias: nuevos.sort(), contratista: cambioC ? c : t.contratista });
         accion({ action: "tarjeta-guardar", hitoId: hito.id, tarjeta: nt });
       });
-      cel.addEventListener("dblclick", function (ev) { if (ev.target === cel) abrirTarjeta(null, c, w); });
+      cel.addEventListener("dblclick", function (ev) { if (ev.target === cel) abrirTarjeta(null, c, f); });
     }
     return cel;
   }
-  function abrirTarjeta(t, c, w) {
+  function textoDias(ds, manual) {
+    if (!ds.length) return "";
+    var fmt = function (f) { return f.split("-").reverse().slice(0, 2).join("/"); };
+    return "Días: " + fmt(ds[0]) + " – " + fmt(ds[ds.length - 1]) + " · " + ds.length + (ds.length === 1 ? " día hábil" : " días hábiles") + (manual ? " (ajustados a mano)" : "");
+  }
+  function actualizarDiasTarjeta() {
+    var auto = $("lt-auto").checked;
+    var ds = auto && $("lt-inicio").value && +$("lt-dur").value > 0 ? diasHabiles($("lt-inicio").value, +$("lt-dur").value) : (L.tar ? diasDe(L.tar) : []);
+    $("lt-dias").textContent = textoDias(ds, !auto);
+  }
+  function abrirTarjeta(t, c, f) {
     var hito = L.hitos.find(function (h) { return h.id === L.hitoId; });
     if (!hito) return;
     L.tar = t;
     llenarListas();
-    var fin = isoSemana(new Date(hito.fecha + "T12:00:00"));
-    var n = 1, s = HOY; while (s < fin && n < 30) { s = sumar(s, 1); n++; }
-    opcionesSemanas($("lt-semana"), HOY, n, t ? t.semana : (w || fin));
+    var ds = t ? diasDe(t) : [];
+    var manual = !!(t && ds.length && diasHabiles(ds[0], ds.length).join() !== ds.join());
     $("ln-tar-t").textContent = t ? "Tarjeta · " + t.contratista : "Nueva tarjeta";
-    $("lt-entregable").value = t ? t.entregable : ""; $("lt-dur").value = t && t.duracion ? t.duracion : "";
+    $("lt-entregable").value = t ? t.entregable : "";
+    $("lt-inicio").value = t ? ds[0] || "" : (f || hoyF());
+    $("lt-dur").value = t ? ds.length || t.duracion || "" : "";
+    $("lt-auto").checked = !manual;
     $("lt-contr").value = t ? t.contratista : (c || (esContratista() ? S.me.contratista : ""));
-    $("lt-entrega").value = t ? t.entregaA : ""; $("lt-necesita").value = t ? t.necesita : "";
-    $("lt-ubic").value = t ? t.ubicacion : ""; $("lt-partida").value = t ? t.partida : "";
+    $("lt-entrega").value = (t && t.entregaA) || ""; $("lt-necesita").value = (t && t.necesita) || "";
+    $("lt-ubic").value = (t && t.ubicacion) || ""; $("lt-partida").value = (t && t.partida) || "";
     var ed = !t || puedeMover(t);
     O.qsa("#ln-tar-form input, #ln-tar-form select").forEach(function (i) { i.disabled = !ed; });
     $("lt-contr").disabled = !ed || esContratista();
+    var syncAuto = function () { var a = $("lt-auto").checked; $("lt-inicio").disabled = !ed || !a; $("lt-dur").disabled = !ed || !a; actualizarDiasTarjeta(); };
+    $("lt-auto").onchange = syncAuto; $("lt-inicio").oninput = actualizarDiasTarjeta; $("lt-dur").oninput = actualizarDiasTarjeta;
+    syncAuto();
     $("lt-borrar").hidden = !t || !ed;
     $("ln-tar-form").querySelector("button[type=submit]").hidden = !ed;
     $("ln-tar").showModal();

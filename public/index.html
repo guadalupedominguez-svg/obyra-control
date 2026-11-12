@@ -322,13 +322,15 @@
         <label>Entregable<input id="lt-entregable" maxlength="120" required></label>
         <div class="ln-grid2">
           <label>Contratista<input id="lt-contr" list="la-contrs" maxlength="60"></label>
-          <label>Semana de entrega<select id="lt-semana"></select></label>
-          <label>Duración (días)<input id="lt-dur" type="number" min="1" max="365"></label>
+          <label>Fecha de inicio<input id="lt-inicio" type="date" required></label>
+          <label>Duración (días hábiles)<input id="lt-dur" type="number" min="1" max="300" required></label>
           <label>Entrega a<input id="lt-entrega" maxlength="60" list="la-contrs"></label>
           <label>Ubicación<input id="lt-ubic" maxlength="60" list="la-ubics"></label>
           <label>Partida<input id="lt-partida" maxlength="60" list="la-partidas"></label>
         </div>
         <label>Necesito para empezar<input id="lt-necesita" maxlength="300" placeholder="Pasa al look-ahead como restricción"></label>
+        <label class="check"><input type="checkbox" id="lt-auto" checked> Acomodar los días automáticamente (lunes a sábado, desde la fecha de inicio)</label>
+        <p class="hint" id="lt-dias"></p>
         <div class="row end">
           <button type="button" class="btn btn-danger btn-sm" id="lt-borrar">Borrar</button>
           <button type="button" class="btn btn-ghost btn-sm" id="lt-cancelar">Cancelar</button>

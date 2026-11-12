@@ -124,11 +124,18 @@ test("plan semanal: lo establece el PM; califica el residente y valida el superi
 test("sesión pull: el contratista mueve solo sus tarjetas y el PM las pasa al look-ahead", async () => {
   let r = await pm("lean", { action: "hito-guardar", hito: { nombre: "Fachadas terminadas", fecha: "2026-12-18" } });
   const hitoId = r.json.hito.id;
-  r = await copresa("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { contratista: "FAMEP", entregable: "Paneles norte", duracion: 5, semana: "2026-W47", necesita: "Grúa", ubicacion: "Área 2", partida: "muros" } });
+  r = await copresa("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { contratista: "FAMEP", entregable: "Paneles norte", duracion: 8, inicio: "2026-11-12", necesita: "Grúa", ubicacion: "Área 2", partida: "muros" } });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(r.json.tarjeta.contratista, "COPRESA"); // el contratista no puede poner otra empresa
+  // 8 días hábiles desde el jueves 12: salta el domingo 15 y termina el sábado 21 (semana 47).
+  assert.deepEqual(r.json.tarjeta.dias, ["2026-11-12", "2026-11-13", "2026-11-14", "2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19", "2026-11-20"]);
+  assert.equal(r.json.tarjeta.semana, "2026-W47");
+  // Ajuste a mano: se mueve un día; un domingo no se acepta.
+  const manual = await copresa("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { ...r.json.tarjeta, dias: [...r.json.tarjeta.dias.slice(0, 7), "2026-11-21"] } });
+  assert.equal(manual.json.tarjeta.fin, "2026-11-21");
+  assert.equal((await copresa("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { ...r.json.tarjeta, dias: ["2026-11-15"] } })).status, 400);
   const tid = r.json.tarjeta.id;
-  r = await pm("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { contratista: "AD-001", entregable: "Sellado", semana: "2026-W48" } });
+  r = await pm("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { contratista: "AD-001", entregable: "Sellado", inicio: "2026-11-23", duracion: 3 } });
   const ajena = r.json.tarjeta.id;
   assert.equal((await copresa("lean", { action: "tarjeta-borrar", hitoId, id: ajena })).status, 403);
   assert.equal((await copresa("lean", { action: "pasar", hitoId })).status, 403);
@@ -136,7 +143,8 @@ test("sesión pull: el contratista mueve solo sus tarjetas y el PM las pasa al l
   assert.equal(r.json.creadas, 2);
   const g = await pm("lean");
   const nueva = g.json.actividades.find((a) => a.origen && a.origen.tarjeta === tid);
-  assert.equal(nueva.semanaIni, "2026-W47");
+  assert.equal(nueva.semanaIni, "2026-W46"); // del primer día (jueves 12)
+  assert.equal(nueva.semanaFin, "2026-W47"); // al último (sábado 21)
   assert.equal(nueva.restricciones[0].texto, "Grúa"); // lo que necesita pasa como restricción
-  assert.equal((await copresa("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { id: tid, entregable: "x", semana: "2026-W47" } })).status, 409);
+  assert.equal((await copresa("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { id: tid, entregable: "x", inicio: "2026-11-16", duracion: 1 } })).status, 409);
 });
