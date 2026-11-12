@@ -87,6 +87,13 @@ input::placeholder { color: var(--muted); }
 .ln-embudos { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .ln-embudos li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: start; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: 13px; }
 .ln-embudos .tag { font-size: 11px; border-radius: 999px; padding: 1px 8px; white-space: nowrap; background: rgba(242, 97, 106, .15); color: var(--bad); }
+.lt-reparto { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+.lt-reparto summary { cursor: pointer; font-weight: 600; }
+.lt-reparto summary .linklike { margin-left: 10px; font-weight: 400; }
+.lt-reparto-lista { display: grid; gap: 4px; max-height: 38vh; overflow: auto; }
+.lt-reparto .fila-rp { display: grid; grid-template-columns: minmax(80px, 1fr) auto auto auto 56px 52px; gap: 6px; align-items: center; padding: 2px 4px; border-radius: 6px; }
+.lt-reparto .fila-rp.man { background: rgba(34, 211, 238, .08); }
+.lt-reparto .fila-rp select { font-size: 12px; padding: 2px 4px; }
 .ln-rep-lista { display: grid; gap: 6px; max-height: 50vh; overflow: auto; }
 .ln-rep-lista .fila-rep { display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr); gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
 .ln-rep-lista select { width: 100%; }

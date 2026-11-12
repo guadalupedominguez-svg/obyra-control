@@ -349,6 +349,12 @@
         </div>
         <p class="hint">El orden de las marcas es el orden de ejecución: así se reparten en los días de la tarea en la simulación. Escríbelas en ese orden o selecciónalas en el modelo una por una (Selección múltiple) y usa «Usar piezas seleccionadas».</p>
         <div class="lt-secuencia" id="lt-secuencia"></div>
+        <details class="lt-reparto" id="lt-reparto-box" hidden>
+          <summary>Ajustar días por pieza<span class="muted" id="lt-reparto-n"></span>
+            <button type="button" class="linklike" id="lt-reparto-auto" hidden>Todo automático</button></summary>
+          <p class="hint">Si en la simulación ves que una pieza toma más tiempo, indica del día al día en que se ejecuta; se verá en ejecución todos esos días.</p>
+          <div class="lt-reparto-lista" id="lt-reparto"></div>
+        </details>
         <label class="check"><input type="checkbox" id="lt-auto" checked> Acomodar los días automáticamente (lunes a sábado, desde la fecha de inicio)</label>
         <p class="hint" id="lt-dias"></p>
         <div class="row end">

@@ -173,3 +173,15 @@ test("desasignar piezas repetidas entre tarjetas", async () => {
   assert.deepEqual(nb.guids, []); // y la suelta también
   assert.equal(na.guids.length, 2); // la otra tarjeta conserva sus piezas
 });
+
+test("una pieza puede ejecutarse en varios días de la tarea (ajuste manual)", async () => {
+  await admin("piezas", { action: "catalogo", version: "3", piezas: [
+    { guid: "0000000000000000000021", marca: "MP-21", contratista: "COPRESA" },
+    { guid: "0000000000000000000022", marca: "MP-22", contratista: "COPRESA" },
+  ] });
+  const hitoId = (await pm("lean", { action: "hito-guardar", hito: { nombre: "Losa", fecha: "2026-12-11" } })).json.hito.id;
+  const r = await pm("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { contratista: "COPRESA", entregable: "Losa", inicio: "2026-11-23", duracion: 3, marcas: "MP-21, MP-22",
+    reparto: { "0000000000000000000021": [1, 3], "0000000000000000000022": [5, 2], "0000000000000000000099": [1, 1] } } });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.deepEqual(r.json.tarjeta.reparto, { "0000000000000000000021": [1, 3], "0000000000000000000022": [2, 3] }); // recortado a 3 días; pieza ajena fuera
+});

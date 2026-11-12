@@ -71,6 +71,22 @@ export function diasDeTarjeta(t) {
 
 // Piezas de una tarjeta, EN ORDEN DE EJECUCIÓN: primero las de las marcas en el orden escrito
 // (el orden en que se seleccionaron), luego las elegidas en el modelo que no tienen marca.
+// Ajuste manual de en qué días de la tarea se ejecuta cada pieza: {guid: [díaIni, díaFin]} (1 = primer día
+// de la tarea). Las piezas sin ajuste se reparten solas. Se recorta a la duración y a las piezas de la tarjeta.
+function limpiarReparto(rep, guids, n) {
+  const out = {};
+  if (!rep || typeof rep !== "object") return out;
+  const tiene = new Set(guids || []);
+  for (const [g, r] of Object.entries(rep).slice(0, 2000)) {
+    if (!tiene.has(g) || !Array.isArray(r)) continue;
+    let a = Math.round(Number(r[0])), b = Math.round(Number(r[1]));
+    if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+    a = Math.min(Math.max(a, 1), n); b = Math.min(Math.max(b, 1), n);
+    out[g] = a <= b ? [a, b] : [b, a];
+  }
+  return out;
+}
+
 async function ligarPiezas(marcasIn, guidsIn) {
   const marcas = [...new Set((Array.isArray(marcasIn) ? marcasIn : String(marcasIn || "").split(/[,;\n]+/))
     .map((x) => String(x).trim().toUpperCase()).filter(Boolean))].slice(0, 300);
@@ -306,6 +322,7 @@ export default route(["GET", "POST"], async (req, res) => {
           ...(await ligarPiezas(t.marcas, t.guids)),
           actualizada: firma(me),
         };
+        tarjeta.reparto = limpiarReparto(t.reparto, tarjeta.guids, dias.length);
         hito.tarjetas = prev ? hito.tarjetas.map((x) => (x.id === prev.id ? tarjeta : x)) : [...(hito.tarjetas || []), tarjeta].slice(-300);
         out.tarjeta = tarjeta;
       }
@@ -335,6 +352,7 @@ export default route(["GET", "POST"], async (req, res) => {
         const porMarca = new Set(Object.keys(cat.piezas || {}).filter((g) => (t.marcas || []).map((m) => String(m).toUpperCase()).includes(marcaDe(g))));
         const sueltas = (t.guids || []).filter((g) => !porMarca.has(g) && !fuera.has(g));
         Object.assign(t, await ligarPiezas(marcas, sueltas), { actualizada: firma(me) });
+        t.reparto = limpiarReparto(t.reparto, t.guids, (t.dias || []).length || t.duracion || 1);
         cambiadas++;
       }
       await hsetJson(HITOS(), { [hito.id]: hito });

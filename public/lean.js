@@ -492,6 +492,8 @@
     });
     $("lt-quitar").addEventListener("click", function () { L.tarGuids = []; $("lt-marcas").value = ""; piezasTarjeta(); });
     $("lt-marcas").addEventListener("input", piezasTarjeta);
+    $("lt-reparto-box").addEventListener("toggle", piezasTarjeta);
+    $("lt-reparto-auto").addEventListener("click", function (ev) { ev.preventDefault(); L.reparto = {}; piezasTarjeta(); });
     $("ln-tar-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
       var auto = $("lt-auto").checked;
@@ -501,6 +503,7 @@
       // Las piezas con marca se guardan por marca; las que no tienen, por GlobalId.
       var ms = marcasEscritas(), porMarca = guidsDeMarcas(ms);
       t.marcas = ms; t.guids = L.tarGuids.filter(function (g) { return porMarca.indexOf(g) < 0; });
+      t.reparto = L.reparto || {};
       accion({ action: "tarjeta-guardar", hitoId: L.hitoId, tarjeta: t }, "Tarjeta guardada.").then(function () { $("ln-tar").close(); });
     });
     $("lt-borrar").addEventListener("click", function () {
@@ -557,7 +560,32 @@
 
   // ---------- Simulación 4D y embudos ----------
   // Reparte las piezas (en orden de ejecución) entre los días de la tarea, en partes iguales.
-  function repartir(guids, dias) {
+  // Piezas por día de una tarea. Reparto automático proporcional en orden; las piezas con ajuste manual
+  // (reparto = {guid: [díaIni, díaFin]}, 1 = primer día) se ejecutan en todos los días de su rango.
+  function repartir(guids, dias, reparto) {
+    var out = repartirAuto(guids, dias), m = dias.length;
+    if (!reparto || !m) return out;
+    Object.keys(reparto).forEach(function (g) {
+      if (guids.indexOf(g) < 0) return;
+      var r = rangoPieza(reparto[g], m);
+      dias.forEach(function (f) { if (out[f]) out[f] = out[f].filter(function (x) { return x !== g; }); });
+      for (var k = r[0]; k <= r[1]; k++) (out[dias[k - 1]] = out[dias[k - 1]] || []).push(g);
+    });
+    // Conserva el orden de ejecución dentro de cada día.
+    Object.keys(out).forEach(function (f) { out[f].sort(function (a, b) { return guids.indexOf(a) - guids.indexOf(b); }); });
+    return out;
+  }
+  function rangoPieza(r, m) {
+    var a = Math.min(Math.max(+r[0] || 1, 1), m), b = Math.min(Math.max(+r[1] || a, 1), m);
+    return a <= b ? [a, b] : [b, a];
+  }
+  // Días (1..m) en que el reparto automático pone cada pieza.
+  function diaAuto(guids, dias) {
+    var out = {}, rep = repartirAuto(guids, dias);
+    dias.forEach(function (f, k) { (rep[f] || []).forEach(function (g) { out[g] = k + 1; }); });
+    return out;
+  }
+  function repartirAuto(guids, dias) {
     var out = {}, n = guids.length, m = dias.length;
     if (!n || !m) return out;
     if (n >= m) {
@@ -573,7 +601,7 @@
   function planPiezas(hito) {
     var plan = {};
     (hito.tarjetas || []).forEach(function (t) {
-      var rep = repartir(t.guids || [], diasDe(t));
+      var rep = repartir(t.guids || [], diasDe(t), t.reparto);
       Object.keys(rep).forEach(function (f) { rep[f].forEach(function (g) { (plan[g] = plan[g] || []).push({ t: t, dia: f }); }); });
     });
     return plan;
@@ -598,7 +626,7 @@
     var plan = planPiezas(hito);
     dias.forEach(function (f) {
       var ts = activas(f), piezas = 0;
-      ts.forEach(function (t) { piezas += (repartir(t.guids || [], diasDe(t))[f] || []).length; });
+      ts.forEach(function (t) { piezas += (repartir(t.guids || [], diasDe(t), t.reparto)[f] || []).length; });
       carga[f] = { tareas: ts.length, piezas: piezas, contr: Array.from(new Set(ts.map(function (t) { return t.contratista; }))).length };
       // Encimados: misma ubicación con dos o más contratistas, o la misma pieza en dos tarjetas el mismo día.
       var porUbic = {};
@@ -928,11 +956,42 @@
     var orden = []; ms.forEach(function (m) { guidsDeMarcas([m]).forEach(function (g) { if (orden.indexOf(g) < 0) orden.push(g); }); });
     L.tarGuids.forEach(function (g) { if (orden.indexOf(g) < 0) orden.push(g); });
     var ds = $("lt-auto").checked && $("lt-inicio").value && +$("lt-dur").value > 0 ? diasHabiles($("lt-inicio").value, +$("lt-dur").value) : (L.tar ? diasDe(L.tar) : []);
-    var rep = repartir(orden, ds);
+    Object.keys(L.reparto || {}).forEach(function (g) { if (orden.indexOf(g) < 0) delete L.reparto[g]; });
+    var rep = repartir(orden, ds, L.reparto);
+    editorReparto(orden, ds);
     $("lt-secuencia").replaceChildren.apply($("lt-secuencia"), orden.length && ds.length ? [el("span", { text: "Secuencia en la simulación:" })].concat(ds.map(function (f, k) {
       var gs = rep[f] || [];
       return el("div", null, [el("b", { text: "Día " + (k + 1) + " · " + f.split("-").reverse().slice(0, 2).join("/") + ": " }), gs.length ? gs.map(etiquetaPieza).join(", ") : "—"]);
     })) : []);
+  }
+  // Ajuste manual: en qué días de la tarea se ejecuta cada pieza (una pieza puede durar varios días).
+  function editorReparto(orden, ds) {
+    var box = $("lt-reparto-box"), cont = $("lt-reparto");
+    box.hidden = !orden.length || !ds.length;
+    if (box.hidden) { cont.replaceChildren(); return; }
+    var ed = !L.tar || puedeMover(L.tar), auto = diaAuto(orden, ds), m = ds.length;
+    var nMan = Object.keys(L.reparto).length;
+    $("lt-reparto-n").textContent = nMan ? " · " + nMan + (nMan === 1 ? " pieza ajustada a mano" : " piezas ajustadas a mano") : "";
+    $("lt-reparto-auto").hidden = !nMan || !ed;
+    if (!box.open) return; // se arma solo al abrirlo (puede haber muchas piezas)
+    var opciones = function (sel) { return ds.map(function (f, k) { return el("option", { value: String(k + 1), text: "Día " + (k + 1) + " · " + f.split("-").reverse().slice(0, 2).join("/"), selected: k + 1 === sel ? "selected" : null }); }); };
+    cont.replaceChildren.apply(cont, orden.map(function (g) {
+      var man = L.reparto[g], r = man ? rangoPieza(man, m) : [auto[g] || 1, auto[g] || 1];
+      var a = el("select", { "aria-label": "Primer día de " + etiquetaPieza(g) }, opciones(r[0]));
+      var b = el("select", { "aria-label": "Último día de " + etiquetaPieza(g) }, opciones(r[1]));
+      a.disabled = b.disabled = !ed;
+      var cambia = function (cual) {
+        var x = +a.value, y = +b.value;
+        if (x > y) { if (cual === "a") y = x; else x = y; }
+        L.reparto[g] = [x, y];
+        piezasTarjeta();
+      };
+      a.addEventListener("change", function () { cambia("a"); });
+      b.addEventListener("change", function () { cambia("b"); });
+      var quitar = man && ed ? el("button", { class: "linklike", type: "button", text: "↺ auto", title: "Quitar el ajuste y volver al reparto automático", onclick: function () { delete L.reparto[g]; piezasTarjeta(); } }) : el("span", { class: "muted", text: man ? "manual" : "auto" });
+      return el("div", { class: "fila-rp" + (man ? " man" : "") }, [el("b", { text: etiquetaPieza(g) }), a, el("span", { class: "muted", text: "a" }), b,
+        el("span", { class: "muted", text: (r[1] - r[0] + 1) + (r[1] === r[0] ? " día" : " días") }), quitar]);
+    }));
   }
   // Piezas de la tarjeta abierta que también están en otra tarjeta del hito.
   function repetidasTarjeta(gs) {
@@ -981,6 +1040,8 @@
     // Las piezas que ya vienen por marca no se repiten como sueltas.
     var yaPorMarca = guidsDeMarcas((t && t.marcas) || []);
     L.tarGuids = (t && t.guids ? t.guids : []).filter(function (g) { return yaPorMarca.indexOf(g) < 0; });
+    L.reparto = JSON.parse(JSON.stringify((t && t.reparto) || {}));
+    $("lt-reparto-box").open = false;
     piezasTarjeta();
     $("lt-marcas").disabled = !(!t || puedeMover(t));
     $("lt-usar").hidden = !ed; if (!ed) $("lt-quitar").hidden = true;
