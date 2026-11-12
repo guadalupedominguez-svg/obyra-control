@@ -111,6 +111,7 @@
   // Colores del modelo según la semana elegida (lo llama paintModel de app.js).
   window.OBYRA_LEAN = {
     // En la sesión pull se aísla solo con una tarea o un día elegido; en las demás vistas, siempre.
+    simulando: function () { return L.tab === "pull" && L.sim.on && !!L.sim.dia; },
     aislar: function () { return L.tab !== "pull" || !!(L.tarSel || L.diaSel || L.sim.on); },
     colores: function () {
       var out = {};
@@ -651,6 +652,13 @@
     vel.value = String(L.sim.vel);
     vel.addEventListener("change", function () { L.sim.vel = +vel.value; if (L.sim.timer) { simPausa(); simPlay(); } });
     var d = L.sim.on && L.sim.dia ? L.sim.dia : null, c = d ? an.carga[d] : null;
+    // Diagnóstico: cuántas piezas tienen las tarjetas y cuántas se encuentran en el modelo cargado.
+    var ligadas = new Set(); (hito.tarjetas || []).forEach(function (t) { (t.guids || []).forEach(function (g) { ligadas.add(g); }); });
+    var enModelo = Array.from(ligadas).filter(function (g) { return S.guid2db && S.guid2db.has(g); }).length;
+    var diag = !ligadas.size
+      ? el("span", { class: "ln-warn", text: "Las tarjetas no tienen piezas del modelo: abre cada una (doble clic) y escribe sus marcas para que la simulación se vea en el modelo." })
+      : !S.model ? el("span", { class: "ln-warn", text: "◆ " + ligadas.size + " piezas ligadas · el modelo aún no termina de cargar" })
+      : el("span", { class: enModelo ? "muted" : "ln-warn", text: "◆ " + ligadas.size + " piezas ligadas · " + enModelo + " encontradas en el modelo" + (enModelo < ligadas.size ? " (las demás no están en esta versión del IFC)" : "") });
     var graves = an.issues.filter(function (x) { return x.grave; }).length;
     return el("div", { class: "ln-sim" }, [
       el("button", { class: "btn btn-primary btn-sm", type: "button", text: L.sim.timer ? "⏸ Pausa" : "▶ Reproducir", onclick: simPlay }),
@@ -660,6 +668,7 @@
       vel,
       L.sim.on ? el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Salir de la simulación", onclick: simSalir }) : null,
       el("span", { class: graves ? "ln-bad" : (an.issues.length ? "ln-warn" : "ln-ok"), text: an.issues.length ? an.issues.length + (an.issues.length === 1 ? " embudo detectado" : " embudos detectados") : "Sin embudos" }),
+      diag,
     ]);
   }
   function tarjetaEmbudos(an) {

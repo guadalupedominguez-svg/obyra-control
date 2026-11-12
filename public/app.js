@@ -1383,9 +1383,13 @@
         var id = S.guid2db.get(g); if (id == null) return;
         lids.push(id); v.setThemingColor(id, hexToVec(col[g]), m, true);
       });
+      var simulando = window.OBYRA_LEAN.simulando && window.OBYRA_LEAN.simulando();
+      if (simulando) { S.syncing = true; v.clearSelection(); S.syncing = false; } // la selección azul tapa los colores
       // aislar = solo lo elegido; si no, todo el modelo visible con los colores encima (para poder seleccionar más).
-      if (lids.length && window.OBYRA_LEAN.aislar() && !S.multi) { v.isolate(lids, m); if (encuadrar) v.fitToView(lids, m); }
+      if (lids.length && window.OBYRA_LEAN.aislar() && (!S.multi || simulando)) { v.isolate(lids, m); if (encuadrar) v.fitToView(lids, m); }
       else { v.showAll(); if (lids.length && encuadrar) v.fitToView(lids, m); }
+      if (v.impl && v.impl.invalidate) v.impl.invalidate(true, true, true); // fuerza a redibujar con los colores nuevos
+      S.pintados = { pedidas: Object.keys(col).length, enModelo: lids.length };
       return;
     }
     var ids = [];
