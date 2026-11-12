@@ -121,12 +121,13 @@
     renderLegend();
     renderCuenta();
     setupTabs();
-    Promise.all([api("/api/obra"), loadPiezas()]).then(function (r) {
+    Promise.all([api("/api/obra" + (S.permisos.administrar ? "?revisar=1" : "")), loadPiezas()]).then(function (r) {
       S.obra = r[0];
       $("obra-nombre").textContent = S.obra.nombre;
       document.title = S.obra.nombre + " · OBYRA Control";
       if (S.permisos.administrar) renderAdmin();
       startViewer();
+      avisoVersion(S.obra.nueva);
       (window.OBYRA.alIniciar || []).forEach(function (f) { try { f(); } catch (e) { console.error(e); } });
     }).catch(function (e) { toast(e.message, true); });
   }
@@ -1050,6 +1051,34 @@
   }
 
   // ---------- Configuración (admin) ----------
+  // Aviso al administrador: en Forma hay una versión más nueva del IFC.
+  function avisoVersion(n) {
+    var box = $("aviso-version");
+    if (!n || !S.permisos.administrar) { box.hidden = true; return; }
+    var actual = S.obra.modelo ? S.obra.modelo.version : "?";
+    var usar = el("button", { class: "btn btn-primary btn-sm", type: "button", text: "Usar la versión " + n.version, onclick: function () {
+      usar.disabled = true; usar.textContent = "Cambiando…";
+      api("/api/obra", { action: "actualizar" }).then(function () { return api("/api/obra"); }).then(function (o) {
+        S.obra = o; renderAdmin(); startViewer();
+        box.replaceChildren(
+          el("span", null, ["Modelo actualizado a la ", el("b", { text: "versión " + o.modelo.version }), ". Cuando termine de cargar, lee las piezas para traer marcas, cantidades y piezas nuevas (el avance se conserva)."]),
+          el("div", { class: "row end" }, [
+            el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Después", onclick: function () { box.hidden = true; } }),
+            el("button", { class: "btn btn-primary btn-sm", type: "button", text: "Leer piezas del modelo", onclick: function () {
+              if (!S.model || !S.guid2db.size) { toast("Espera a que el modelo termine de cargar."); return; }
+              box.hidden = true; leerCatalogo();
+            } }),
+          ]));
+      }).catch(function (e) { usar.disabled = false; usar.textContent = "Usar la versión " + n.version; toast(e.message, true); });
+    } });
+    box.replaceChildren(
+      el("span", null, ["Hay una ", el("b", { text: "versión " + n.version }), " del IFC en Forma (", n.archivo, n.fecha ? " · " + fecha(n.fecha) : "", "). La app muestra la versión " + actual + "."]),
+      el("small", { class: "muted", text: "Si Forma aún la está procesando, espera unos minutos antes de cambiar." }),
+      el("div", { class: "row end" }, [el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Ahora no", onclick: function () { box.hidden = true; } }), usar]),
+    );
+    box.hidden = false;
+  }
+
   function renderAdmin() {
     var o = S.obra;
     $("obra-input").value = o.nombre;

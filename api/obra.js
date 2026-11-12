@@ -1,5 +1,6 @@
 // Datos de la obra: nombre y modelo IFC en Forma.
 //   GET  /api/obra                               cualquier usuario con sesión
+//   GET  /api/obra?revisar=1                     admin: además dice si en Forma hay una versión más nueva del IFC
 //   POST /api/obra {action:"nombre", nombre}     admin
 //   POST /api/obra {action:"modelo", url}        admin: liga del IFC en Forma Docs
 //   POST /api/obra {action:"actualizar"}         admin: toma la versión más reciente del IFC
@@ -28,6 +29,15 @@ export default route(["GET", "POST"], async (req, res) => {
       out.forma = await formaStatus();
       out.formaUrl = o.formaUrl || "";
       out.carpetaUrl = (o.carpeta && o.carpeta.url) || "";
+      // ¿Hay una versión más nueva del IFC en Forma? (no cambia nada; solo avisa)
+      if (req.query && req.query.revisar && o.projectId && o.lineage) {
+        try {
+          const v = await latestVersion(o.projectId, o.lineage);
+          if (v.versionUrn !== o.versionUrn && (v.versionNumber || 0) > (o.versionNumber || 0)) {
+            out.nueva = { version: v.versionNumber, archivo: v.fileName, fecha: v.fecha };
+          }
+        } catch { /* sin conexión con Forma: no se avisa */ }
+      }
       out.carpetasUrl = Object.fromEntries(Object.entries(o.carpetas || {}).map(([c, x]) => [c, x.url]));
     }
     res.status(200).json(out);

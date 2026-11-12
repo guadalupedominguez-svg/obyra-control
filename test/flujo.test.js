@@ -38,13 +38,14 @@ const handlers = {
   piezas: (await import("../api/piezas.js")).default,
   envio: (await import("../api/envio.js")).default,
   carpetas: (await import("../api/carpetas.js")).default,
+  obra: (await import("../api/obra.js")).default,
 };
 
 // ---- Cliente HTTP simulado con cookies por usuario ----
 function client() {
   let cookie = "";
-  return async function call(name, body) {
-    const req = { method: body ? "POST" : "GET", headers: { cookie, "content-type": "application/json", "x-forwarded-for": "1.2.3.4" }, body };
+  return async function call(name, body, query) {
+    const req = { method: body ? "POST" : "GET", headers: { cookie, "content-type": "application/json", "x-forwarded-for": "1.2.3.4" }, body, query: query || {} };
     const out = { status: 200, json: null, headers: {} };
     const res = {
       headersSent: false,
@@ -237,4 +238,20 @@ test("el residente elige la carpeta de un contratista; la general solo el admin"
   assert.equal(guardada.nombre, "Gen FAMEP");
   assert.equal(guardada.ruta.length, 2);
   assert.ok(JSON.parse(db.get("ctrl:obra")).carpetas["AD-001"]); // no borró las demás
+});
+
+test("al abrir, el administrador ve si hay una versión más nueva del IFC en Forma", async () => {
+  const o = JSON.parse(db.get("ctrl:obra"));
+  Object.assign(o, { lineage: "urn:adsk.wipprod:dm.lineage:ifc", versionUrn: "urn:v1", versionNumber: 1, fileName: "a.ifc" });
+  db.set("ctrl:obra", JSON.stringify(o));
+  db.set("ctrl:forma:data", JSON.stringify({ access: "tok", refresh: "r", exp: Date.now() + 3_600_000, scope: "data:read" }));
+  db.set("ctrl:forma:view", JSON.stringify({ access: "tok", refresh: "r", exp: Date.now() + 3_600_000, scope: "viewables:read" }));
+  let tip = "urn:v2";
+  globalThis.fetch = async () => new Response(JSON.stringify({ data: { relationships: { tip: { data: { id: tip } } }, attributes: {} }, included: [{ id: tip, attributes: { versionNumber: tip === "urn:v2" ? 2 : 1, displayName: "a.ifc" } }] }), { status: 200 });
+  let r = await admin("obra", undefined, { revisar: "1" });
+  assert.deepEqual(r.json.nueva, { version: 2, archivo: "a.ifc", fecha: null });
+  assert.equal((await resi("obra", undefined, { revisar: "1" })).json.nueva, undefined); // solo el administrador
+  tip = "urn:v1";
+  r = await admin("obra", undefined, { revisar: "1" });
+  assert.equal(r.json.nueva, undefined); // ya está en la última
 });
