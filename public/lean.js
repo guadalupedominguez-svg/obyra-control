@@ -33,7 +33,7 @@
   var hoyISO = function () { var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
 
   // ---------- Estado ----------
-  var L = { tarSel: null, diaSel: null, tarGuids: [], cfg: null, tipos: [], acts: [], plan: [], hitos: [], semana: HOY, tab: null, hitoId: "", contr: "", resaltar: true, act: null, tar: null, cargado: false };
+  var L = { sim: { on: false, dia: null, timer: null, vel: 1 }, simDias: [], tarSel: null, diaSel: null, tarGuids: [], cfg: null, tipos: [], acts: [], plan: [], hitos: [], semana: HOY, tab: null, hitoId: "", contr: "", resaltar: true, act: null, tar: null, cargado: false };
   var P = function (k) { return !!(S.permisos && S.permisos[k]); };
   var esContratista = function () { return S.me && S.me.rol === "contratista"; };
   var C_LEAN = { comp: "#22D3EE", ok: "#2BD483", bad: "#F2616A", restr: "#F5B83D", lista: "#3B82F6" };
@@ -97,6 +97,7 @@
     $("legend").replaceChildren.apply($("legend"), items.map(function (x) { return el("span", null, [el("i", { class: "dot", style: "background:" + x[1] }), x[0]]); }));
   }
   function abrirTab(t) {
+    if (t !== "pull" && L.sim) { if (L.sim.timer) { clearInterval(L.sim.timer); L.sim.timer = null; } L.sim.on = false; L.sim.dia = null; }
     var tabs = O.qsa("#ln-tabs .tab");
     if (!tabs.some(function (b) { return b.getAttribute("data-ln") === t; })) t = "la";
     L.tab = t;
@@ -110,10 +111,11 @@
   // Colores del modelo según la semana elegida (lo llama paintModel de app.js).
   window.OBYRA_LEAN = {
     // En la sesión pull se aísla solo con una tarea o un día elegido; en las demás vistas, siempre.
-    aislar: function () { return L.tab !== "pull" || !!(L.tarSel || L.diaSel); },
+    aislar: function () { return L.tab !== "pull" || !!(L.tarSel || L.diaSel || L.sim.on); },
     colores: function () {
       var out = {};
       if (!L.cargado) return out;
+      if (L.tab === "pull" && L.sim.on && L.sim.dia) return coloresSim();
       if (L.tab === "pull") {
         // Sesión pull: las piezas de las tarjetas del hito, por contratista; la tarjeta o el día elegido, solos.
         var hito = L.hitos.find(function (h) { return h.id === L.hitoId; });
@@ -507,7 +509,7 @@
     $("lh-cancelar").addEventListener("click", function () { $("ln-hito").close(); });
     $("ln-hito-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
-      accion({ action: "hito-guardar", hito: { id: $("ln-hito").getAttribute("data-id") || undefined, nombre: $("lh-nombre").value, fecha: $("lh-fecha").value } }, "Hito guardado.")
+      accion({ action: "hito-guardar", hito: { id: $("ln-hito").getAttribute("data-id") || undefined, nombre: $("lh-nombre").value, fecha: $("lh-fecha").value, alcance: $("lh-alcance").value } }, "Hito guardado.")
         .then(function (r) { L.hitoId = r.hito.id; $("ln-hito").close(); render(); });
     });
     $("lh-borrar").addEventListener("click", function () {
@@ -530,6 +532,150 @@
     $("lc-causas").value = L.cfg.causas.join("\n");
     $("lc-meta").value = L.cfg.meta;
     $("ln-cfg").showModal();
+  }
+
+  // ---------- Simulación 4D y embudos ----------
+  // Reparte las piezas (en orden de ejecución) entre los días de la tarea, en partes iguales.
+  function repartir(guids, dias) {
+    var out = {}, n = guids.length, m = dias.length;
+    if (!n || !m) return out;
+    if (n >= m) {
+      dias.forEach(function (f, k) { out[f] = guids.slice(Math.floor(k * n / m), Math.floor((k + 1) * n / m)); });
+    } else {
+      // Con menos piezas que días, cada pieza cae en el día proporcional a su lugar.
+      guids.forEach(function (g, i) { var f = dias[Math.floor(i * m / n)]; (out[f] = out[f] || []).push(g); });
+    }
+    return out;
+  }
+  function hitoActual() { return L.hitos.find(function (h) { return h.id === L.hitoId; }) || null; }
+  // Para cada pieza: en qué día(s) y por qué tarjeta se ejecuta.
+  function planPiezas(hito) {
+    var plan = {};
+    (hito.tarjetas || []).forEach(function (t) {
+      var rep = repartir(t.guids || [], diasDe(t));
+      Object.keys(rep).forEach(function (f) { rep[f].forEach(function (g) { (plan[g] = plan[g] || []).push({ t: t, dia: f }); }); });
+    });
+    return plan;
+  }
+  var C_SIM = { hecho: "#64748B", pendiente: "#D7DEE8", choque: "#F2616A" };
+  function coloresSim() {
+    var hito = hitoActual(); if (!hito) return {};
+    var plan = planPiezas(hito), d = L.sim.dia, out = {};
+    Object.keys(plan).forEach(function (g) {
+      var hoy = plan[g].filter(function (x) { return x.dia === d; });
+      if (hoy.length > 1) out[g] = C_SIM.choque;
+      else if (hoy.length) out[g] = colorDe(hoy[0].t.contratista);
+      else if (plan[g].every(function (x) { return x.dia < d; })) out[g] = C_SIM.hecho;
+      else out[g] = C_SIM.pendiente;
+    });
+    return out;
+  }
+  // Embudos del hito: encimados, fuera de secuencia, días sobrecargados, piezas repetidas o sin tarea.
+  function analizar(hito, dias) {
+    var tars = hito.tarjetas || [], issues = [], carga = {}, fmt = function (f) { return f.split("-").reverse().slice(0, 2).join("/"); };
+    var activas = function (f) { return tars.filter(function (t) { return diasDe(t).indexOf(f) >= 0; }); };
+    var plan = planPiezas(hito);
+    dias.forEach(function (f) {
+      var ts = activas(f), piezas = 0;
+      ts.forEach(function (t) { piezas += (repartir(t.guids || [], diasDe(t))[f] || []).length; });
+      carga[f] = { tareas: ts.length, piezas: piezas, contr: Array.from(new Set(ts.map(function (t) { return t.contratista; }))).length };
+      // Encimados: misma ubicación con dos o más contratistas, o la misma pieza en dos tarjetas el mismo día.
+      var porUbic = {};
+      ts.forEach(function (t) { if (t.ubicacion) (porUbic[t.ubicacion] = porUbic[t.ubicacion] || []).push(t); });
+      Object.keys(porUbic).forEach(function (u) {
+        var cs = Array.from(new Set(porUbic[u].map(function (t) { return t.contratista; })));
+        if (cs.length > 1) issues.push({ tipo: "Encimados", grave: true, dia: f, tars: porUbic[u].map(function (t) { return t.id; }), texto: fmt(f) + " · " + u + ": " + cs.join(", ") + " trabajan en la misma ubicación" });
+      });
+      var choque = Object.keys(plan).filter(function (g) { return plan[g].filter(function (x) { return x.dia === f; }).length > 1; });
+      if (choque.length) {
+        var tc = []; choque.forEach(function (g) { plan[g].forEach(function (x) { if (x.dia === f && tc.indexOf(x.t.id) < 0) tc.push(x.t.id); }); });
+        issues.push({ tipo: "Encimados", grave: true, dia: f, tars: tc, texto: fmt(f) + ": " + choque.length + (choque.length === 1 ? " pieza la ejecutan" : " piezas las ejecutan") + " dos tareas a la vez (" + choque.slice(0, 4).map(etiquetaPieza).join(", ") + (choque.length > 4 ? "…" : "") + ")" });
+      }
+    });
+    // Fuera de secuencia: la tarea que recibe empieza antes de que termine la que le entrega.
+    tars.forEach(function (a) {
+      if (!a.entregaA) return;
+      var finA = diasDe(a).slice(-1)[0]; if (!finA) return;
+      tars.forEach(function (b) {
+        if (b.id === a.id || b.contratista !== String(a.entregaA).toUpperCase()) return;
+        var relacion = (a.ubicacion && b.ubicacion) ? a.ubicacion === b.ubicacion : true;
+        var comparten = (a.guids || []).some(function (g) { return (b.guids || []).indexOf(g) >= 0; });
+        var iniB = diasDe(b)[0];
+        if ((relacion || comparten) && iniB && iniB <= finA) {
+          issues.push({ tipo: "Fuera de secuencia", grave: true, dia: iniB, tars: [a.id, b.id], texto: "«" + b.entregable + "» (" + b.contratista + ") empieza el " + fmt(iniB) + ", antes de que «" + a.entregable + "» (" + a.contratista + ") le entregue el " + fmt(finA) });
+        }
+      });
+    });
+    // Días sobrecargados: más de 1.5 veces el promedio de tareas (y al menos 3).
+    var conCarga = dias.filter(function (f) { return carga[f].tareas; });
+    var prom = conCarga.length ? conCarga.reduce(function (s, f) { return s + carga[f].tareas; }, 0) / conCarga.length : 0;
+    dias.forEach(function (f) {
+      carga[f].alta = carga[f].tareas >= 3 && carga[f].tareas > prom * 1.5;
+      if (carga[f].alta) issues.push({ tipo: "Día sobrecargado", grave: false, dia: f, tars: activas(f).map(function (t) { return t.id; }), texto: fmt(f) + ": " + carga[f].tareas + " tareas de " + carga[f].contr + " contratistas (promedio " + prom.toFixed(1) + ")" });
+    });
+    // Piezas repetidas entre tarjetas.
+    var cuenta = {};
+    tars.forEach(function (t) { (t.guids || []).forEach(function (g) { (cuenta[g] = cuenta[g] || []).push(t); }); });
+    var rep = Object.keys(cuenta).filter(function (g) { return cuenta[g].length > 1; });
+    if (rep.length) issues.push({ tipo: "Piezas repetidas", grave: false, tars: Array.from(new Set([].concat.apply([], rep.map(function (g) { return cuenta[g].map(function (t) { return t.id; }); })))),
+      texto: rep.length + (rep.length === 1 ? " pieza está" : " piezas están") + " en más de una tarjeta: " + rep.slice(0, 6).map(etiquetaPieza).join(", ") + (rep.length > 6 ? "…" : "") });
+    // Piezas del alcance sin tarea.
+    if ((hito.alcance || []).length) {
+      var sin = Object.keys(S.piezas || {}).filter(function (g) { return hito.alcance.indexOf(S.piezas[g].zona) >= 0 && !cuenta[g]; });
+      if (sin.length) issues.push({ tipo: "Piezas sin tarea", grave: false, tars: [], guids: sin, texto: sin.length + (sin.length === 1 ? " pieza" : " piezas") + " de " + hito.alcance.join(", ") + (sin.length === 1 ? " no está" : " no están") + " en ninguna tarjeta: " + sin.slice(0, 8).map(etiquetaPieza).join(", ") + (sin.length > 8 ? "…" : "") });
+    }
+    return { issues: issues, carga: carga, prom: prom };
+  }
+  function simIr(f) { L.sim.on = true; L.sim.dia = f; render(); O.paintModel(false); }
+  function simPausa() { if (L.sim.timer) { clearInterval(L.sim.timer); L.sim.timer = null; } }
+  function simPlay() {
+    if (!L.simDias.length) return;
+    if (L.sim.timer) { simPausa(); render(); return; }
+    var k = L.simDias.indexOf(L.sim.dia);
+    if (k < 0 || k >= L.simDias.length - 1) k = -1;
+    L.sim.on = true; L.sim.dia = L.simDias[k + 1];
+    L.tarSel = null; L.diaSel = null;
+    render(); O.paintModel(true);
+    L.sim.timer = setInterval(function () {
+      var i = L.simDias.indexOf(L.sim.dia);
+      if (L.tab !== "pull" || S.modulo !== "lean" || i < 0 || i >= L.simDias.length - 1) { simPausa(); render(); return; }
+      L.sim.dia = L.simDias[i + 1]; render();
+    }, 1200 / L.sim.vel);
+  }
+  function simSalir() { simPausa(); L.sim.on = false; L.sim.dia = null; render(); O.paintModel(true); }
+  function barraSim(hito, dias, an) {
+    var k = Math.max(0, dias.indexOf(L.sim.dia));
+    var rango = el("input", { type: "range", min: "0", max: String(Math.max(0, dias.length - 1)), value: String(k), "aria-label": "Día de la simulación" });
+    rango.addEventListener("input", function () { simPausa(); simIr(dias[+rango.value]); });
+    var vel = el("select", { "aria-label": "Velocidad" }, [1, 2, 4].map(function (v) { return el("option", { value: String(v), text: v + "×" }); }));
+    vel.value = String(L.sim.vel);
+    vel.addEventListener("change", function () { L.sim.vel = +vel.value; if (L.sim.timer) { simPausa(); simPlay(); } });
+    var d = L.sim.on && L.sim.dia ? L.sim.dia : null, c = d ? an.carga[d] : null;
+    var graves = an.issues.filter(function (x) { return x.grave; }).length;
+    return el("div", { class: "ln-sim" }, [
+      el("button", { class: "btn btn-primary btn-sm", type: "button", text: L.sim.timer ? "⏸ Pausa" : "▶ Reproducir", onclick: simPlay }),
+      rango,
+      el("b", { text: d ? DIA[aF(d).getUTCDay()] + " " + d.split("-").reverse().slice(0, 2).join("/") + " · día " + (k + 1) + " de " + dias.length : "Simulación 4D" }),
+      el("span", { class: "muted", text: c ? c.tareas + " tareas · " + c.piezas + " piezas · " + c.contr + " contratistas" : "Reproduce el tablero día por día en el modelo" }),
+      vel,
+      L.sim.on ? el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Salir de la simulación", onclick: simSalir }) : null,
+      el("span", { class: graves ? "ln-bad" : (an.issues.length ? "ln-warn" : "ln-ok"), text: an.issues.length ? an.issues.length + (an.issues.length === 1 ? " embudo detectado" : " embudos detectados") : "Sin embudos" }),
+    ]);
+  }
+  function tarjetaEmbudos(an) {
+    var leyenda = el("small", { class: "muted", text: "En la simulación: gris oscuro = ejecutado · color del contratista = se ejecuta ese día · gris claro = pendiente · rojo = dos tareas sobre la misma pieza" });
+    return el("div", { class: "ln-card" }, [
+      el("div", { class: "ln-head" }, [el("h3", { text: "Embudos de la planeación" }), leyenda]),
+      el("ul", { class: "ln-embudos" }, an.issues.length ? an.issues.map(function (x) {
+        return el("li", null, [
+          el("span", { class: "tag" + (x.grave ? "" : " warn"), text: x.tipo }),
+          el("span", { text: x.texto }),
+          x.dia || (x.guids && x.guids.length) ? el("button", { class: "btn btn-ghost btn-sm", type: "button", text: x.dia ? "Ver ese día" : "Ver en el modelo", onclick: function () {
+            if (x.dia) { simPausa(); simIr(x.dia); } else { O.focusPieces(x.guids); }
+          } }) : el("span"),
+        ]);
+      }) : [el("li", { style: "grid-template-columns:1fr" }, [el("span", { class: "ln-ok", text: "No se detectaron embudos con las tarjetas actuales." })])]),
+    ]);
   }
 
   // ---------- Sesión Pull (semanas de 6 días: lunes a sábado) ----------
@@ -593,11 +739,17 @@
     semanas.sort();
     var dias = [];
     semanas.forEach(function (w) { dias = dias.concat(diasSemana(w)); });
-    var cols = "grid-template-columns: 130px repeat(" + dias.length + ", minmax(84px, 1fr)) 84px";
+    var cols = "grid-template-columns: 130px repeat(" + dias.length + ", 92px) 84px"; // ancho fijo: todas las filas alineadas
     var hoy = hoyF();
+    // Simulación y embudos sobre los días del tablero.
+    L.simDias = dias;
+    if (L.sim.on && dias.indexOf(L.sim.dia) < 0) L.sim.dia = dias[0];
+    var an = analizar(hito, dias);
+    L.flag = new Set(); var diasConflicto = new Set();
+    an.issues.forEach(function (x) { if (x.grave) { x.tars.forEach(function (id) { L.flag.add(id); }); if (x.dia) diasConflicto.add(x.dia); } });
     var cabDias = dias.map(function (f) {
       var d = aF(f);
-      return el("div", { class: "dia" + (d.getUTCDay() === 6 ? " sab" : "") + (f === hoy ? " hoy" : "") + (f === hito.fecha ? " dhito" : "") + (L.diaSel === f ? " activo" : "") }, [
+      return el("div", { class: "dia" + (d.getUTCDay() === 6 ? " sab" : "") + (f === hoy ? " hoy" : "") + (f === hito.fecha ? " dhito" : "") + (L.diaSel === f ? " activo" : "") + (L.sim.on && L.sim.dia === f ? " simdia" : "") + (diasConflicto.has(f) ? " conflicto" : "") }, [
         el("button", { type: "button", class: "dia-btn", title: "Ver en el modelo lo que se ejecuta este día", onclick: function () { activarDia(f); } }, [DIA[d.getUTCDay()] + " " + d.getUTCDate()]),
       ]);
     });
@@ -610,8 +762,27 @@
       return el("div", { class: "fila", style: cols }, [el("div", { class: "contr" }, [el("span", { style: "display:inline-flex;gap:8px;align-items:center" }, [el("i", { class: "dot", style: "border-radius:3px;background:" + colorDe(c) }), c])])]
         .concat(dias.map(function (f) { return celdaPull(hito, c, f); })).concat([el("div", { class: "hito" })]));
     });
-    $("ln-pull").replaceChildren(el("div", { class: "ln-ctrl" }, ctrl), el("div", { class: "ln-pull" }, [cab].concat(filas)),
-      el("p", { class: "muted", style: "margin:0;font-size:12px", text: "Clic en un post-it: enciende en el modelo las piezas de esa tarea (◆ = tiene piezas). Doble clic: abre la tarjeta. Clic en un día: lo que se ejecuta ese día. Arrastra un post-it para mover ese día; Shift + arrastrar mueve la tarea completa. Doble clic en un día vacío crea una tarjeta. Las ya pasadas al look-ahead quedan atenuadas." }));
+    // Fila de carga: tareas por día (rojo = sobrecargado).
+    var maxT = Math.max.apply(null, dias.map(function (f) { return an.carga[f].tareas; }).concat([1]));
+    var carga = el("div", { class: "fila carga", style: cols }, [el("div", { class: "contr", text: "Carga" })].concat(dias.map(function (f) {
+      var c = an.carga[f];
+      return el("div", { class: "dia" + (aF(f).getUTCDay() === 6 ? " sab" : "") + (L.sim.on && L.sim.dia === f ? " simdia" : ""), title: c.tareas + " tareas · " + c.piezas + " piezas · " + c.contr + " contratistas" }, [
+        c.tareas ? el("span", { text: String(c.tareas) }) : null, el("i", { class: c.alta ? "alta" : null, style: "height:" + Math.round(c.tareas / maxT * 26) + "px" }),
+      ]);
+    })).concat([el("div", { class: "hito" })]));
+    var antes = document.querySelector("#ln-pull .ln-pull"), scroll = antes ? antes.scrollLeft : null;
+    $("ln-pull").replaceChildren(el("div", { class: "ln-ctrl" }, ctrl), barraSim(hito, dias, an), el("div", { class: "ln-pull" }, [cab].concat(filas).concat([carga])),
+      el("p", { class: "muted", style: "margin:0;font-size:12px", text: "Clic en un post-it: enciende en el modelo las piezas de esa tarea (◆ = tiene piezas). Doble clic: abre la tarjeta. Clic en un día: lo que se ejecuta ese día. Arrastra un post-it para mover ese día; Shift + arrastrar mueve la tarea completa. Doble clic en un día vacío crea una tarjeta. Contorno rojo = tarea en un embudo." }),
+      tarjetaEmbudos(an));
+    // Conserva el desplazamiento del tablero; en la simulación sigue al día que se reproduce.
+    var tablero = document.querySelector("#ln-pull .ln-pull"), dsim = tablero && tablero.querySelector(".fila.cab .dia.simdia");
+    if (tablero && scroll != null) tablero.scrollLeft = scroll;
+    if (tablero && dsim) {
+      // Posición del día dentro del tablero (descontando la columna fija de contratistas).
+      var x = dsim.getBoundingClientRect().left - tablero.getBoundingClientRect().left + tablero.scrollLeft;
+      var fijo = 130, visIni = tablero.scrollLeft + fijo, visFin = tablero.scrollLeft + tablero.clientWidth;
+      if (x < visIni || x + dsim.offsetWidth * 2 > visFin) tablero.scrollLeft = Math.max(0, x - fijo - (tablero.clientWidth - fijo) / 2 + dsim.offsetWidth / 2);
+    }
   }
   var TINTE = ["#BFDBFE", "#DDD6FE", "#FBCFE8", "#FDE68A", "#BBF7D0", "#A5F3FC", "#FECACA", "#E2E8F0"];
   function tinte(c) { var i = contratistas().indexOf(c); return i < 0 ? "#E2E8F0" : TINTE[i % TINTE.length]; }
@@ -623,7 +794,7 @@
       if (t.contratista !== c) return;
       var ds = diasDe(t), k = ds.indexOf(f);
       if (k < 0) return;
-      var b = el("button", { type: "button", class: "ln-postit" + (t.actId ? " pasada" : "") + (k === ds.length - 1 ? " ultimo" : ""), style: "background:" + tinte(c), draggable: puedeMover(t) ? "true" : null,
+      var b = el("button", { type: "button", class: "ln-postit" + (t.actId ? " pasada" : "") + (k === ds.length - 1 ? " ultimo" : "") + (L.flag && L.flag.has(t.id) ? " embudo" : ""), style: "background:" + tinte(c), draggable: puedeMover(t) ? "true" : null,
         title: t.entregable + " · día " + (k + 1) + " de " + ds.length + (t.entregaA ? " · entrega a " + t.entregaA : "") + (t.necesita ? " · necesita: " + t.necesita : "") }, [
         el("b", { text: t.entregable }), el("small", { text: (k + 1) + "/" + ds.length + ((t.guids || []).length ? " · ◆" : "") + (k === ds.length - 1 && t.entregaA ? " → " + t.entregaA : "") }),
       ]);
@@ -634,7 +805,7 @@
       b.addEventListener("dragstart", function (ev) { ev.dataTransfer.setData("text/plain", t.id + "|" + f); ev.dataTransfer.effectAllowed = "move"; });
       postits.push(b);
     });
-    var cel = el("div", { class: "dia" + (dow === 6 ? " sab" : "") + (f === hito.fecha ? " dhito" : ""), "data-c": c, "data-f": f }, postits);
+    var cel = el("div", { class: "dia" + (dow === 6 ? " sab" : "") + (f === hito.fecha ? " dhito" : "") + (L.sim.on && L.sim.dia === f ? " simdia" : ""), "data-c": c, "data-f": f }, postits);
     var permitido = P("planear") || (esContratista() && c === S.me.contratista);
     if (permitido) {
       cel.addEventListener("dragover", function (ev) { ev.preventDefault(); cel.classList.add("soltar"); });
@@ -689,7 +860,17 @@
     $("lt-piezas").textContent = (n ? "◆ " + n + (n === 1 ? " pieza del modelo ligada" : " piezas del modelo ligadas") : "Sin piezas del modelo") + (sin.length ? " · no están en el modelo: " + sin.join(", ") : "");
     $("lt-quitar").hidden = !n && !ms.length;
     $("lt-usar").textContent = "Usar piezas seleccionadas" + (S.sel && S.sel.size ? " (" + S.sel.size + ")" : "");
+    // Vista previa: cómo se reparten las piezas en los días de la tarea (en orden).
+    var orden = []; ms.forEach(function (m) { guidsDeMarcas([m]).forEach(function (g) { if (orden.indexOf(g) < 0) orden.push(g); }); });
+    L.tarGuids.forEach(function (g) { if (orden.indexOf(g) < 0) orden.push(g); });
+    var ds = $("lt-auto").checked && $("lt-inicio").value && +$("lt-dur").value > 0 ? diasHabiles($("lt-inicio").value, +$("lt-dur").value) : (L.tar ? diasDe(L.tar) : []);
+    var rep = repartir(orden, ds);
+    $("lt-secuencia").replaceChildren.apply($("lt-secuencia"), orden.length && ds.length ? [el("span", { text: "Secuencia en la simulación:" })].concat(ds.map(function (f, k) {
+      var gs = rep[f] || [];
+      return el("div", null, [el("b", { text: "Día " + (k + 1) + " · " + f.split("-").reverse().slice(0, 2).join("/") + ": " }), gs.length ? gs.map(etiquetaPieza).join(", ") : "—"]);
+    })) : []);
   }
+  function etiquetaPieza(g) { return (S.piezas[g] && S.piezas[g].marca) || "pieza " + g.slice(-4); }
   function textoDias(ds, manual) {
     if (!ds.length) return "";
     var fmt = function (f) { return f.split("-").reverse().slice(0, 2).join("/"); };
@@ -719,7 +900,9 @@
     O.qsa("#ln-tar-form input, #ln-tar-form select").forEach(function (i) { i.disabled = !ed; });
     $("lt-contr").disabled = !ed || esContratista();
     var syncAuto = function () { var a = $("lt-auto").checked; $("lt-inicio").disabled = !ed || !a; $("lt-dur").disabled = !ed || !a; actualizarDiasTarjeta(); };
-    $("lt-auto").onchange = syncAuto; $("lt-inicio").oninput = actualizarDiasTarjeta; $("lt-dur").oninput = actualizarDiasTarjeta;
+    $("lt-auto").onchange = function () { syncAuto(); piezasTarjeta(); };
+    $("lt-inicio").oninput = function () { actualizarDiasTarjeta(); piezasTarjeta(); };
+    $("lt-dur").oninput = function () { actualizarDiasTarjeta(); piezasTarjeta(); };
     syncAuto();
     $("lt-marcas").value = (t && t.marcas ? t.marcas : []).join(", ");
     var dlm = Array.from(new Set(Object.values(S.piezas || {}).map(function (p) { return p.marca; }).filter(Boolean))).sort(function (a, b) { return a.localeCompare(b, "es", { numeric: true }); });
@@ -738,6 +921,9 @@
     $("ln-hito").setAttribute("data-id", h ? h.id : "");
     $("ln-hito-t").textContent = h ? "Editar hito" : "Nuevo hito";
     $("lh-nombre").value = h ? h.nombre : ""; $("lh-fecha").value = h ? h.fecha : "";
+    $("lh-alcance").value = h && h.alcance ? h.alcance.join(", ") : "";
+    var zonas = Array.from(new Set(Object.values(S.piezas || {}).map(function (p) { return p.zona; }).filter(Boolean))).sort();
+    $("lh-zonas").replaceChildren.apply($("lh-zonas"), zonas.map(function (z) { return el("option", { value: z }); }));
     $("lh-borrar").hidden = !h;
     $("ln-hito").showModal();
   }

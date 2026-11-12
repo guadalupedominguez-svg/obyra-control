@@ -67,16 +67,23 @@ export function diasDeTarjeta(t) {
   return diasHabiles(deFecha(d), t.duracion || 1);
 }
 
-// Piezas de una tarjeta: las elegidas en el modelo más las que tienen las marcas indicadas.
+// Piezas de una tarjeta, EN ORDEN DE EJECUCIÓN: primero las de las marcas en el orden escrito
+// (el orden en que se seleccionaron), luego las elegidas en el modelo que no tienen marca.
 async function ligarPiezas(marcasIn, guidsIn) {
   const marcas = [...new Set((Array.isArray(marcasIn) ? marcasIn : String(marcasIn || "").split(/[,;\n]+/))
     .map((x) => String(x).trim().toUpperCase()).filter(Boolean))].slice(0, 300);
-  const guids = new Set((Array.isArray(guidsIn) ? guidsIn : []).map(String).filter((g) => URN_GUID.test(g)));
+  const orden = [];
   if (marcas.length) {
     const cat = (await getJson(key("piezas", "catalogo"))) || { piezas: {} };
-    for (const [g, p] of Object.entries(cat.piezas || {})) if (marcas.includes(String(p.marca || "").toUpperCase())) guids.add(g);
+    const porMarca = {};
+    for (const [g, p] of Object.entries(cat.piezas || {})) {
+      const m = String(p.marca || "").toUpperCase();
+      if (marcas.includes(m)) (porMarca[m] = porMarca[m] || []).push(g);
+    }
+    for (const m of marcas) for (const g of porMarca[m] || []) orden.push(g);
   }
-  return { marcas, guids: [...guids].slice(0, 2000) };
+  for (const g of (Array.isArray(guidsIn) ? guidsIn : []).map(String)) if (URN_GUID.test(g)) orden.push(g);
+  return { marcas, guids: [...new Set(orden)].slice(0, 2000) };
 }
 
 function lista(v, max, maxLen) {
@@ -238,7 +245,12 @@ export default route(["GET", "POST"], async (req, res) => {
       const h = b.hito || {};
       const prev = h.id ? await hgetJson(HITOS(), String(h.id)) : null;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(h.fecha || ""))) throw new HttpError(400, "Pon la fecha del hito.");
-      const hito = { ...(prev || { id: id(), tarjetas: [], creado: firma(me) }), nombre: cleanText(h.nombre, 120, "El nombre del hito", { required: true }), fecha: h.fecha };
+      const hito = {
+        ...(prev || { id: id(), tarjetas: [], creado: firma(me) }),
+        nombre: cleanText(h.nombre, 120, "El nombre del hito", { required: true }), fecha: h.fecha,
+        // Zonas que abarca el hito: sirven para detectar piezas que ninguna tarjeta cubre.
+        alcance: lista(Array.isArray(h.alcance) ? h.alcance : String(h.alcance || "").split(/[,;\n]+/), 50, 60),
+      };
       await hsetJson(HITOS(), { [hito.id]: hito });
       out.hito = hito;
       break;

@@ -341,7 +341,8 @@
           <button type="button" class="btn btn-ghost btn-sm" id="lt-usar">Usar piezas seleccionadas</button>
           <button type="button" class="btn btn-ghost btn-sm" id="lt-quitar">Quitar piezas</button>
         </div>
-        <p class="hint">Escribe las marcas (parámetro Marca de Revit) o selecciona los elementos en el modelo (Ctrl + clic para varios) y usa «Usar piezas seleccionadas».</p>
+        <p class="hint">El orden de las marcas es el orden de ejecución: así se reparten en los días de la tarea en la simulación. Escríbelas en ese orden o selecciónalas en el modelo una por una (Selección múltiple) y usa «Usar piezas seleccionadas».</p>
+        <div class="lt-secuencia" id="lt-secuencia"></div>
         <label class="check"><input type="checkbox" id="lt-auto" checked> Acomodar los días automáticamente (lunes a sábado, desde la fecha de inicio)</label>
         <p class="hint" id="lt-dias"></p>
         <div class="row end">
@@ -358,6 +359,9 @@
         <h3 id="ln-hito-t">Hito</h3>
         <label>Nombre<input id="lh-nombre" maxlength="120" required placeholder="Ej. Fachadas terminadas"></label>
         <label>Fecha<input id="lh-fecha" type="date" required></label>
+        <label>Zonas del alcance (separadas por coma)<input id="lh-alcance" list="lh-zonas" placeholder="Ej. FACHADA NORTE, FACHADA ESTE" autocomplete="off"></label>
+        <datalist id="lh-zonas"></datalist>
+        <p class="hint">Con el alcance, la simulación avisa qué piezas de esas zonas no tiene ninguna tarjeta.</p>
         <div class="row end">
           <button type="button" class="btn btn-danger btn-sm" id="lh-borrar">Borrar hito</button>
           <button type="button" class="btn btn-ghost btn-sm" id="lh-cancelar">Cancelar</button>

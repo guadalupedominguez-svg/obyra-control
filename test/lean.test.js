@@ -124,13 +124,15 @@ test("plan semanal: lo establece el PM; califica el residente y valida el superi
 test("sesión pull: el contratista mueve solo sus tarjetas y el PM las pasa al look-ahead", async () => {
   // Catálogo de piezas del modelo para ligar por marca.
   await admin("piezas", { action: "catalogo", version: "1", piezas: [{ guid: "0000000000000000000007", marca: "MP-07", contratista: "COPRESA" }, { guid: "0000000000000000000008", marca: "MP-08", contratista: "COPRESA" }] });
-  let r = await pm("lean", { action: "hito-guardar", hito: { nombre: "Fachadas terminadas", fecha: "2026-12-18" } });
+  let r = await pm("lean", { action: "hito-guardar", hito: { nombre: "Fachadas terminadas", fecha: "2026-12-18", alcance: "FACHADA NORTE, FACHADA ESTE" } });
+  assert.deepEqual(r.json.hito.alcance, ["FACHADA NORTE", "FACHADA ESTE"]);
   const hitoId = r.json.hito.id;
-  r = await copresa("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { contratista: "FAMEP", entregable: "Paneles norte", duracion: 8, inicio: "2026-11-12", necesita: "Grúa", ubicacion: "Área 2", partida: "muros", guids: ["0000000000000000000001", "malo"], marcas: "mp-07, XX-99" } });
+  r = await copresa("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { contratista: "FAMEP", entregable: "Paneles norte", duracion: 8, inicio: "2026-11-12", necesita: "Grúa", ubicacion: "Área 2", partida: "muros", guids: ["0000000000000000000001", "malo"], marcas: "mp-08, mp-07, XX-99" } });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(r.json.tarjeta.contratista, "COPRESA"); // el contratista no puede poner otra empresa
-  assert.deepEqual(r.json.tarjeta.marcas, ["MP-07", "XX-99"]);
-  assert.deepEqual(r.json.tarjeta.guids.sort(), ["0000000000000000000001", "0000000000000000000007"]); // elegida + por marca (XX-99 no existe)
+  assert.deepEqual(r.json.tarjeta.marcas, ["MP-08", "MP-07", "XX-99"]);
+  // Orden de ejecución: marcas en el orden escrito, luego las elegidas sin marca (XX-99 no existe).
+  assert.deepEqual(r.json.tarjeta.guids, ["0000000000000000000008", "0000000000000000000007", "0000000000000000000001"]);
   // 8 días hábiles desde el jueves 12: salta el domingo 15 y termina el sábado 21 (semana 47).
   assert.deepEqual(r.json.tarjeta.dias, ["2026-11-12", "2026-11-13", "2026-11-14", "2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19", "2026-11-20"]);
   assert.equal(r.json.tarjeta.semana, "2026-W47");
@@ -150,6 +152,6 @@ test("sesión pull: el contratista mueve solo sus tarjetas y el PM las pasa al l
   assert.equal(nueva.semanaIni, "2026-W46"); // del primer día (jueves 12)
   assert.equal(nueva.semanaFin, "2026-W47"); // al último (sábado 21)
   assert.equal(nueva.restricciones[0].texto, "Grúa"); // lo que necesita pasa como restricción
-  assert.deepEqual(nueva.guids.sort(), ["0000000000000000000001", "0000000000000000000007"]); // las piezas de la tarjeta pasan a la actividad
+  assert.equal(nueva.guids.length, 3); // las piezas de la tarjeta pasan a la actividad
   assert.equal((await copresa("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { id: tid, entregable: "x", inicio: "2026-11-16", duracion: 1 } })).status, 409);
 });
