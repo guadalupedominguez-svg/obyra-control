@@ -790,6 +790,18 @@
       .concat(semanas.map(function (w) { return el("div", { class: "sem", style: "grid-column: span 6" }, [el("b", { text: corta(w) }), " ", el("span", { text: rango(w) })]); }))
       .concat([el("div", { class: "hito", style: "grid-row: span 2", text: "Hito · " + hito.fecha.split("-").reverse().slice(0, 2).join("/") })])
       .concat(cabDias));
+    // Carriles: cada tarea ocupa la misma línea en todos sus días (las que se traslapan van en líneas distintas).
+    L.diasTab = dias; L.carril = {};
+    contratistas().forEach(function (c) {
+      var fines = []; // último día ocupado por línea
+      (hito.tarjetas || []).filter(function (t) { return t.contratista === c && diasDe(t).length; })
+        .map(function (t) { var ds = diasDe(t).slice().sort(); return { t: t, ini: ds[0], fin: ds[ds.length - 1] }; })
+        .sort(function (a, b) { return a.ini < b.ini ? -1 : a.ini > b.ini ? 1 : (a.fin < b.fin ? -1 : 1); })
+        .forEach(function (x) {
+          var k = 0; while (k < fines.length && fines[k] >= x.ini) k++;
+          fines[k] = x.fin; L.carril[x.t.id] = k;
+        });
+    });
     var filas = contratistas().map(function (c) {
       return el("div", { class: "fila", style: cols }, [el("div", { class: "contr" }, [el("span", { style: "display:inline-flex;gap:8px;align-items:center" }, [el("i", { class: "dot", style: "border-radius:3px;background:" + colorDe(c) }), c])])]
         .concat(dias.map(function (f) { return celdaPull(hito, c, f); })).concat([el("div", { class: "hito" })]));
@@ -822,9 +834,10 @@
   function celdaPull(hito, c, f) {
     var dow = aF(f).getUTCDay();
     var postits = [];
+    var col = (L.diasTab || []).indexOf(f), sig = col >= 0 ? L.diasTab[col + 1] : null, ant = col > 0 ? L.diasTab[col - 1] : null;
     (hito.tarjetas || []).forEach(function (t) {
       if (t.contratista !== c) return;
-      var ds = diasDe(t), k = ds.indexOf(f);
+      var ds = diasDe(t).slice().sort(), k = ds.indexOf(f);
       if (k < 0) return;
       var ult = k === ds.length - 1 && ds.length > 1;
       var b = el("button", { type: "button", "data-t": t.id, class: "ln-postit" + (t.actId ? " pasada" : "") + (k === ds.length - 1 ? " ultimo" : "") + (L.flag && L.flag.has(t.id) ? " embudo" : ""), style: "background:" + tinte(c), draggable: puedeMover(t) ? "true" : null,
@@ -832,6 +845,11 @@
         el("b", { text: t.entregable }), el("small", { text: (ult && puedeMover(t) ? "⇄ " : "") + (k + 1) + "/" + ds.length + ((t.guids || []).length ? " · ◆" : "") + (k === ds.length - 1 && t.entregaA ? " → " + t.entregaA : "") }),
       ]);
       if (L.tarSel === t.id) b.classList.add("activa");
+      // Se une visualmente con el día siguiente / anterior de la misma serie.
+      if (k < ds.length - 1 && ds[k + 1] === sig) b.classList.add("sigue");
+      if (k > 0 && ds[k - 1] === ant) b.classList.add("viene");
+      b.style.order = String(L.carril[t.id] || 0);
+      b._carril = L.carril[t.id] || 0;
       // Clic: enciende en el modelo las piezas de la tarea. Doble clic: abre la tarjeta.
       b.addEventListener("click", function () { activarTarjeta(t); });
       b.addEventListener("dblclick", function (ev) { ev.stopPropagation(); abrirTarjeta(t, null, null); });
@@ -843,6 +861,10 @@
       b.addEventListener("dragend", function () { O.qsa(".ln-postit.serie").forEach(function (x) { x.classList.remove("serie"); }); });
       postits.push(b);
     });
+    // Huecos para que cada tarea quede en su línea aunque ese día no haya nada en las líneas de arriba.
+    var usados = postits.map(function (b) { return b._carril; });
+    var maxC = usados.length ? Math.max.apply(null, usados) : -1;
+    for (var h = 0; h < maxC; h++) if (usados.indexOf(h) < 0) postits.push(el("span", { class: "ln-hueco", "aria-hidden": "true", style: "order:" + h }));
     var cel = el("div", { class: "dia" + (dow === 6 ? " sab" : "") + (f === hito.fecha ? " dhito" : "") + (L.sim.on && L.sim.dia === f ? " simdia" : ""), "data-c": c, "data-f": f }, postits);
     var permitido = P("planear") || (esContratista() && c === S.me.contratista);
     if (permitido) {
