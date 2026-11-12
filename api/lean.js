@@ -14,6 +14,8 @@
 //     hito-borrar     {id}                                              PM / admin
 //     tarjeta-guardar {hitoId, tarjeta:{id?, contratista, entregable, inicio, duracion, dias?[], entregaA, necesita, ubicacion, partida}}
 //                     dias: fechas hábiles (lunes a sábado) acomodadas a mano; sin dias se acomodan solas desde inicio + duracion
+//                     guids: piezas del modelo que se ejecutan con la tarjeta (pasan a la actividad)
+//                     marcas: marcas de pieza (parámetro Marca); se ligan solas a las piezas del catálogo con esa marca
 //                     contratista: solo sus tarjetas; PM / admin: todas
 //     tarjeta-borrar  {hitoId, id}
 //     pasar           {hitoId}                                          PM / admin: tarjetas → actividades del look-ahead
@@ -63,6 +65,18 @@ export function diasDeTarjeta(t) {
   const m = /^(\d{4})-W(\d{2})$/.exec(t.semana), d = new Date(Date.UTC(+m[1], 0, 4));
   d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() || 7) - 1) + (+m[2] - 1) * 7);
   return diasHabiles(deFecha(d), t.duracion || 1);
+}
+
+// Piezas de una tarjeta: las elegidas en el modelo más las que tienen las marcas indicadas.
+async function ligarPiezas(marcasIn, guidsIn) {
+  const marcas = [...new Set((Array.isArray(marcasIn) ? marcasIn : String(marcasIn || "").split(/[,;\n]+/))
+    .map((x) => String(x).trim().toUpperCase()).filter(Boolean))].slice(0, 300);
+  const guids = new Set((Array.isArray(guidsIn) ? guidsIn : []).map(String).filter((g) => URN_GUID.test(g)));
+  if (marcas.length) {
+    const cat = (await getJson(key("piezas", "catalogo"))) || { piezas: {} };
+    for (const [g, p] of Object.entries(cat.piezas || {})) if (marcas.includes(String(p.marca || "").toUpperCase())) guids.add(g);
+  }
+  return { marcas, guids: [...guids].slice(0, 2000) };
 }
 
 function lista(v, max, maxLen) {
@@ -275,6 +289,7 @@ export default route(["GET", "POST"], async (req, res) => {
           necesita: cleanText(t.necesita, 300, "Lo que necesita"),
           ubicacion: cleanText(t.ubicacion, 60, "La ubicación"),
           partida: upper(t.partida, 60, "La partida"),
+          ...(await ligarPiezas(t.marcas, t.guids)),
           actualizada: firma(me),
         };
         hito.tarjetas = prev ? hito.tarjetas.map((x) => (x.id === prev.id ? tarjeta : x)) : [...(hito.tarjetas || []), tarjeta].slice(-300);
@@ -296,7 +311,7 @@ export default route(["GET", "POST"], async (req, res) => {
           id: id(), restricciones: [], creada: firma(me), actualizada: firma(me),
           partida: t.partida, contratista: t.contratista, ubicacion: t.ubicacion || hito.nombre, eje: "",
           descripcion: t.entregable + (t.entregaA ? " · entrega a " + t.entregaA : ""),
-          semanaIni: semanaDe(diasDeTarjeta(t)[0] || t.inicio), semanaFin: t.semana, guids: [], origen: { hito: hito.id, tarjeta: t.id },
+          semanaIni: semanaDe(diasDeTarjeta(t)[0] || t.inicio), semanaFin: t.semana, guids: t.guids || [], origen: { hito: hito.id, tarjeta: t.id },
         };
         if (t.necesita) act.restricciones.push({ id: id(), texto: t.necesita, tipo: "Otro", responsable: t.contratista, fecha: "", estado: "abierta", creada: firma(me) });
         nuevas[act.id] = act;

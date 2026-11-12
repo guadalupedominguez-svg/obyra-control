@@ -33,7 +33,7 @@
   var hoyISO = function () { var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
 
   // ---------- Estado ----------
-  var L = { cfg: null, tipos: [], acts: [], plan: [], hitos: [], semana: HOY, tab: null, hitoId: "", contr: "", resaltar: true, act: null, tar: null, cargado: false };
+  var L = { tarSel: null, diaSel: null, tarGuids: [], cfg: null, tipos: [], acts: [], plan: [], hitos: [], semana: HOY, tab: null, hitoId: "", contr: "", resaltar: true, act: null, tar: null, cargado: false };
   var P = function (k) { return !!(S.permisos && S.permisos[k]); };
   var esContratista = function () { return S.me && S.me.rol === "contratista"; };
   var C_LEAN = { comp: "#22D3EE", ok: "#2BD483", bad: "#F2616A", restr: "#F5B83D", lista: "#3B82F6" };
@@ -109,9 +109,22 @@
 
   // Colores del modelo según la semana elegida (lo llama paintModel de app.js).
   window.OBYRA_LEAN = {
+    // En la sesión pull se aísla solo con una tarea o un día elegido; en las demás vistas, siempre.
+    aislar: function () { return L.tab !== "pull" || !!(L.tarSel || L.diaSel); },
+    alSeleccionar: function (n) { if (n) toast(n + (n === 1 ? " elemento seleccionado" : " elementos seleccionados") + ". Ábrelo en la tarjeta o actividad con «Usar piezas seleccionadas»."); },
     colores: function () {
       var out = {};
-      if (!L.cargado || L.tab === "pull") return out;
+      if (!L.cargado) return out;
+      if (L.tab === "pull") {
+        // Sesión pull: las piezas de las tarjetas del hito, por contratista; la tarjeta o el día elegido, solos.
+        var hito = L.hitos.find(function (h) { return h.id === L.hitoId; });
+        (hito ? hito.tarjetas || [] : []).forEach(function (t) {
+          if (L.tarSel && t.id !== L.tarSel) return;
+          if (!L.tarSel && L.diaSel && diasDe(t).indexOf(L.diaSel) < 0) return;
+          (t.guids || []).forEach(function (g) { out[g] = colorDe(t.contratista); });
+        });
+        return out;
+      }
       L.acts.forEach(function (a) {
         if (!enSemana(a, L.semana) || !(a.guids || []).length) return;
         if (L.contr && a.contratista !== L.contr) return;
@@ -464,12 +477,28 @@
     });
     // Tarjeta
     $("lt-cancelar").addEventListener("click", function () { $("ln-tar").close(); });
+    $("lt-usar").addEventListener("click", function () {
+      if (!S.sel || !S.sel.size) { toast("Primero selecciona los elementos en el modelo (Ctrl + clic para varios) y vuelve a abrir la tarjeta."); return; }
+      var ms = marcasEscritas(), sueltas = [];
+      Array.from(S.sel).forEach(function (g) {
+        var m = S.piezas[g] && S.piezas[g].marca ? String(S.piezas[g].marca).toUpperCase() : "";
+        if (m) { if (ms.indexOf(m) < 0) ms.push(m); } else if (L.tarGuids.indexOf(g) < 0) sueltas.push(g);
+      });
+      $("lt-marcas").value = ms.join(", ");
+      L.tarGuids = L.tarGuids.concat(sueltas);
+      piezasTarjeta(); toast("Se ligarán " + S.sel.size + " piezas al guardar.");
+    });
+    $("lt-quitar").addEventListener("click", function () { L.tarGuids = []; $("lt-marcas").value = ""; piezasTarjeta(); });
+    $("lt-marcas").addEventListener("input", piezasTarjeta);
     $("ln-tar-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
       var auto = $("lt-auto").checked;
       var t = { id: L.tar && L.tar.id, contratista: $("lt-contr").value, entregable: $("lt-entregable").value,
         entregaA: $("lt-entrega").value, necesita: $("lt-necesita").value, ubicacion: $("lt-ubic").value, partida: $("lt-partida").value };
       if (auto) { t.inicio = $("lt-inicio").value; t.duracion = $("lt-dur").value; } else { t.dias = diasDe(L.tar); }
+      // Las piezas con marca se guardan por marca; las que no tienen, por GlobalId.
+      var ms = marcasEscritas(), porMarca = guidsDeMarcas(ms);
+      t.marcas = ms; t.guids = L.tarGuids.filter(function (g) { return porMarca.indexOf(g) < 0; });
       accion({ action: "tarjeta-guardar", hitoId: L.hitoId, tarjeta: t }, "Tarjeta guardada.").then(function () { $("ln-tar").close(); });
     });
     $("lt-borrar").addEventListener("click", function () {
@@ -542,6 +571,12 @@
       if (hito) ctrl.push(el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Editar hito", onclick: function () { abrirHito(hito); } }));
     }
     if (hito && (P("planear") || esContratista())) ctrl.push(el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "+ Tarjeta", onclick: function () { abrirTarjeta(null, null, null); } }));
+    var tSel = hito && L.tarSel ? (hito.tarjetas || []).find(function (t) { return t.id === L.tarSel; }) : null;
+    if (L.tarSel && !tSel) L.tarSel = null;
+    if (tSel || L.diaSel) ctrl.splice(2, 0, el("span", { class: "ln-activo" }, [
+      el("span", { text: "En el modelo: " + (tSel ? tSel.entregable + " · " + (tSel.guids || []).length + " piezas" : "lo que se ejecuta el " + L.diaSel.split("-").reverse().slice(0, 2).join("/")) }),
+      el("button", { class: "linklike", type: "button", text: "Mostrar todo", onclick: function () { L.tarSel = null; L.diaSel = null; render(); O.paintModel(true); } }),
+    ]));
     if (hito && P("planear")) ctrl.push(el("button", { class: "btn btn-primary btn-sm", type: "button", text: "Pasar al look-ahead", onclick: function () {
       var n = (hito.tarjetas || []).filter(function (t) { return !t.actId; }).length;
       if (!n) { toast("No hay tarjetas nuevas que pasar."); return; }
@@ -563,7 +598,9 @@
     var hoy = hoyF();
     var cabDias = dias.map(function (f) {
       var d = aF(f);
-      return el("div", { class: "dia" + (d.getUTCDay() === 6 ? " sab" : "") + (f === hoy ? " hoy" : "") + (f === hito.fecha ? " dhito" : "") }, [DIA[d.getUTCDay()] + " " + d.getUTCDate()]);
+      return el("div", { class: "dia" + (d.getUTCDay() === 6 ? " sab" : "") + (f === hoy ? " hoy" : "") + (f === hito.fecha ? " dhito" : "") + (L.diaSel === f ? " activo" : "") }, [
+        el("button", { type: "button", class: "dia-btn", title: "Ver en el modelo lo que se ejecuta este día", onclick: function () { activarDia(f); } }, [DIA[d.getUTCDay()] + " " + d.getUTCDate()]),
+      ]);
     });
     // La fila de días va en la misma rejilla que la de semanas (debajo).
     var cab = el("div", { class: "fila cab", style: cols }, [el("div", { style: "grid-row: span 2", text: "Contratista" })]
@@ -575,7 +612,7 @@
         .concat(dias.map(function (f) { return celdaPull(hito, c, f); })).concat([el("div", { class: "hito" })]));
     });
     $("ln-pull").replaceChildren(el("div", { class: "ln-ctrl" }, ctrl), el("div", { class: "ln-pull" }, [cab].concat(filas)),
-      el("p", { class: "muted", style: "margin:0;font-size:12px", text: "Cada post-it es un día de la tarea. Arrastra un post-it para mover ese día; con Shift + arrastrar se mueve la tarea completa. Doble clic en un día vacío crea una tarjeta que empieza ahí. Las tarjetas ya pasadas al look-ahead quedan atenuadas." }));
+      el("p", { class: "muted", style: "margin:0;font-size:12px", text: "Clic en un post-it: enciende en el modelo las piezas de esa tarea (◆ = tiene piezas). Doble clic: abre la tarjeta. Clic en un día: lo que se ejecuta ese día. Arrastra un post-it para mover ese día; Shift + arrastrar mueve la tarea completa. Doble clic en un día vacío crea una tarjeta. Las ya pasadas al look-ahead quedan atenuadas." }));
   }
   var TINTE = ["#BFDBFE", "#DDD6FE", "#FBCFE8", "#FDE68A", "#BBF7D0", "#A5F3FC", "#FECACA", "#E2E8F0"];
   function tinte(c) { var i = contratistas().indexOf(c); return i < 0 ? "#E2E8F0" : TINTE[i % TINTE.length]; }
@@ -589,9 +626,12 @@
       if (k < 0) return;
       var b = el("button", { type: "button", class: "ln-postit" + (t.actId ? " pasada" : "") + (k === ds.length - 1 ? " ultimo" : ""), style: "background:" + tinte(c), draggable: puedeMover(t) ? "true" : null,
         title: t.entregable + " · día " + (k + 1) + " de " + ds.length + (t.entregaA ? " · entrega a " + t.entregaA : "") + (t.necesita ? " · necesita: " + t.necesita : "") }, [
-        el("b", { text: t.entregable }), el("small", { text: (k + 1) + "/" + ds.length + (k === ds.length - 1 && t.entregaA ? " → " + t.entregaA : "") }),
+        el("b", { text: t.entregable }), el("small", { text: (k + 1) + "/" + ds.length + ((t.guids || []).length ? " · ◆" : "") + (k === ds.length - 1 && t.entregaA ? " → " + t.entregaA : "") }),
       ]);
-      b.addEventListener("click", function () { abrirTarjeta(t, null, null); });
+      if (L.tarSel === t.id) b.classList.add("activa");
+      // Clic: enciende en el modelo las piezas de la tarea. Doble clic: abre la tarjeta.
+      b.addEventListener("click", function () { activarTarjeta(t); });
+      b.addEventListener("dblclick", function (ev) { ev.stopPropagation(); abrirTarjeta(t, null, null); });
       b.addEventListener("dragstart", function (ev) { ev.dataTransfer.setData("text/plain", t.id + "|" + f); ev.dataTransfer.effectAllowed = "move"; });
       postits.push(b);
     });
@@ -624,6 +664,33 @@
     }
     return cel;
   }
+  function activarTarjeta(t) {
+    L.diaSel = null;
+    L.tarSel = L.tarSel === t.id ? null : t.id;
+    render(); O.paintModel(true);
+    if (L.tarSel && !(t.guids || []).length) toast("Esta tarea no tiene piezas del modelo. Doble clic en el post-it para ligarlas.");
+  }
+  function activarDia(f) {
+    L.tarSel = null;
+    L.diaSel = L.diaSel === f ? null : f;
+    render(); O.paintModel(true);
+  }
+  // Marcas escritas → piezas del catálogo con esa marca.
+  function marcasEscritas() {
+    return Array.from(new Set($("lt-marcas").value.split(/[,;\n]+/).map(function (x) { return x.trim().toUpperCase(); }).filter(Boolean)));
+  }
+  function guidsDeMarcas(ms) {
+    return Object.keys(S.piezas || {}).filter(function (g) { return ms.indexOf(String(S.piezas[g].marca || "").toUpperCase()) >= 0; });
+  }
+  function piezasTarjeta() {
+    var ms = marcasEscritas(), porMarca = guidsDeMarcas(ms);
+    var todas = new Set(L.tarGuids.concat(porMarca));
+    var sin = ms.filter(function (m) { return !guidsDeMarcas([m]).length; });
+    var n = todas.size;
+    $("lt-piezas").textContent = (n ? "◆ " + n + (n === 1 ? " pieza del modelo ligada" : " piezas del modelo ligadas") : "Sin piezas del modelo") + (sin.length ? " · no están en el modelo: " + sin.join(", ") : "");
+    $("lt-quitar").hidden = !n && !ms.length;
+    $("lt-usar").textContent = "Usar piezas seleccionadas" + (S.sel && S.sel.size ? " (" + S.sel.size + ")" : "");
+  }
   function textoDias(ds, manual) {
     if (!ds.length) return "";
     var fmt = function (f) { return f.split("-").reverse().slice(0, 2).join("/"); };
@@ -655,6 +722,15 @@
     var syncAuto = function () { var a = $("lt-auto").checked; $("lt-inicio").disabled = !ed || !a; $("lt-dur").disabled = !ed || !a; actualizarDiasTarjeta(); };
     $("lt-auto").onchange = syncAuto; $("lt-inicio").oninput = actualizarDiasTarjeta; $("lt-dur").oninput = actualizarDiasTarjeta;
     syncAuto();
+    $("lt-marcas").value = (t && t.marcas ? t.marcas : []).join(", ");
+    var dlm = Array.from(new Set(Object.values(S.piezas || {}).map(function (p) { return p.marca; }).filter(Boolean))).sort(function (a, b) { return a.localeCompare(b, "es", { numeric: true }); });
+    $("lt-marcas-list").replaceChildren.apply($("lt-marcas-list"), dlm.map(function (m) { return el("option", { value: m }); }));
+    // Las piezas que ya vienen por marca no se repiten como sueltas.
+    var yaPorMarca = guidsDeMarcas((t && t.marcas) || []);
+    L.tarGuids = (t && t.guids ? t.guids : []).filter(function (g) { return yaPorMarca.indexOf(g) < 0; });
+    piezasTarjeta();
+    $("lt-marcas").disabled = !(!t || puedeMover(t));
+    $("lt-usar").hidden = !ed; if (!ed) $("lt-quitar").hidden = true;
     $("lt-borrar").hidden = !t || !ed;
     $("ln-tar-form").querySelector("button[type=submit]").hidden = !ed;
     $("ln-tar").showModal();

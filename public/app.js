@@ -1382,7 +1382,9 @@
         var id = S.guid2db.get(g); if (id == null) return;
         lids.push(id); v.setThemingColor(id, hexToVec(col[g]), m, true);
       });
-      if (lids.length) { v.isolate(lids, m); if (encuadrar) v.fitToView(lids, m); } else v.showAll();
+      // aislar = solo lo elegido; si no, todo el modelo visible con los colores encima (para poder seleccionar más).
+      if (lids.length && window.OBYRA_LEAN.aislar()) { v.isolate(lids, m); if (encuadrar) v.fitToView(lids, m); }
+      else { v.showAll(); if (lids.length && encuadrar) v.fitToView(lids, m); }
       return;
     }
     var ids = [];
@@ -1407,8 +1409,10 @@
     if (S.syncing) return;
     var gs = (ev.dbIdArray || []).map(function (id) {
       // Si se selecciona una parte de una pieza, sube hasta la pieza.
+      // En Lean sirve cualquier elemento del IFC con GlobalId (para ligarlo a tarjetas y actividades).
       var it = S.model.getInstanceTree(), cur = id;
-      while (cur != null && !S.piezas[S.db2guid.get(cur)]) {
+      var vale = S.modulo === "lean" ? function (x) { return S.db2guid.has(x); } : function (x) { return !!S.piezas[S.db2guid.get(x)]; };
+      while (cur != null && !vale(cur)) {
         cur = it.getNodeParentId(cur);
         if (cur == null || cur < 0 || cur === it.getRootId()) cur = null;
       }
@@ -1416,6 +1420,7 @@
     }).filter(Boolean);
     if (!gs.length) return;
     S.sel = new Set(gs);
+    if (S.modulo === "lean") { if (window.OBYRA_LEAN && window.OBYRA_LEAN.alSeleccionar) window.OBYRA_LEAN.alSeleccionar(gs.length); return; }
     renderLista();
     var sel = document.querySelector("#lista li.sel");
     if (sel) sel.scrollIntoView({ block: "nearest" });

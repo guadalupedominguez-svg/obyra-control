@@ -329,6 +329,14 @@
           <label>Partida<input id="lt-partida" maxlength="60" list="la-partidas"></label>
         </div>
         <label>Necesito para empezar<input id="lt-necesita" maxlength="300" placeholder="Pasa al look-ahead como restricción"></label>
+        <label>Marcas del modelo (separadas por coma)<input id="lt-marcas" list="lt-marcas-list" placeholder="Ej. MP-07, MP-08, MP-09" autocomplete="off"></label>
+        <datalist id="lt-marcas-list"></datalist>
+        <div class="row" id="lt-piezas-row">
+          <span class="muted" id="lt-piezas"></span>
+          <button type="button" class="btn btn-ghost btn-sm" id="lt-usar">Usar piezas seleccionadas</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="lt-quitar">Quitar piezas</button>
+        </div>
+        <p class="hint">Escribe las marcas (parámetro Marca de Revit) o selecciona los elementos en el modelo (Ctrl + clic para varios) y usa «Usar piezas seleccionadas».</p>
         <label class="check"><input type="checkbox" id="lt-auto" checked> Acomodar los días automáticamente (lunes a sábado, desde la fecha de inicio)</label>
         <p class="hint" id="lt-dias"></p>
         <div class="row end">
