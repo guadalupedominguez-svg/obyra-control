@@ -1617,13 +1617,31 @@
     var falta = [];
     guids.forEach(function (g) { if (!S.marcasModelo.has(g) && !(S.piezas[g] && S.piezas[g].marca)) { var id = S.guid2db.get(g); if (id != null) { S.marcasModelo.set(g, ""); falta.push([g, id]); } } });
     if (!falta.length) return;
-    var porId = new Map(falta.map(function (x) { return [x[1], x[0]]; }));
-    bulk(falta.map(function (x) { return x[1]; }), null).then(function (res) {
+    // Se busca MARCA en el elemento; si no la trae, en sus partes (hijos) y luego en el elemento que lo contiene.
+    var it = S.model.getInstanceTree(), raiz = it.getRootId();
+    var cand = {}; // dbId del elemento → dbIds donde buscar, en orden
+    falta.forEach(function (x) {
+      var id = x[1], lista = [id];
+      it.enumNodeChildren(id, function (c) { if (c !== id) lista.push(c); }, true);
+      var p = it.getNodeParentId(id);
+      if (p != null && p > 0 && p !== raiz) lista.push(p);
+      cand[id] = lista;
+    });
+    var todos = Array.from(new Set([].concat.apply([], Object.values(cand))));
+    S.nombresModelo = S.nombresModelo || new Map();
+    bulk(todos, null).then(function (res) {
+      var props = new Map(); res.forEach(function (r) { props.set(r.dbId, r); });
       var hay = false;
-      res.forEach(function (r) { var m = pick(r.properties || [], CAMPOS.marca, false); if (m) { S.marcasModelo.set(porId.get(r.dbId), m); hay = true; } });
-      if (hay && listo) listo();
+      falta.forEach(function (x) {
+        var g = x[0], m = "";
+        cand[x[1]].some(function (id) { var r = props.get(id); m = r ? pick(r.properties || [], CAMPOS.marca, false) : ""; return !!m; });
+        var r0 = props.get(x[1]); if (r0 && r0.name) S.nombresModelo.set(g, r0.name);
+        if (m) { S.marcasModelo.set(g, m); hay = true; }
+      });
+      if (listo) listo();
     }).catch(function () { /* sin marcas: se queda el nombre corto */ });
   }
+  function nombreModelo(g) { return (S.nombresModelo && S.nombresModelo.get(g)) || ""; }
 
   // ---------- Leer piezas del modelo (admin) ----------
   function norm(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, ""); }
@@ -1694,7 +1712,7 @@
   // Puente para el módulo Lean (public/lean.js).
   window.OBYRA = {
     S: S, api: api, el: el, $: $, qsa: qsa, toast: toast, fecha: fecha, f2: f2, nf0: nf0, pill: pill, COLOR: COLOR,
-    paintModel: paintModel, focusPieces: focusPieces, etiquetas3D: etiquetas3D, marcaDe: marcaDe, pedirMarcas: pedirMarcas, renderLegend: renderLegend,
+    paintModel: paintModel, focusPieces: focusPieces, etiquetas3D: etiquetas3D, marcaDe: marcaDe, pedirMarcas: pedirMarcas, nombreModelo: nombreModelo, renderLegend: renderLegend,
     alIniciar: [], // funciones que corren cuando la app ya cargó obra y piezas
     _onViewerSelect: onViewerSelect, // para pruebas
   };

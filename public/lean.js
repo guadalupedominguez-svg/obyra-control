@@ -1059,7 +1059,9 @@
       a.addEventListener("change", function () { cambia("a"); });
       b.addEventListener("change", function () { cambia("b"); });
       var quitar = man && ed ? el("button", { class: "linklike", type: "button", text: "↺ auto", title: "Quitar el ajuste y volver al reparto automático", onclick: function () { delete L.reparto[g]; piezasTarjeta(); } }) : el("span", { class: "muted", text: man ? "manual" : "auto" });
-      return el("div", { class: "fila-rp" + (man ? " man" : "") }, [el("b", { text: etiquetaPieza(g) }), a, el("span", { class: "muted", text: "a" }), b,
+      var sinM = !O.marcaDe(g), nom = O.nombreModelo(g);
+      return el("div", { class: "fila-rp" + (man ? " man" : "") }, [el("b", { text: etiquetaPieza(g), class: sinM ? "ln-warn" : null,
+        title: sinM ? "Este elemento no tiene el parámetro MARCA lleno en el modelo" + (nom ? " (" + nom + ")" : "") + " · GlobalId " + g : (nom ? nom + " · " : "") + "GlobalId " + g }), a, el("span", { class: "muted", text: "a" }), b,
         el("span", { class: "muted", text: (r[1] - r[0] + 1) + (r[1] === r[0] ? " día" : " días") }), quitar]);
     }));
   }
@@ -1070,7 +1072,7 @@
     var otras = new Set(); (hito.tarjetas || []).forEach(function (t) { if (!L.tar || t.id !== L.tar.id) (t.guids || []).forEach(function (g) { otras.add(g); }); });
     return gs.filter(function (g) { return otras.has(g); });
   }
-  function etiquetaPieza(g) { return O.marcaDe(g) || "pieza " + g.slice(-4); }
+  function etiquetaPieza(g) { return O.marcaDe(g) || "sin marca · " + g.slice(-4); }
   function textoDias(ds, manual) {
     if (!ds.length) return "";
     var fmt = function (f) { return f.split("-").reverse().slice(0, 2).join("/"); };
