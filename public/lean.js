@@ -918,9 +918,9 @@
         cuerpo.push(el("span", { class: "pi-dato" }, [el("i", { text: "Entrega" }), t.entregaA ? "→ " + t.entregaA : "—"]));
         cuerpo.push(el("span", { class: "pi-dato" + (restr.abiertas ? " restr" : "") }, [el("i", { text: "Restricción" }), restr.texto || "Sin restricción"]));
       }
-      cuerpo.push(el("small", { text: (ult && puedeMover(t) ? "⇄ " : "") + (k + 1) + "/" + ds.length + (marcasDia.length ? " · " + marcasDia.join(", ") : ((t.guids || []).length ? " · ◆" : "")) }));
+      cuerpo.push(el("small", { text: (ult && puedeMover(t) ? "⇄ " : "") + (k + 1) + "/" + ds.length + (marcasDia.length ? " · ◆ " + marcasDia.length : ((t.guids || []).length ? " · ◆" : "")) }));
       var b = el("button", { type: "button", "data-t": t.id, "data-carril": String(L.carril[t.id] || 0), class: "ln-postit" + (inicioTramo ? " caratula" : "") + (t.actId ? " pasada" : "") + (k === ds.length - 1 ? " ultimo" : "") + (L.flag && L.flag.has(t.id) ? " embudo" : ""), style: "--t:" + tinte(c), draggable: puedeMover(t) ? "true" : null,
-        title: t.entregable + " · día " + (k + 1) + " de " + ds.length + (marcasDia.length ? " · piezas: " + marcasDia.join(", ") : "") + (ult && puedeMover(t) ? " · arrástralo para mover toda la serie" : "") + (t.entregaA ? " · entrega a " + t.entregaA : "") + (t.necesita ? " · necesita: " + t.necesita : "") }, [
+        title: t.entregable + " · día " + (k + 1) + " de " + ds.length + (marcasDia.length ? " · " + marcasDia.length + (marcasDia.length === 1 ? " pieza ese día" : " piezas ese día") : "") + (ult && puedeMover(t) ? " · arrástralo para mover toda la serie" : "") + (t.entregaA ? " · entrega a " + t.entregaA : "") + (t.necesita ? " · necesita: " + t.necesita : "") }, [
       ].concat(cuerpo));
       if (L.tarSel === t.id) b.classList.add("activa");
       // Se une visualmente con el día siguiente / anterior de la misma serie.
