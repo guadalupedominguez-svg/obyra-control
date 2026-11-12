@@ -821,7 +821,7 @@
     semanas.sort();
     var dias = [];
     semanas.forEach(function (w) { dias = dias.concat(diasSemana(w)); });
-    var cols = "grid-template-columns: 130px repeat(" + dias.length + ", 92px) 84px"; // ancho fijo: todas las filas alineadas
+    var cols = "grid-template-columns: 130px repeat(" + dias.length + ", 112px) 84px"; // ancho fijo: todas las filas alineadas
     var hoy = hoyF();
     // Simulación y embudos sobre los días del tablero.
     L.simDias = dias;
@@ -885,6 +885,7 @@
     $("ln-pull").replaceChildren(el("div", { class: "ln-ctrl" }, ctrl), barraSim(hito, dias, an), el("div", { class: "ln-pull" }, [cab, filaHitos].concat(filas).concat([carga])),
       el("p", { class: "muted", style: "margin:0;font-size:12px", text: "Clic en un post-it: enciende en el modelo las piezas de esa tarea (◆ = tiene piezas). Clic derecho: menú de la tarea (editar, ajustar días por pieza, simular, borrar). Doble clic: abre la tarjeta. Clic en un día: lo que se ejecuta ese día. Arrastra un post-it para mover ese día; arrastra el último de la serie (⇄) al día en que debe terminar y el resto se recorre (Shift + arrastrar hace lo mismo desde cualquier día). Doble clic o clic derecho en un día vacío crea una tarjeta. Contorno rojo = tarea en un embudo." }),
       tarjetaEmbudos(an));
+    igualarCarriles();
     // Conserva el desplazamiento del tablero; en la simulación sigue al día que se reproduce.
     var tablero = document.querySelector("#ln-pull .ln-pull"), dsim = tablero && tablero.querySelector(".fila.cab .dia.simdia");
     if (tablero && scroll != null) tablero.scrollLeft = scroll;
@@ -909,10 +910,18 @@
       var ult = k === ds.length - 1 && ds.length > 1;
       // Marcas de las piezas que se ejecutan ese día (para ubicarlas en el modelo).
       var marcasDia = Array.from(new Set((repartir(t.guids || [], ds, t.reparto)[f] || []).map(etiquetaPieza)));
-      var b = el("button", { type: "button", "data-t": t.id, class: "ln-postit" + (t.actId ? " pasada" : "") + (k === ds.length - 1 ? " ultimo" : "") + (L.flag && L.flag.has(t.id) ? " embudo" : ""), style: "--t:" + tinte(c), draggable: puedeMover(t) ? "true" : null,
+      // Carátula (primer día de cada tramo seguido): entregable, a quién entrega y su restricción, completos.
+      var inicioTramo = !(k > 0 && ds[k - 1] === ant);
+      var restr = restriccionesDe(t);
+      var cuerpo = [el("b", { text: t.entregable })];
+      if (inicioTramo) {
+        cuerpo.push(el("span", { class: "pi-dato" }, [el("i", { text: "Entrega" }), t.entregaA ? "→ " + t.entregaA : "—"]));
+        cuerpo.push(el("span", { class: "pi-dato" + (restr.abiertas ? " restr" : "") }, [el("i", { text: "Restricción" }), restr.texto || "Sin restricción"]));
+      }
+      cuerpo.push(el("small", { text: (ult && puedeMover(t) ? "⇄ " : "") + (k + 1) + "/" + ds.length + (marcasDia.length ? " · " + marcasDia.join(", ") : ((t.guids || []).length ? " · ◆" : "")) }));
+      var b = el("button", { type: "button", "data-t": t.id, "data-carril": String(L.carril[t.id] || 0), class: "ln-postit" + (inicioTramo ? " caratula" : "") + (t.actId ? " pasada" : "") + (k === ds.length - 1 ? " ultimo" : "") + (L.flag && L.flag.has(t.id) ? " embudo" : ""), style: "--t:" + tinte(c), draggable: puedeMover(t) ? "true" : null,
         title: t.entregable + " · día " + (k + 1) + " de " + ds.length + (marcasDia.length ? " · piezas: " + marcasDia.join(", ") : "") + (ult && puedeMover(t) ? " · arrástralo para mover toda la serie" : "") + (t.entregaA ? " · entrega a " + t.entregaA : "") + (t.necesita ? " · necesita: " + t.necesita : "") }, [
-        el("b", { text: t.entregable }), el("small", { text: (ult && puedeMover(t) ? "⇄ " : "") + (k + 1) + "/" + ds.length + (marcasDia.length ? " · " + marcasDia.join(", ") : ((t.guids || []).length ? " · ◆" : "")) + (k === ds.length - 1 && t.entregaA ? " → " + t.entregaA : "") }),
-      ]);
+      ].concat(cuerpo));
       if (L.tarSel === t.id) b.classList.add("activa");
       // Se une visualmente con el día siguiente / anterior de la misma serie.
       if (k < ds.length - 1 && ds[k + 1] === sig) b.classList.add("sigue");
@@ -934,7 +943,7 @@
     // Huecos para que cada tarea quede en su línea aunque ese día no haya nada en las líneas de arriba.
     var usados = postits.map(function (b) { return b._carril; });
     var maxC = usados.length ? Math.max.apply(null, usados) : -1;
-    for (var h = 0; h < maxC; h++) if (usados.indexOf(h) < 0) postits.push(el("span", { class: "ln-hueco", "aria-hidden": "true", style: "order:" + h }));
+    for (var h = 0; h < maxC; h++) if (usados.indexOf(h) < 0) postits.push(el("span", { class: "ln-hueco", "aria-hidden": "true", "data-carril": String(h), style: "order:" + h }));
     var cel = el("div", { class: "dia" + (dow === 6 ? " sab" : "") + (f === hito.fecha ? " dhito" : "") + (L.sim.on && L.sim.dia === f ? " simdia" : ""), "data-c": c, "data-f": f }, postits);
     var permitido = P("planear") || (esContratista() && c === S.me.contratista);
     if (permitido) {
@@ -1003,6 +1012,26 @@
         b.setAttribute("data-ok", "1"); b.textContent = "¿Seguro? Clic otra vez para borrar";
       } } : null,
     ]);
+  }
+  // Restricción de la tarjeta: lo que «necesita»; si ya pasó al look-ahead, las restricciones de su actividad.
+  function restriccionesDe(t) {
+    var a = t.actId ? actPorId(t.actId) : null;
+    if (a && (a.restricciones || []).length) {
+      var ab = abiertas(a);
+      return { abiertas: ab.length, texto: a.restricciones.map(function (r) { return r.texto + (r.estado === "liberada" ? " ✓" : ""); }).join(" · ") };
+    }
+    return { abiertas: t.necesita ? 1 : 0, texto: t.necesita || "" };
+  }
+  // Cada línea (carril) del contratista toma la altura de su post-it más alto, para que las series sigan alineadas.
+  function igualarCarriles() {
+    O.qsa("#ln-pull .ln-pull .fila").forEach(function (fila) {
+      var els = fila.querySelectorAll(".ln-postit[data-carril], .ln-hueco[data-carril]");
+      if (!els.length) return;
+      var alto = {};
+      els.forEach(function (e) { e.style.height = ""; });
+      els.forEach(function (e) { var c = e.getAttribute("data-carril"); alto[c] = Math.max(alto[c] || 0, e.offsetHeight); });
+      els.forEach(function (e) { e.style.height = alto[e.getAttribute("data-carril")] + "px"; });
+    });
   }
   function activarTarjeta(t) {
     L.diaSel = null;
