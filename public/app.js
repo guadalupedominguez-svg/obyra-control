@@ -1410,10 +1410,11 @@
         v.loadDocumentNode(doc, node).then(function (model) {
           S.model = model;
           $("multi").hidden = false;
-          v.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, function () { buildMaps().then(function () { viewerMsg(""); paintModel(); }); });
-          if (model.getInstanceTree()) buildMaps().then(function () { viewerMsg(""); paintModel(); });
+          var listoMapas = function () { viewerMsg(""); paintModel(); if (window.OBYRA_LEAN && window.OBYRA_LEAN.refrescar) window.OBYRA_LEAN.refrescar(); };
+          v.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, function () { buildMaps().then(listoMapas); });
+          if (model.getInstanceTree()) buildMaps().then(listoMapas);
           v.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, onViewerSelect);
-          S.centros = new Map();
+          S.centros = new Map(); S.marcasModelo = new Map();
           v.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, etiquetas3D);
           v.addEventListener(Autodesk.Viewing.ISOLATE_EVENT, etiquetas3D);
           v.addEventListener(Autodesk.Viewing.HIDE_EVENT, etiquetas3D);
@@ -1604,6 +1605,26 @@
     S.viewer.fitToView(ids, S.model);
   }
 
+  // Marca de elementos que no están en el catálogo (por ejemplo, los que se ligan desde el visor en Lean):
+  // se lee de las propiedades del modelo una sola vez por elemento.
+  function marcaDe(g) {
+    if (S.piezas[g] && S.piezas[g].marca) return S.piezas[g].marca;
+    return (S.marcasModelo && S.marcasModelo.get(g)) || "";
+  }
+  function pedirMarcas(guids, listo) {
+    if (!S.model || !S.guid2db || !S.guid2db.size) return;
+    S.marcasModelo = S.marcasModelo || new Map();
+    var falta = [];
+    guids.forEach(function (g) { if (!S.marcasModelo.has(g) && !(S.piezas[g] && S.piezas[g].marca)) { var id = S.guid2db.get(g); if (id != null) { S.marcasModelo.set(g, ""); falta.push([g, id]); } } });
+    if (!falta.length) return;
+    var porId = new Map(falta.map(function (x) { return [x[1], x[0]]; }));
+    bulk(falta.map(function (x) { return x[1]; }), null).then(function (res) {
+      var hay = false;
+      res.forEach(function (r) { var m = pick(r.properties || [], CAMPOS.marca, false); if (m) { S.marcasModelo.set(porId.get(r.dbId), m); hay = true; } });
+      if (hay && listo) listo();
+    }).catch(function () { /* sin marcas: se queda el nombre corto */ });
+  }
+
   // ---------- Leer piezas del modelo (admin) ----------
   function norm(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, ""); }
   var CAMPOS = {
@@ -1673,7 +1694,7 @@
   // Puente para el módulo Lean (public/lean.js).
   window.OBYRA = {
     S: S, api: api, el: el, $: $, qsa: qsa, toast: toast, fecha: fecha, f2: f2, nf0: nf0, pill: pill, COLOR: COLOR,
-    paintModel: paintModel, focusPieces: focusPieces, etiquetas3D: etiquetas3D, renderLegend: renderLegend,
+    paintModel: paintModel, focusPieces: focusPieces, etiquetas3D: etiquetas3D, marcaDe: marcaDe, pedirMarcas: pedirMarcas, renderLegend: renderLegend,
     alIniciar: [], // funciones que corren cuando la app ya cargó obra y piezas
     _onViewerSelect: onViewerSelect, // para pruebas
   };

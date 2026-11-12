@@ -138,6 +138,7 @@
       });
       return out;
     },
+    refrescar: function () { render(); },
     // Piezas que llevan etiqueta en la vista 3D: lo que se ejecuta en el día simulado, la tarea o el día
     // elegido; si no hay nada en foco, las piezas seleccionadas en el modelo.
     etiquetas: function () {
@@ -169,6 +170,11 @@
     if (L.tab === "la") renderLA();
     if (L.tab === "pull") renderPull();
     O.paintModel(false);
+    // Marcas de los elementos ligados que no están en el catálogo: se leen del modelo y se vuelve a dibujar.
+    var ligados = [];
+    L.hitos.forEach(function (h) { (h.tarjetas || []).forEach(function (t) { ligados = ligados.concat(t.guids || []); }); });
+    L.acts.forEach(function (a) { ligados = ligados.concat(a.guids || []); });
+    O.pedirMarcas(ligados, function () { render(); var d = $("ln-tar"); if (d && d.open) piezasTarjeta(); });
   }
 
   // ---------- Dashboard ----------
@@ -1064,7 +1070,7 @@
     var otras = new Set(); (hito.tarjetas || []).forEach(function (t) { if (!L.tar || t.id !== L.tar.id) (t.guids || []).forEach(function (g) { otras.add(g); }); });
     return gs.filter(function (g) { return otras.has(g); });
   }
-  function etiquetaPieza(g) { return (S.piezas[g] && S.piezas[g].marca) || "pieza " + g.slice(-4); }
+  function etiquetaPieza(g) { return O.marcaDe(g) || "pieza " + g.slice(-4); }
   function textoDias(ds, manual) {
     if (!ds.length) return "";
     var fmt = function (f) { return f.split("-").reverse().slice(0, 2).join("/"); };
