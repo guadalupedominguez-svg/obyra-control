@@ -1415,7 +1415,7 @@
       var simulando = window.OBYRA_LEAN.simulando && window.OBYRA_LEAN.simulando();
       if (simulando) { S.syncing = true; v.clearSelection(); S.syncing = false; } // la selección azul tapa los colores
       // aislar = solo lo elegido; si no, todo el modelo visible con los colores encima (para poder seleccionar más).
-      if (lids.length && window.OBYRA_LEAN.aislar() && (!S.multi || simulando)) { v.isolate(lids, m); if (encuadrar) v.fitToView(lids, m); }
+      if (lids.length && window.OBYRA_LEAN.aislar() && (!S.multi || simulando) && !S.verTodo) { v.isolate(lids, m); if (encuadrar) v.fitToView(lids, m); }
       else { v.showAll(); if (lids.length && encuadrar) v.fitToView(lids, m); }
       if (v.impl && v.impl.invalidate) v.impl.invalidate(true, true, true); // fuerza a redibujar con los colores nuevos
       S.pintados = { pedidas: Object.keys(col).length, enModelo: lids.length };
@@ -1429,9 +1429,13 @@
       ids.push(id);
       v.setThemingColor(id, hexToVec(COLOR[estado(g)] || COLOR.Planeado), m, true);
     });
-    if (ids.length) {
+    if (ids.length && S.verTodo) {
+      v.showAll(); if (encuadrar) v.fitToView(ids, m); // modelo completo con los colores encima
+    } else if (ids.length) {
       v.isolate(ids, m);
       if (encuadrar) v.fitToView(ids, m);
+    } else if (S.verTodo) {
+      v.showAll();
     } else if (Object.keys(S.piezas).length && (S.tab === "generador" || S.tab === "piezas")) {
       v.isolate([], m); v.hide(m.getRootId(), m); // filtro sin piezas: modelo vacío
     } else {
@@ -1448,6 +1452,13 @@
     $("multi-n").hidden = !n; $("multi-n").textContent = n + (n === 1 ? " pieza seleccionada" : " piezas seleccionadas");
     $("multi-clear").hidden = !n;
   }
+  // Ver modelo completo: deja de aislar (en cualquier pestaña) y conserva los colores.
+  $("vertodo-btn").addEventListener("click", function () {
+    S.verTodo = !S.verTodo;
+    $("vertodo-btn").setAttribute("aria-pressed", String(S.verTodo));
+    $("vertodo-btn").textContent = S.verTodo ? "Modelo completo: activo" : "Ver modelo completo";
+    paintModel(false);
+  });
   $("multi-btn").addEventListener("click", function () {
     S.multi = !S.multi;
     pintarMulti();

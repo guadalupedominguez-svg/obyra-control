@@ -729,7 +729,7 @@
     if (L.tarSel && !tSel) L.tarSel = null;
     if (tSel || L.diaSel) ctrl.splice(2, 0, el("span", { class: "ln-activo" }, [
       el("span", { text: "En el modelo: " + (tSel ? tSel.entregable + " · " + (tSel.guids || []).length + " piezas" : "lo que se ejecuta el " + L.diaSel.split("-").reverse().slice(0, 2).join("/")) }),
-      el("button", { class: "linklike", type: "button", text: "Mostrar todo", onclick: function () { L.tarSel = null; L.diaSel = null; render(); O.paintModel(true); } }),
+      el("button", { class: "linklike", type: "button", text: "Mostrar todo", onclick: function () { simPausa(); L.sim.on = false; L.sim.dia = null; L.tarSel = null; L.diaSel = null; render(); O.paintModel(true); } }),
     ]));
     if (hito && P("planear")) ctrl.push(el("button", { class: "btn btn-primary btn-sm", type: "button", text: "Pasar al look-ahead", onclick: function () {
       var n = (hito.tarjetas || []).filter(function (t) { return !t.actId; }).length;
