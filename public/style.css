@@ -347,4 +347,10 @@ input::placeholder { color: var(--muted); }
 .ln-pull .dia-btn { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; width: 100%; padding: 2px 0; border-radius: 4px; }
 .ln-pull .dia-btn:hover { background: rgba(34, 211, 238, .15); }
 .ln-pull .fila.cab .dia.activo { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.ln-menu { position: fixed; z-index: 1000; min-width: 220px; max-width: 320px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 6px; box-shadow: 0 12px 32px rgba(0,0,0,.45); display: grid; gap: 2px; }
+.ln-menu-t { font-size: 11px; color: var(--muted); padding: 4px 8px 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ln-menu button { text-align: left; background: none; border: 0; color: var(--text); font: inherit; font-size: 13px; padding: 7px 8px; border-radius: 6px; cursor: pointer; }
+.ln-menu button:hover, .ln-menu button:focus-visible { background: rgba(34, 211, 238, .14); outline: none; }
+.ln-menu button.peligro { color: var(--bad); }
+.ln-menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; width: 100%; }
 .ln-activo { display: inline-flex; align-items: center; gap: 8px; background: rgba(34, 211, 238, .12); border: 1px solid var(--accent); border-radius: 999px; padding: 4px 12px; font-size: 13px; }

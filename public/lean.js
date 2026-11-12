@@ -844,7 +844,7 @@
     })).concat([el("div", { class: "hito" })]));
     var antes = document.querySelector("#ln-pull .ln-pull"), scroll = antes ? antes.scrollLeft : null;
     $("ln-pull").replaceChildren(el("div", { class: "ln-ctrl" }, ctrl), barraSim(hito, dias, an), el("div", { class: "ln-pull" }, [cab].concat(filas).concat([carga])),
-      el("p", { class: "muted", style: "margin:0;font-size:12px", text: "Clic en un post-it: enciende en el modelo las piezas de esa tarea (◆ = tiene piezas). Doble clic: abre la tarjeta. Clic en un día: lo que se ejecuta ese día. Arrastra un post-it para mover ese día; arrastra el último de la serie (⇄) al día en que debe terminar y el resto se recorre (Shift + arrastrar hace lo mismo desde cualquier día). Doble clic en un día vacío crea una tarjeta. Contorno rojo = tarea en un embudo." }),
+      el("p", { class: "muted", style: "margin:0;font-size:12px", text: "Clic en un post-it: enciende en el modelo las piezas de esa tarea (◆ = tiene piezas). Clic derecho: menú de la tarea (editar, ajustar días por pieza, simular, borrar). Doble clic: abre la tarjeta. Clic en un día: lo que se ejecuta ese día. Arrastra un post-it para mover ese día; arrastra el último de la serie (⇄) al día en que debe terminar y el resto se recorre (Shift + arrastrar hace lo mismo desde cualquier día). Doble clic o clic derecho en un día vacío crea una tarjeta. Contorno rojo = tarea en un embudo." }),
       tarjetaEmbudos(an));
     // Conserva el desplazamiento del tablero; en la simulación sigue al día que se reproduce.
     var tablero = document.querySelector("#ln-pull .ln-pull"), dsim = tablero && tablero.querySelector(".fila.cab .dia.simdia");
@@ -881,6 +881,7 @@
       // Clic: enciende en el modelo las piezas de la tarea. Doble clic: abre la tarjeta.
       b.addEventListener("click", function () { activarTarjeta(t); });
       b.addEventListener("dblclick", function (ev) { ev.stopPropagation(); abrirTarjeta(t, null, null); });
+      b.addEventListener("contextmenu", function (ev) { ev.preventDefault(); ev.stopPropagation(); menuTarea(ev, hito, t, f); });
       b.addEventListener("dragstart", function (ev) {
         ev.dataTransfer.setData("text/plain", t.id + "|" + f); ev.dataTransfer.effectAllowed = "move";
         // El último post-it arrastra toda la serie: se resaltan todos sus días.
@@ -919,8 +920,48 @@
         accion({ action: "tarjeta-guardar", hitoId: hito.id, tarjeta: nt });
       });
       cel.addEventListener("dblclick", function (ev) { if (ev.target === cel) abrirTarjeta(null, c, f); });
+      cel.addEventListener("contextmenu", function (ev) {
+        if (ev.target !== cel) return;
+        ev.preventDefault();
+        abrirMenu(ev, c + " · " + f.split("-").reverse().slice(0, 2).join("/"), [{ text: "Nueva tarjeta aquí", fn: function () { abrirTarjeta(null, c, f); } }]);
+      });
     }
     return cel;
+  }
+  // ---------- Menú contextual (clic derecho) ----------
+  function cerrarMenu() { var m = document.getElementById("ln-menu"); if (m) m.remove(); }
+  function abrirMenu(ev, titulo, items) {
+    cerrarMenu();
+    var m = el("div", { id: "ln-menu", class: "ln-menu", role: "menu" }, [el("div", { class: "ln-menu-t", text: titulo })].concat(items.filter(Boolean).map(function (it) {
+      if (it.sep) return el("hr");
+      var b = el("button", { type: "button", role: "menuitem", class: it.peligro ? "peligro" : null, text: it.text });
+      b.addEventListener("click", function (e) { e.stopPropagation(); if (it.keep) { it.fn(b); return; } cerrarMenu(); it.fn(); });
+      return b;
+    })));
+    document.body.appendChild(m);
+    L.menuAbierto = Date.now();
+    // Dentro de la ventana aunque se abra cerca del borde.
+    var x = Math.min(ev.clientX, window.innerWidth - m.offsetWidth - 8), y = Math.min(ev.clientY, window.innerHeight - m.offsetHeight - 8);
+    m.style.left = Math.max(8, x) + "px"; m.style.top = Math.max(8, y) + "px";
+    var b0 = m.querySelector("button"); if (b0) b0.focus({ preventScroll: true });
+  }
+  document.addEventListener("click", function (e) { var m = document.getElementById("ln-menu"); if (m && !m.contains(e.target)) cerrarMenu(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") cerrarMenu(); });
+  window.addEventListener("resize", cerrarMenu);
+  document.addEventListener("scroll", function () { if (Date.now() - (L.menuAbierto || 0) > 250) cerrarMenu(); }, true);
+  function menuTarea(ev, hito, t, f) {
+    var ds = diasDe(t), ed = puedeMover(t), n = (t.guids || []).length;
+    abrirMenu(ev, t.entregable + " · " + t.contratista + " · día " + (ds.indexOf(f) + 1) + " de " + ds.length, [
+      { text: ed ? "Editar tarjeta" : "Ver tarjeta", fn: function () { abrirTarjeta(t, null, null); } },
+      n ? { text: "Ajustar días por pieza (" + n + ")", fn: function () { abrirTarjeta(t, null, null, { reparto: true }); } } : null,
+      { text: n ? "Ver sus piezas en el modelo" : "Ligar piezas del modelo", fn: function () { if (n) { if (L.tarSel !== t.id) activarTarjeta(t); } else abrirTarjeta(t, null, null); } },
+      { text: "Simular desde este día", fn: function () { simPausa(); L.tarSel = null; L.diaSel = null; simIr(f); } },
+      ed ? { sep: true } : null,
+      ed ? { text: "Borrar tarea…", peligro: true, keep: true, fn: function (b) {
+        if (b.getAttribute("data-ok")) { cerrarMenu(); accion({ action: "tarjeta-borrar", hitoId: hito.id, id: t.id }, "Tarea borrada."); return; }
+        b.setAttribute("data-ok", "1"); b.textContent = "¿Seguro? Clic otra vez para borrar";
+      } } : null,
+    ]);
   }
   function activarTarjeta(t) {
     L.diaSel = null;
@@ -1011,7 +1052,7 @@
     var ds = auto && $("lt-inicio").value && +$("lt-dur").value > 0 ? diasHabiles($("lt-inicio").value, +$("lt-dur").value) : (L.tar ? diasDe(L.tar) : []);
     $("lt-dias").textContent = textoDias(ds, !auto);
   }
-  function abrirTarjeta(t, c, f) {
+  function abrirTarjeta(t, c, f, opc) {
     var hito = L.hitos.find(function (h) { return h.id === L.hitoId; });
     if (!hito) return;
     L.tar = t;
@@ -1041,13 +1082,14 @@
     var yaPorMarca = guidsDeMarcas((t && t.marcas) || []);
     L.tarGuids = (t && t.guids ? t.guids : []).filter(function (g) { return yaPorMarca.indexOf(g) < 0; });
     L.reparto = JSON.parse(JSON.stringify((t && t.reparto) || {}));
-    $("lt-reparto-box").open = false;
+    $("lt-reparto-box").open = !!(opc && opc.reparto);
     piezasTarjeta();
     $("lt-marcas").disabled = !(!t || puedeMover(t));
     $("lt-usar").hidden = !ed; if (!ed) $("lt-quitar").hidden = true;
     $("lt-borrar").hidden = !t || !ed;
     $("ln-tar-form").querySelector("button[type=submit]").hidden = !ed;
     $("ln-tar").showModal();
+    if (opc && opc.reparto) $("lt-reparto-box").scrollIntoView({ block: "start" });
   }
   // ---------- Desasignar piezas repetidas ----------
   function hitoActual() { return L.hitos.find(function (h) { return h.id === L.hitoId; }) || null; }
