@@ -131,8 +131,12 @@ test("sesión pull: el contratista mueve solo sus tarjetas y el PM las pasa al l
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(r.json.tarjeta.contratista, "COPRESA"); // el contratista no puede poner otra empresa
   assert.deepEqual(r.json.tarjeta.marcas, ["MP-08", "MP-07", "XX-99"]);
-  // Orden de ejecución: marcas en el orden escrito, luego las elegidas sin marca (XX-99 no existe).
-  assert.deepEqual(r.json.tarjeta.guids, ["0000000000000000000008", "0000000000000000000007", "0000000000000000000001"]);
+  // Orden de ejecución: primero las elegidas en el orden de selección, luego las de las marcas escritas (XX-99 no existe).
+  assert.deepEqual(r.json.tarjeta.guids, ["0000000000000000000001", "0000000000000000000008", "0000000000000000000007"]);
+  // El orden de selección manda aunque las piezas tengan marca.
+  const ord = await copresa("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { contratista: "COPRESA", entregable: "Orden", duracion: 3, inicio: "2026-11-23", marcas: "MP-08, MP-07", guids: ["0000000000000000000007", "0000000000000000000001", "0000000000000000000008"] } });
+  assert.deepEqual(ord.json.tarjeta.guids, ["0000000000000000000007", "0000000000000000000001", "0000000000000000000008"]);
+  await copresa("lean", { action: "tarjeta-borrar", hitoId, id: ord.json.tarjeta.id });
   // 8 días hábiles desde el jueves 12: salta el domingo 15 y termina el sábado 21 (semana 47).
   assert.deepEqual(r.json.tarjeta.dias, ["2026-11-12", "2026-11-13", "2026-11-14", "2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19", "2026-11-20"]);
   assert.equal(r.json.tarjeta.semana, "2026-W47");

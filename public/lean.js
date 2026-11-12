@@ -508,14 +508,10 @@
     $("lt-cancelar").addEventListener("click", function () { $("ln-tar").close(); });
     $("lt-usar").addEventListener("click", function () {
       if (!S.sel || !S.sel.size) { toast("Primero selecciona los elementos en el modelo (Ctrl + clic para varios) y vuelve a abrir la tarjeta."); return; }
-      var ms = marcasEscritas(), sueltas = [];
-      Array.from(S.sel).forEach(function (g) {
-        var m = S.piezas[g] && S.piezas[g].marca ? String(S.piezas[g].marca).toUpperCase() : "";
-        if (m) { if (ms.indexOf(m) < 0) ms.push(m); } else if (L.tarGuids.indexOf(g) < 0) sueltas.push(g);
-      });
-      $("lt-marcas").value = ms.join(", ");
-      L.tarGuids = L.tarGuids.concat(sueltas);
-      piezasTarjeta(); toast("Se ligarán " + S.sel.size + " piezas al guardar.");
+      // En el orden en que se seleccionaron: ese es el orden de montaje.
+      var nuevas = Array.from(S.sel).filter(function (g) { return L.tarGuids.indexOf(g) < 0; });
+      L.tarGuids = L.tarGuids.concat(nuevas);
+      piezasTarjeta(); toast(nuevas.length ? "Se agregaron " + nuevas.length + " piezas en el orden en que las seleccionaste." : "Esas piezas ya están en la tarjeta.");
     });
     $("lt-quitar").addEventListener("click", function () { L.tarGuids = []; $("lt-marcas").value = ""; piezasTarjeta(); });
     $("lt-marcas").addEventListener("input", piezasTarjeta);
@@ -528,8 +524,7 @@
         entregaA: $("lt-entrega").value, necesita: $("lt-necesita").value, ubicacion: $("lt-ubic").value, partida: $("lt-partida").value };
       if (auto) { t.inicio = $("lt-inicio").value; t.duracion = $("lt-dur").value; } else { t.dias = diasDe(L.tar); }
       // Las piezas con marca se guardan por marca; las que no tienen, por GlobalId.
-      var ms = marcasEscritas(), porMarca = guidsDeMarcas(ms);
-      t.marcas = ms; t.guids = L.tarGuids.filter(function (g) { return porMarca.indexOf(g) < 0; });
+      t.marcas = marcasEscritas(); t.guids = ordenTarjeta();
       t.reparto = L.reparto || {};
       accion({ action: "tarjeta-guardar", hitoId: L.hitoId, tarjeta: t }, "Tarjeta guardada.").then(function () { $("ln-tar").close(); });
     });
@@ -1040,8 +1035,7 @@
     $("lt-rep-quitar").hidden = !!(L.tar && !puedeMover(L.tar));
     $("lt-usar").textContent = "Usar piezas seleccionadas" + (S.sel && S.sel.size ? " (" + S.sel.size + ")" : "");
     // Vista previa: cómo se reparten las piezas en los días de la tarea (en orden).
-    var orden = []; ms.forEach(function (m) { guidsDeMarcas([m]).forEach(function (g) { if (orden.indexOf(g) < 0) orden.push(g); }); });
-    L.tarGuids.forEach(function (g) { if (orden.indexOf(g) < 0) orden.push(g); });
+    var orden = ordenTarjeta();
     var ds = $("lt-auto").checked && $("lt-inicio").value && +$("lt-dur").value > 0 ? diasHabiles($("lt-inicio").value, +$("lt-dur").value) : (L.tar ? diasDe(L.tar) : []);
     Object.keys(L.reparto || {}).forEach(function (g) { if (orden.indexOf(g) < 0) delete L.reparto[g]; });
     var rep = repartir(orden, ds, L.reparto);
@@ -1050,6 +1044,13 @@
       var gs = rep[f] || [];
       return el("div", null, [el("b", { text: "Día " + (k + 1) + " · " + f.split("-").reverse().slice(0, 2).join("/") + ": " }), gs.length ? gs.map(etiquetaPieza).join(", ") : "—"]);
     })) : []);
+  }
+  // Orden de montaje de la tarjeta abierta: las piezas elegidas en el orden de selección y después
+  // las de las marcas escritas que falten, en el orden escrito.
+  function ordenTarjeta() {
+    var orden = L.tarGuids.slice();
+    marcasEscritas().forEach(function (m) { guidsDeMarcas([m]).forEach(function (g) { if (orden.indexOf(g) < 0) orden.push(g); }); });
+    return orden;
   }
   // Ajuste manual: en qué días de la tarea se ejecuta cada pieza (una pieza puede durar varios días).
   function editorReparto(orden, ds) {
@@ -1062,24 +1063,24 @@
     $("lt-reparto-auto").hidden = !nMan || !ed;
     if (!box.open) return; // se arma solo al abrirlo (puede haber muchas piezas)
     var opciones = function (sel) { return ds.map(function (f, k) { return el("option", { value: String(k + 1), text: "Día " + (k + 1) + " · " + f.split("-").reverse().slice(0, 2).join("/"), selected: k + 1 === sel ? "selected" : null }); }); };
-    cont.replaceChildren.apply(cont, orden.map(function (g) {
+    cont.replaceChildren.apply(cont, orden.map(function (g, i) {
       var man = L.reparto[g], r = man ? rangoPieza(man, m) : [auto[g] || 1, auto[g] || 1];
-      var a = el("select", { "aria-label": "Primer día de " + etiquetaPieza(g) }, opciones(r[0]));
-      var b = el("select", { "aria-label": "Último día de " + etiquetaPieza(g) }, opciones(r[1]));
+      // Día en que se monta la pieza y cuántos días le toma (normalmente 1).
+      var a = el("select", { "aria-label": "Día de " + etiquetaPieza(g) }, opciones(r[0]));
+      var durMax = m - r[0] + 1, dur = r[1] - r[0] + 1;
+      var b = el("select", { "aria-label": "Días que toma " + etiquetaPieza(g) }, Array.from({ length: durMax }, function (_, k) { return el("option", { value: String(k + 1), text: (k + 1) + (k ? " días" : " día"), selected: k + 1 === dur ? "selected" : null }); }));
       a.disabled = b.disabled = !ed;
-      var cambia = function (cual) {
-        var x = +a.value, y = +b.value;
-        if (x > y) { if (cual === "a") y = x; else x = y; }
-        L.reparto[g] = [x, y];
+      var cambia = function () {
+        var x = +a.value, d = Math.max(1, Math.min(+b.value, m - x + 1));
+        L.reparto[g] = [x, x + d - 1];
         piezasTarjeta();
       };
-      a.addEventListener("change", function () { cambia("a"); });
-      b.addEventListener("change", function () { cambia("b"); });
+      a.addEventListener("change", cambia);
+      b.addEventListener("change", cambia);
       var quitar = man && ed ? el("button", { class: "linklike", type: "button", text: "↺ auto", title: "Quitar el ajuste y volver al reparto automático", onclick: function () { delete L.reparto[g]; piezasTarjeta(); } }) : el("span", { class: "muted", text: man ? "manual" : "auto" });
       var sinM = !O.marcaDe(g), nom = O.nombreModelo(g);
-      return el("div", { class: "fila-rp" + (man ? " man" : "") }, [el("b", { text: etiquetaPieza(g), class: sinM ? "ln-warn" : null,
-        title: sinM ? "Este elemento no tiene el parámetro MARCA lleno en el modelo" + (nom ? " (" + nom + ")" : "") + " · GlobalId " + g : (nom ? nom + " · " : "") + "GlobalId " + g }), a, el("span", { class: "muted", text: "a" }), b,
-        el("span", { class: "muted", text: (r[1] - r[0] + 1) + (r[1] === r[0] ? " día" : " días") }), quitar]);
+      return el("div", { class: "fila-rp" + (man ? " man" : "") }, [el("span", { class: "muted", text: (i + 1) + "." }), el("b", { text: etiquetaPieza(g), class: sinM ? "ln-warn" : null,
+        title: sinM ? "Este elemento no tiene el parámetro MARCA lleno en el modelo" + (nom ? " (" + nom + ")" : "") + " · GlobalId " + g : (nom ? nom + " · " : "") + "GlobalId " + g }), a, el("span", { class: "muted", text: "dura" }), b, quitar]);
     }));
   }
   // Piezas de la tarjeta abierta que también están en otra tarjeta del hito.
@@ -1127,8 +1128,9 @@
     var dlm = Array.from(new Set(Object.values(S.piezas || {}).map(function (p) { return p.marca; }).filter(Boolean))).sort(function (a, b) { return a.localeCompare(b, "es", { numeric: true }); });
     $("lt-marcas-list").replaceChildren.apply($("lt-marcas-list"), dlm.map(function (m) { return el("option", { value: m }); }));
     // Las piezas que ya vienen por marca no se repiten como sueltas.
-    var yaPorMarca = guidsDeMarcas((t && t.marcas) || []);
-    L.tarGuids = (t && t.guids ? t.guids : []).filter(function (g) { return yaPorMarca.indexOf(g) < 0; });
+    // Las que vienen de una marca escrita se quedan con la marca (si se borra la marca, salen); las demás, en su orden.
+    var ms0 = ((t && t.marcas) || []).map(function (m) { return String(m).toUpperCase(); });
+    L.tarGuids = (t && t.guids ? t.guids : []).filter(function (g) { return !(S.piezas[g] && ms0.indexOf(String(S.piezas[g].marca || "").toUpperCase()) >= 0); });
     L.reparto = JSON.parse(JSON.stringify((t && t.reparto) || {}));
     $("lt-reparto-box").open = !!(opc && opc.reparto);
     piezasTarjeta();

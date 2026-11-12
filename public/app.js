@@ -1580,7 +1580,9 @@
       selectInViewer();
     } else {
       if (!gs.length) { pintarMulti(); return; }
-      S.sel = new Set(gs);
+      // Ctrl + clic: el visor manda toda la selección; se conserva el orden en que se fue armando (orden de montaje).
+      var prev = Array.from(S.sel || []).filter(function (g) { return gs.indexOf(g) >= 0; });
+      S.sel = new Set(prev.concat(gs.filter(function (g) { return prev.indexOf(g) < 0; })));
     }
     pintarMulti();
     etiquetas3D();

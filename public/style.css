@@ -91,7 +91,7 @@ input::placeholder { color: var(--muted); }
 .lt-reparto summary { cursor: pointer; font-weight: 600; }
 .lt-reparto summary .linklike { margin-left: 10px; font-weight: 400; }
 .lt-reparto-lista { display: grid; gap: 4px; max-height: 38vh; overflow: auto; }
-.lt-reparto .fila-rp { display: grid; grid-template-columns: minmax(80px, 1fr) auto auto auto 56px 52px; gap: 6px; align-items: center; padding: 2px 4px; border-radius: 6px; }
+.lt-reparto .fila-rp { display: grid; grid-template-columns: 22px minmax(80px, 1fr) auto auto auto 52px; gap: 6px; align-items: center; padding: 2px 4px; border-radius: 6px; }
 .lt-reparto .fila-rp.man { background: rgba(34, 211, 238, .08); }
 .lt-reparto .fila-rp select { font-size: 12px; padding: 2px 4px; }
 .ln-rep-lista { display: grid; gap: 6px; max-height: 50vh; overflow: auto; }

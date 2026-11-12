@@ -90,7 +90,10 @@ function limpiarReparto(rep, guids, n) {
 async function ligarPiezas(marcasIn, guidsIn) {
   const marcas = [...new Set((Array.isArray(marcasIn) ? marcasIn : String(marcasIn || "").split(/[,;\n]+/))
     .map((x) => String(x).trim().toUpperCase()).filter(Boolean))].slice(0, 300);
+  // Primero las piezas en el orden en que se eligieron (orden de montaje); después las de las marcas
+  // escritas que aún no estén, en el orden escrito.
   const orden = [];
+  for (const g of (Array.isArray(guidsIn) ? guidsIn : []).map(String)) if (URN_GUID.test(g)) orden.push(g);
   if (marcas.length) {
     const cat = (await getJson(key("piezas", "catalogo"))) || { piezas: {} };
     const porMarca = {};
@@ -100,7 +103,6 @@ async function ligarPiezas(marcasIn, guidsIn) {
     }
     for (const m of marcas) for (const g of porMarca[m] || []) orden.push(g);
   }
-  for (const g of (Array.isArray(guidsIn) ? guidsIn : []).map(String)) if (URN_GUID.test(g)) orden.push(g);
   return { marcas, guids: [...new Set(orden)].slice(0, 2000) };
 }
 
@@ -349,8 +351,8 @@ export default route(["GET", "POST"], async (req, res) => {
         // Las piezas que venían por marca se quitan quitando la marca; las sueltas, quitando la pieza.
         const marcasFuera = new Set([...fuera].map(marcaDe).filter(Boolean));
         const marcas = (t.marcas || []).filter((m) => !marcasFuera.has(String(m).toUpperCase()));
-        const porMarca = new Set(Object.keys(cat.piezas || {}).filter((g) => (t.marcas || []).map((m) => String(m).toUpperCase()).includes(marcaDe(g))));
-        const sueltas = (t.guids || []).filter((g) => !porMarca.has(g) && !fuera.has(g));
+        // Se conserva el orden de montaje de las que se quedan.
+        const sueltas = (t.guids || []).filter((g) => !fuera.has(g) && !marcasFuera.has(marcaDe(g)));
         Object.assign(t, await ligarPiezas(marcas, sueltas), { actualizada: firma(me) });
         t.reparto = limpiarReparto(t.reparto, t.guids, (t.dias || []).length || t.duracion || 1);
         cambiadas++;
