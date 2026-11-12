@@ -857,6 +857,23 @@
           fines[k] = x.fin; L.carril[x.t.id] = k;
         });
     });
+    // Fila de hitos: post-it rojo en rombo el día del hito (los demás hitos que caen en el tablero, más tenues).
+    var filaHitos = el("div", { class: "fila hitos", style: cols }, [el("div", { class: "contr", text: "Hitos" })].concat(dias.map(function (f) {
+      var hs = L.hitos.filter(function (h) { return h.fecha === f; });
+      return el("div", { class: "dia" + (aF(f).getUTCDay() === 6 ? " sab" : "") + (f === hito.fecha ? " dhito" : "") + (L.sim.on && L.sim.dia === f ? " simdia" : "") }, hs.map(function (h) {
+        var r = el("button", { type: "button", class: "ln-rombo" + (h.id === hito.id ? "" : " otro"), title: "Hito: " + h.nombre + " · " + h.fecha.split("-").reverse().join("/") + (h.id === hito.id ? "" : " (clic para planearlo)") },
+          [el("span", null, [el("b", { text: h.nombre }), el("small", { text: h.fecha.split("-").reverse().slice(0, 2).join("/") })])]);
+        r.addEventListener("click", function () { if (h.id !== L.hitoId) { L.hitoId = h.id; render(); } });
+        if (P("planear")) {
+          r.addEventListener("dblclick", function () { abrirHito(h); });
+          r.addEventListener("contextmenu", function (ev) { ev.preventDefault(); abrirMenu(ev, "Hito · " + h.nombre, [
+            h.id !== L.hitoId ? { text: "Planear este hito", fn: function () { L.hitoId = h.id; render(); } } : null,
+            { text: "Editar hito", fn: function () { abrirHito(h); } },
+          ]); });
+        }
+        return r;
+      }));
+    })).concat([el("div", { class: "hito" })]));
     var filas = contratistas().map(function (c) {
       return el("div", { class: "fila", style: cols }, [el("div", { class: "contr" }, [el("span", { style: "display:inline-flex;gap:8px;align-items:center" }, [el("i", { class: "dot", style: "border-radius:3px;background:" + colorDe(c) }), c])])]
         .concat(dias.map(function (f) { return celdaPull(hito, c, f); })).concat([el("div", { class: "hito" })]));
@@ -870,7 +887,7 @@
       ]);
     })).concat([el("div", { class: "hito" })]));
     var antes = document.querySelector("#ln-pull .ln-pull"), scroll = antes ? antes.scrollLeft : null;
-    $("ln-pull").replaceChildren(el("div", { class: "ln-ctrl" }, ctrl), barraSim(hito, dias, an), el("div", { class: "ln-pull" }, [cab].concat(filas).concat([carga])),
+    $("ln-pull").replaceChildren(el("div", { class: "ln-ctrl" }, ctrl), barraSim(hito, dias, an), el("div", { class: "ln-pull" }, [cab, filaHitos].concat(filas).concat([carga])),
       el("p", { class: "muted", style: "margin:0;font-size:12px", text: "Clic en un post-it: enciende en el modelo las piezas de esa tarea (◆ = tiene piezas). Clic derecho: menú de la tarea (editar, ajustar días por pieza, simular, borrar). Doble clic: abre la tarjeta. Clic en un día: lo que se ejecuta ese día. Arrastra un post-it para mover ese día; arrastra el último de la serie (⇄) al día en que debe terminar y el resto se recorre (Shift + arrastrar hace lo mismo desde cualquier día). Doble clic o clic derecho en un día vacío crea una tarjeta. Contorno rojo = tarea en un embudo." }),
       tarjetaEmbudos(an));
     // Conserva el desplazamiento del tablero; en la simulación sigue al día que se reproduce.
@@ -897,7 +914,7 @@
       var ult = k === ds.length - 1 && ds.length > 1;
       // Marcas de las piezas que se ejecutan ese día (para ubicarlas en el modelo).
       var marcasDia = Array.from(new Set((repartir(t.guids || [], ds, t.reparto)[f] || []).map(etiquetaPieza)));
-      var b = el("button", { type: "button", "data-t": t.id, class: "ln-postit" + (t.actId ? " pasada" : "") + (k === ds.length - 1 ? " ultimo" : "") + (L.flag && L.flag.has(t.id) ? " embudo" : ""), style: "background:" + tinte(c), draggable: puedeMover(t) ? "true" : null,
+      var b = el("button", { type: "button", "data-t": t.id, class: "ln-postit" + (t.actId ? " pasada" : "") + (k === ds.length - 1 ? " ultimo" : "") + (L.flag && L.flag.has(t.id) ? " embudo" : ""), style: "--t:" + tinte(c), draggable: puedeMover(t) ? "true" : null,
         title: t.entregable + " · día " + (k + 1) + " de " + ds.length + (marcasDia.length ? " · piezas: " + marcasDia.join(", ") : "") + (ult && puedeMover(t) ? " · arrástralo para mover toda la serie" : "") + (t.entregaA ? " · entrega a " + t.entregaA : "") + (t.necesita ? " · necesita: " + t.necesita : "") }, [
         el("b", { text: t.entregable }), el("small", { text: (ult && puedeMover(t) ? "⇄ " : "") + (k + 1) + "/" + ds.length + (marcasDia.length ? " · " + marcasDia.join(", ") : ((t.guids || []).length ? " · ◆" : "")) + (k === ds.length - 1 && t.entregaA ? " → " + t.entregaA : "") }),
       ]);

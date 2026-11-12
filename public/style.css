@@ -333,17 +333,34 @@ input::placeholder { color: var(--muted); }
 .ln-pull .contr, .ln-pull .fila.cab > div:first-child { position: sticky; left: 0; background: var(--surface); z-index: 2; }
 .ln-pull .fila.cab > div:first-child { background: var(--surface-2); }
 .dialog label.check { display: flex; align-items: center; gap: 8px; color: var(--text); }
-.ln-postit { text-align: left; border: 0; border-radius: 3px; padding: 4px 5px; font: inherit; font-size: 11px; line-height: 1.25; color: #111A2B; display: grid; gap: 1px; cursor: pointer; box-shadow: 0 2px 0 rgba(0,0,0,.25); }
+/* Post-it: papel con brillo arriba a la izquierda, sombra suave y la esquina inferior derecha doblada. --t = color del contratista. */
+.ln-postit { --t: #FDE68A; --doblez: 12px; text-align: left; border: 0; border-radius: 1px; padding: 5px 6px; font: inherit; font-size: 11px; line-height: 1.25; color: #1F2937; display: grid; gap: 1px; cursor: pointer;
+  background: linear-gradient(315deg, transparent var(--doblez), var(--t) var(--doblez), color-mix(in srgb, var(--t) 72%, #fff) 100%);
+  filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
+.ln-postit::before { content: ""; position: absolute; right: 0; bottom: 0; width: calc(var(--doblez) * 1.42); height: calc(var(--doblez) * 1.42); pointer-events: none;
+  background: linear-gradient(315deg, transparent 50%, color-mix(in srgb, var(--t) 62%, #000) 50%, color-mix(in srgb, var(--t) 85%, #fff) 100%); border-top-left-radius: 3px; }
+.ln-postit.sigue { --doblez: 0px; }
+.ln-postit.sigue::before { display: none; }
 .ln-postit[draggable="true"] { cursor: grab; }
-.ln-pull .ln-postit, .ln-pull .ln-hueco { height: 52px; flex: none; box-sizing: border-box; position: relative; align-content: start; }
+.ln-pull .ln-postit, .ln-pull .ln-hueco { height: 60px; flex: none; box-sizing: border-box; position: relative; align-content: start; }
 .ln-postit.sigue { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .ln-postit.viene { border-top-left-radius: 0; border-bottom-left-radius: 0; }
-.ln-postit.sigue::after { content: ""; position: absolute; top: 0; bottom: 0; right: -10px; width: 10px; background: inherit; pointer-events: none; }
+.ln-postit.sigue::after { content: ""; position: absolute; top: 9px; bottom: 9px; right: -10px; width: 10px; background: color-mix(in srgb, var(--t) 80%, #000); pointer-events: none; }
 .ln-postit b { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; font-size: 11px; }
 .ln-postit small { color: #374151; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .ln-postit.ultimo[draggable=true] { cursor: grab; }
 .ln-postit.serie { outline: 2px dashed #22D3EE; outline-offset: 1px; opacity: .75; }
-.ln-postit.ultimo { box-shadow: 0 2px 0 rgba(0,0,0,.25), inset 0 -3px 0 rgba(17, 26, 43, .55); }
+/* Hito: el mismo post-it, rojo y girado como rombo. */
+.ln-pull .fila.hitos > div { min-height: 92px; align-items: center; justify-content: center; padding: 4px; }
+.ln-pull .fila.hitos > .contr { align-items: flex-start; justify-content: flex-start; padding: 6px; }
+.ln-rombo { --t: #F87171; width: 62px; height: 62px; margin: 14px 0; border: 0; padding: 0; cursor: pointer; transform: rotate(45deg); position: relative; border-radius: 1px;
+  background: linear-gradient(315deg, transparent 11px, var(--t) 11px, color-mix(in srgb, var(--t) 70%, #fff) 100%); filter: drop-shadow(0 3px 4px rgba(0,0,0,.45)); }
+.ln-rombo::before { content: ""; position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; background: linear-gradient(315deg, transparent 50%, #9F1239 50%, #FCA5A5 100%); border-top-left-radius: 3px; }
+.ln-rombo > span { position: absolute; inset: 0; transform: rotate(-45deg); display: grid; place-content: center; text-align: center; color: #3F0A0E; line-height: 1.15; }
+.ln-rombo b { font-size: 10px; max-width: 70px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.ln-rombo small { font-size: 10px; font-weight: 700; }
+.ln-rombo.otro { opacity: .5; transform: rotate(45deg) scale(.82); }
+.ln-rombo:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .ln-postit.pasada { opacity: .55; }
 .ln-postit.activa { outline: 3px solid var(--accent); outline-offset: 1px; }
 .ln-pull .dia-btn { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; width: 100%; padding: 2px 0; border-radius: 4px; }
