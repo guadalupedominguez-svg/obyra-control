@@ -804,7 +804,7 @@
     })).concat([el("div", { class: "hito" })]));
     var antes = document.querySelector("#ln-pull .ln-pull"), scroll = antes ? antes.scrollLeft : null;
     $("ln-pull").replaceChildren(el("div", { class: "ln-ctrl" }, ctrl), barraSim(hito, dias, an), el("div", { class: "ln-pull" }, [cab].concat(filas).concat([carga])),
-      el("p", { class: "muted", style: "margin:0;font-size:12px", text: "Clic en un post-it: enciende en el modelo las piezas de esa tarea (◆ = tiene piezas). Doble clic: abre la tarjeta. Clic en un día: lo que se ejecuta ese día. Arrastra un post-it para mover ese día; Shift + arrastrar mueve la tarea completa. Doble clic en un día vacío crea una tarjeta. Contorno rojo = tarea en un embudo." }),
+      el("p", { class: "muted", style: "margin:0;font-size:12px", text: "Clic en un post-it: enciende en el modelo las piezas de esa tarea (◆ = tiene piezas). Doble clic: abre la tarjeta. Clic en un día: lo que se ejecuta ese día. Arrastra un post-it para mover ese día; arrastra el último de la serie (⇄) para mover la tarea completa. Doble clic en un día vacío crea una tarjeta. Contorno rojo = tarea en un embudo." }),
       tarjetaEmbudos(an));
     // Conserva el desplazamiento del tablero; en la simulación sigue al día que se reproduce.
     var tablero = document.querySelector("#ln-pull .ln-pull"), dsim = tablero && tablero.querySelector(".fila.cab .dia.simdia");
@@ -826,15 +826,21 @@
       if (t.contratista !== c) return;
       var ds = diasDe(t), k = ds.indexOf(f);
       if (k < 0) return;
-      var b = el("button", { type: "button", class: "ln-postit" + (t.actId ? " pasada" : "") + (k === ds.length - 1 ? " ultimo" : "") + (L.flag && L.flag.has(t.id) ? " embudo" : ""), style: "background:" + tinte(c), draggable: puedeMover(t) ? "true" : null,
-        title: t.entregable + " · día " + (k + 1) + " de " + ds.length + (t.entregaA ? " · entrega a " + t.entregaA : "") + (t.necesita ? " · necesita: " + t.necesita : "") }, [
-        el("b", { text: t.entregable }), el("small", { text: (k + 1) + "/" + ds.length + ((t.guids || []).length ? " · ◆" : "") + (k === ds.length - 1 && t.entregaA ? " → " + t.entregaA : "") }),
+      var ult = k === ds.length - 1 && ds.length > 1;
+      var b = el("button", { type: "button", "data-t": t.id, class: "ln-postit" + (t.actId ? " pasada" : "") + (k === ds.length - 1 ? " ultimo" : "") + (L.flag && L.flag.has(t.id) ? " embudo" : ""), style: "background:" + tinte(c), draggable: puedeMover(t) ? "true" : null,
+        title: t.entregable + " · día " + (k + 1) + " de " + ds.length + (ult && puedeMover(t) ? " · arrástralo para mover toda la serie" : "") + (t.entregaA ? " · entrega a " + t.entregaA : "") + (t.necesita ? " · necesita: " + t.necesita : "") }, [
+        el("b", { text: t.entregable }), el("small", { text: (ult && puedeMover(t) ? "⇄ " : "") + (k + 1) + "/" + ds.length + ((t.guids || []).length ? " · ◆" : "") + (k === ds.length - 1 && t.entregaA ? " → " + t.entregaA : "") }),
       ]);
       if (L.tarSel === t.id) b.classList.add("activa");
       // Clic: enciende en el modelo las piezas de la tarea. Doble clic: abre la tarjeta.
       b.addEventListener("click", function () { activarTarjeta(t); });
       b.addEventListener("dblclick", function (ev) { ev.stopPropagation(); abrirTarjeta(t, null, null); });
-      b.addEventListener("dragstart", function (ev) { ev.dataTransfer.setData("text/plain", t.id + "|" + f); ev.dataTransfer.effectAllowed = "move"; });
+      b.addEventListener("dragstart", function (ev) {
+        ev.dataTransfer.setData("text/plain", t.id + "|" + f); ev.dataTransfer.effectAllowed = "move";
+        // El último post-it arrastra toda la serie: se resaltan todos sus días.
+        if (k === ds.length - 1 || ev.shiftKey) O.qsa('.ln-postit[data-t="' + t.id + '"]').forEach(function (x) { x.classList.add("serie"); });
+      });
+      b.addEventListener("dragend", function () { O.qsa(".ln-postit.serie").forEach(function (x) { x.classList.remove("serie"); }); });
       postits.push(b);
     });
     var cel = el("div", { class: "dia" + (dow === 6 ? " sab" : "") + (f === hito.fecha ? " dhito" : "") + (L.sim.on && L.sim.dia === f ? " simdia" : ""), "data-c": c, "data-f": f }, postits);
@@ -849,8 +855,8 @@
         if (!t || !puedeMover(t)) return;
         var ds = diasDe(t).slice(), desde = dato[1];
         var nuevos;
-        if (ev.shiftKey) {
-          // Mueve la tarea completa los mismos días hábiles.
+        if (ev.shiftKey || desde === ds[ds.length - 1]) {
+          // Último post-it de la serie (o Shift): mueve la tarea completa los mismos días hábiles.
           var delta = entreHabiles(desde, f);
           nuevos = ds.map(function (x) { return moverHabiles(x, delta); });
         } else {
