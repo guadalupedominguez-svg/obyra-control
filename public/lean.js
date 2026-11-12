@@ -111,7 +111,6 @@
   window.OBYRA_LEAN = {
     // En la sesión pull se aísla solo con una tarea o un día elegido; en las demás vistas, siempre.
     aislar: function () { return L.tab !== "pull" || !!(L.tarSel || L.diaSel); },
-    alSeleccionar: function (n) { if (n) toast(n + (n === 1 ? " elemento seleccionado" : " elementos seleccionados") + ". Ábrelo en la tarjeta o actividad con «Usar piezas seleccionadas»."); },
     colores: function () {
       var out = {};
       if (!L.cargado) return out;

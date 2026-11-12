@@ -1312,6 +1312,7 @@
         if (!node) { viewerMsg("Forma todavía no termina de procesar el IFC para verlo. Intenta en unos minutos."); return; }
         v.loadDocumentNode(doc, node).then(function (model) {
           S.model = model;
+          $("multi").hidden = false;
           v.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, function () { buildMaps().then(function () { viewerMsg(""); paintModel(); }); });
           if (model.getInstanceTree()) buildMaps().then(function () { viewerMsg(""); paintModel(); });
           v.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, onViewerSelect);
@@ -1383,7 +1384,7 @@
         lids.push(id); v.setThemingColor(id, hexToVec(col[g]), m, true);
       });
       // aislar = solo lo elegido; si no, todo el modelo visible con los colores encima (para poder seleccionar más).
-      if (lids.length && window.OBYRA_LEAN.aislar()) { v.isolate(lids, m); if (encuadrar) v.fitToView(lids, m); }
+      if (lids.length && window.OBYRA_LEAN.aislar() && !S.multi) { v.isolate(lids, m); if (encuadrar) v.fitToView(lids, m); }
       else { v.showAll(); if (lids.length && encuadrar) v.fitToView(lids, m); }
       return;
     }
@@ -1405,6 +1406,28 @@
     }
   }
 
+  // Selección múltiple sin Ctrl: con el botón activo, cada clic agrega o quita una pieza y se ve todo el modelo.
+  function multiActiva() { return !!S.multi; }
+  function pintarMulti() {
+    var n = S.sel ? S.sel.size : 0;
+    $("multi-btn").setAttribute("aria-pressed", String(!!S.multi));
+    $("multi-btn").textContent = S.multi ? "Selección múltiple: activa" : "Selección múltiple";
+    $("multi-n").hidden = !n; $("multi-n").textContent = n + (n === 1 ? " pieza seleccionada" : " piezas seleccionadas");
+    $("multi-clear").hidden = !n;
+  }
+  $("multi-btn").addEventListener("click", function () {
+    S.multi = !S.multi;
+    pintarMulti();
+    paintModel(false); // en Lean deja ver todo el modelo mientras se selecciona
+    if (S.multi) toast("Da clic en cada elemento para agregarlo o quitarlo. Ya no hace falta Ctrl.");
+  });
+  $("multi-clear").addEventListener("click", function () {
+    S.sel = new Set();
+    if (S.viewer) { S.syncing = true; S.viewer.clearSelection(); S.syncing = false; }
+    pintarMulti();
+    if (S.modulo !== "lean") renderLista();
+  });
+
   function onViewerSelect(ev) {
     if (S.syncing) return;
     var gs = (ev.dbIdArray || []).map(function (id) {
@@ -1418,9 +1441,20 @@
       }
       return cur != null ? S.db2guid.get(cur) : null;
     }).filter(Boolean);
-    if (!gs.length) return;
-    S.sel = new Set(gs);
-    if (S.modulo === "lean") { if (window.OBYRA_LEAN && window.OBYRA_LEAN.alSeleccionar) window.OBYRA_LEAN.alSeleccionar(gs.length); return; }
+    if (multiActiva()) {
+      // Clic en vacío no borra lo acumulado; un clic suelto alterna esa pieza; Ctrl + clic suma.
+      if (!gs.length) { selectInViewer(); return; }
+      var acum = new Set(S.sel || []);
+      if (gs.length === 1) { if (acum.has(gs[0])) acum["delete"](gs[0]); else acum.add(gs[0]); }
+      else gs.forEach(function (g) { acum.add(g); });
+      S.sel = acum;
+      selectInViewer();
+    } else {
+      if (!gs.length) { pintarMulti(); return; }
+      S.sel = new Set(gs);
+    }
+    pintarMulti();
+    if (S.modulo === "lean") return;
     renderLista();
     var sel = document.querySelector("#lista li.sel");
     if (sel) sel.scrollIntoView({ block: "nearest" });
@@ -1512,6 +1546,7 @@
     S: S, api: api, el: el, $: $, qsa: qsa, toast: toast, fecha: fecha, f2: f2, nf0: nf0, pill: pill, COLOR: COLOR,
     paintModel: paintModel, focusPieces: focusPieces, renderLegend: renderLegend,
     alIniciar: [], // funciones que corren cuando la app ya cargó obra y piezas
+    _onViewerSelect: onViewerSelect, // para pruebas
   };
   boot();
 })();
