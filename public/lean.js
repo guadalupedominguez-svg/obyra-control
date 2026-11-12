@@ -804,7 +804,7 @@
     })).concat([el("div", { class: "hito" })]));
     var antes = document.querySelector("#ln-pull .ln-pull"), scroll = antes ? antes.scrollLeft : null;
     $("ln-pull").replaceChildren(el("div", { class: "ln-ctrl" }, ctrl), barraSim(hito, dias, an), el("div", { class: "ln-pull" }, [cab].concat(filas).concat([carga])),
-      el("p", { class: "muted", style: "margin:0;font-size:12px", text: "Clic en un post-it: enciende en el modelo las piezas de esa tarea (◆ = tiene piezas). Doble clic: abre la tarjeta. Clic en un día: lo que se ejecuta ese día. Arrastra un post-it para mover ese día; arrastra el último de la serie (⇄) para mover la tarea completa. Doble clic en un día vacío crea una tarjeta. Contorno rojo = tarea en un embudo." }),
+      el("p", { class: "muted", style: "margin:0;font-size:12px", text: "Clic en un post-it: enciende en el modelo las piezas de esa tarea (◆ = tiene piezas). Doble clic: abre la tarjeta. Clic en un día: lo que se ejecuta ese día. Arrastra un post-it para mover ese día; arrastra el último de la serie (⇄) al día en que debe terminar y el resto se recorre (Shift + arrastrar hace lo mismo desde cualquier día). Doble clic en un día vacío crea una tarjeta. Contorno rojo = tarea en un embudo." }),
       tarjetaEmbudos(an));
     // Conserva el desplazamiento del tablero; en la simulación sigue al día que se reproduce.
     var tablero = document.querySelector("#ln-pull .ln-pull"), dsim = tablero && tablero.querySelector(".fila.cab .dia.simdia");
@@ -853,11 +853,11 @@
         var dato = ev.dataTransfer.getData("text/plain").split("|");
         var t = (hito.tarjetas || []).find(function (x) { return x.id === dato[0]; });
         if (!t || !puedeMover(t)) return;
-        var ds = diasDe(t).slice(), desde = dato[1];
+        var ds = diasDe(t).slice().sort(), desde = dato[1], fin = ds[ds.length - 1];
         var nuevos;
-        if (ev.shiftKey || desde === ds[ds.length - 1]) {
-          // Último post-it de la serie (o Shift): mueve la tarea completa los mismos días hábiles.
-          var delta = entreHabiles(desde, f);
+        if (ev.shiftKey || desde === fin) {
+          // Serie completa: el FINAL de la tarea queda en el día donde se suelta y el resto se recorre igual.
+          var delta = entreHabiles(fin, f);
           nuevos = ds.map(function (x) { return moverHabiles(x, delta); });
         } else {
           if (ds.indexOf(f) >= 0 && f !== desde) { toast("Esa tarea ya tiene ese día."); return; }
