@@ -1325,6 +1325,7 @@
   }
 
   function startViewer() {
+    S.ultimaVista = null; // modelo nuevo: se vuelve a aplicar la visibilidad
     if (!S.obra || !S.obra.modelo) {
       viewerMsg(S.permisos.administrar ? "Aún no hay modelo. En Configuración conecta Forma y pega la liga del IFC." : "El administrador aún no ha cargado el modelo de la obra.");
       return;
@@ -1401,6 +1402,14 @@
   // Colorea cada pieza por su estatus y deja en gris translúcido lo que no está en seguimiento.
   // En Piezas y Generador solo se ven las piezas de su lista (según sus filtros);
   // en las demás pestañas, todas las piezas en seguimiento.
+  // La visibilidad (aislar / mostrar todo) solo se toca cuando cambia lo que se debe ver. Así lo que la persona
+  // oculta, corta o encuadra con las herramientas del visor se conserva al guardar, crear tareas o simular.
+  function cambiaVista(modo, ids) {
+    var k = modo + ":" + ids.slice().sort(function (a, b) { return a - b; }).join(",");
+    if (k === S.ultimaVista) return false;
+    S.ultimaVista = k;
+    return true;
+  }
   function paintModel(encuadrar, soloEstas) {
     var v = S.viewer, m = S.model;
     if (!v || !m || !S.guid2db.size) return;
@@ -1415,8 +1424,8 @@
       var simulando = window.OBYRA_LEAN.simulando && window.OBYRA_LEAN.simulando();
       if (simulando) { S.syncing = true; v.clearSelection(); S.syncing = false; } // la selección azul tapa los colores
       // aislar = solo lo elegido; si no, todo el modelo visible con los colores encima (para poder seleccionar más).
-      if (lids.length && window.OBYRA_LEAN.aislar() && (!S.multi || simulando) && !S.verTodo) { v.isolate(lids, m); if (encuadrar) v.fitToView(lids, m); }
-      else { v.showAll(); if (lids.length && encuadrar) v.fitToView(lids, m); }
+      if (lids.length && window.OBYRA_LEAN.aislar() && (!S.multi || simulando) && !S.verTodo) { if (cambiaVista("iso", lids)) v.isolate(lids, m); if (encuadrar) v.fitToView(lids, m); }
+      else { if (cambiaVista("todo", [])) v.showAll(); if (lids.length && encuadrar) v.fitToView(lids, m); }
       if (v.impl && v.impl.invalidate) v.impl.invalidate(true, true, true); // fuerza a redibujar con los colores nuevos
       S.pintados = { pedidas: Object.keys(col).length, enModelo: lids.length };
       return;
@@ -1430,16 +1439,16 @@
       v.setThemingColor(id, hexToVec(COLOR[estado(g)] || COLOR.Planeado), m, true);
     });
     if (ids.length && S.verTodo) {
-      v.showAll(); if (encuadrar) v.fitToView(ids, m); // modelo completo con los colores encima
+      if (cambiaVista("todo", [])) v.showAll(); if (encuadrar) v.fitToView(ids, m); // modelo completo con los colores encima
     } else if (ids.length) {
-      v.isolate(ids, m);
+      if (cambiaVista("iso", ids)) v.isolate(ids, m);
       if (encuadrar) v.fitToView(ids, m);
     } else if (S.verTodo) {
-      v.showAll();
+      if (cambiaVista("todo", [])) v.showAll();
     } else if (Object.keys(S.piezas).length && (S.tab === "generador" || S.tab === "piezas")) {
-      v.isolate([], m); v.hide(m.getRootId(), m); // filtro sin piezas: modelo vacío
+      if (cambiaVista("vacio", [])) { v.isolate([], m); v.hide(m.getRootId(), m); } // filtro sin piezas: modelo vacío
     } else {
-      v.showAll();
+      if (cambiaVista("todo", [])) v.showAll();
     }
   }
 
