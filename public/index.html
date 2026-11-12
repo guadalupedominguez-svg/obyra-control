@@ -43,12 +43,15 @@
     <div class="body">
       <section class="viewer-wrap" aria-label="Modelo 3D">
         <div id="viewer" class="viewer"></div>
+        <canvas id="etiq-3d" class="etiq-3d" aria-hidden="true"></canvas>
         <div id="viewer-msg" class="viewer-msg" hidden></div>
         <div id="aviso-version" class="aviso-version" role="status" hidden></div>
         <div class="legend" id="legend" aria-label="Colores por estatus"></div>
         <div class="multi" id="multi" hidden>
           <button type="button" class="btn btn-sm" id="vertodo-btn" aria-pressed="false" title="Muestra todo el edificio, con los colores encima">Ver modelo completo</button>
           <button type="button" class="btn btn-sm" id="multi-btn" aria-pressed="false">Selección múltiple</button>
+          <button type="button" class="btn btn-sm" id="etiq-btn" aria-pressed="true" title="Muestra la marca de las piezas en foco, como en el generador">Etiquetas: sí</button>
+          <span id="etiq-n" class="multi-n" hidden></span>
           <span id="multi-n" class="multi-n" hidden></span>
           <button type="button" class="btn btn-ghost btn-sm" id="multi-clear" hidden>Limpiar</button>
         </div>

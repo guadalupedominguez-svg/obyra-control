@@ -540,6 +540,16 @@
         var cv = document.createElement("canvas"); cv.width = w; cv.height = h;
         var ctx = cv.getContext("2d");
         ctx.drawImage(img, 0, 0, w, h);
+        var pts = dibujarEtiquetas(ctx, w, h, puntos, sx, sy, k);
+        resolve({ data: cv.toDataURL("image/png"), pts: pts });
+      };
+      img.onerror = function () { resolve({ data: dataUrl, pts: {} }); };
+      img.src = dataUrl;
+    });
+  }
+  // Etiquetas de marca (caja oscura, franja del color de la pieza, línea y punto) sobre un lienzo:
+  // la usan la foto del generador y la vista 3D. Devuelve dónde quedó cada pieza.
+  function dibujarEtiquetas(ctx, w, h, puntos, sx, sy, k) {
         ctx.font = "bold " + Math.round(15 * k) + "px Arial"; ctx.textBaseline = "middle";
         var padX = 7 * k, alto = 24 * k, gap = 4 * k;
         var dentro = puntos.map(function (pt) { return { guid: pt.guid, marca: pt.marca, color: pt.color, x: pt.x * sx, y: pt.y * sy }; })
@@ -581,12 +591,69 @@
         });
         var pts = {};
         dentro.forEach(function (pt) { if (pt.guid) pts[pt.guid] = { x: pt.x, y: pt.y }; });
-        resolve({ data: cv.toDataURL("image/png"), pts: pts });
-      };
-      img.onerror = function () { resolve({ data: dataUrl, pts: {} }); };
-      img.src = dataUrl;
-    });
+        return pts;
   }
+
+  // ---------- Etiquetas en la vista 3D ----------
+  // Las mismas etiquetas del generador, sobre el visor y siguiendo la cámara. Se etiqueta lo que está en foco:
+  // en Lean la tarea o el día elegido y lo que se ejecuta en la simulación; en Generador, sus piezas;
+  // en las demás pestañas, las piezas seleccionadas.
+  var MAX_ETIQ = 150;
+  S.etiq = true;
+  try { S.etiq = localStorage.getItem("ctrl_etiq") !== "0"; } catch (e) { /* nada */ }
+  function piezasAEtiquetar() {
+    if (S.modulo === "lean" && window.OBYRA_LEAN && window.OBYRA_LEAN.etiquetas) return window.OBYRA_LEAN.etiquetas() || [];
+    var gs = S.tab === "generador" && S.modulo !== "lean" ? genFilas() : Array.from(S.sel || []);
+    return gs.filter(function (g) { return S.piezas[g]; }).map(function (g) { return { guid: g, texto: S.piezas[g].marca || "(sin marca)", color: COLOR[estado(g)] || COLOR.Planeado }; });
+  }
+  function centroPieza(g) {
+    S.centros = S.centros || new Map();
+    if (S.centros.has(g)) return S.centros.get(g);
+    var id = S.guid2db.get(g), c = null;
+    if (id != null) {
+      var it = S.model.getInstanceTree(), fl = S.model.getFragmentList(), caja = new THREE.Box3(), tmp = new THREE.Box3();
+      it.enumNodeFragments(id, function (f) { fl.getWorldBounds(f, tmp); caja.union(tmp); }, true);
+      if (!caja.isEmpty()) c = caja.getCenter(new THREE.Vector3());
+    }
+    S.centros.set(g, c);
+    return c;
+  }
+  function etiquetas3D() {
+    if (S.etiqRaf) return;
+    S.etiqRaf = requestAnimationFrame(function () { S.etiqRaf = 0; dibujar3D(); });
+  }
+  function dibujar3D() {
+    var cv = $("etiq-3d"), v = S.viewer;
+    if (!cv) return;
+    var ctx = cv.getContext("2d"), box = $("viewer").getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    var w = Math.round(box.width * dpr), h = Math.round(box.height * dpr);
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    ctx.clearRect(0, 0, w, h);
+    $("etiq-n").hidden = true;
+    if (!S.etiq || !v || !S.model || !S.guid2db || !S.guid2db.size) return;
+    var lista = piezasAEtiquetar();
+    var visible = function (id) { try { return v.isNodeVisible ? v.isNodeVisible(id, S.model) : true; } catch (e) { return true; } };
+    var puntos = [];
+    lista.slice(0, MAX_ETIQ).forEach(function (x) {
+      var id = S.guid2db.get(x.guid); if (id == null || !visible(id)) return;
+      var c = centroPieza(x.guid); if (!c) return;
+      var p = v.worldToClient(c);
+      puntos.push({ guid: x.guid, marca: x.texto, color: x.color, x: p.x, y: p.y });
+    });
+    if (lista.length > MAX_ETIQ) { $("etiq-n").hidden = false; $("etiq-n").textContent = "Etiquetas: " + MAX_ETIQ + " de " + lista.length; }
+    if (puntos.length) dibujarEtiquetas(ctx, w, h, puntos, dpr, dpr, dpr * 0.85);
+  }
+  function pintarEtiqBtn() {
+    $("etiq-btn").setAttribute("aria-pressed", String(S.etiq));
+    $("etiq-btn").textContent = S.etiq ? "Etiquetas: sí" : "Etiquetas: no";
+  }
+  $("etiq-btn").addEventListener("click", function () {
+    S.etiq = !S.etiq;
+    try { localStorage.setItem("ctrl_etiq", S.etiq ? "1" : "0"); } catch (e) { /* nada */ }
+    pintarEtiqBtn(); etiquetas3D();
+  });
+  pintarEtiqBtn();
+  window.addEventListener("resize", etiquetas3D);
 
   // Foto del modelo tal como lo deja la pestaña Generador: solo las piezas de la tabla, con su color de estatus
   // y una etiqueta con la marca de cada pieza para ubicarla en la tabla.
@@ -1346,6 +1413,12 @@
           v.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, function () { buildMaps().then(function () { viewerMsg(""); paintModel(); }); });
           if (model.getInstanceTree()) buildMaps().then(function () { viewerMsg(""); paintModel(); });
           v.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, onViewerSelect);
+          S.centros = new Map();
+          v.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, etiquetas3D);
+          v.addEventListener(Autodesk.Viewing.ISOLATE_EVENT, etiquetas3D);
+          v.addEventListener(Autodesk.Viewing.HIDE_EVENT, etiquetas3D);
+          v.addEventListener(Autodesk.Viewing.SHOW_EVENT, etiquetas3D);
+          v.addEventListener(Autodesk.Viewing.VIEWER_RESIZE_EVENT, etiquetas3D);
         }).catch(function () { viewerMsg("No se pudo cargar el modelo."); });
       }, function (code, msg) {
         viewerMsg(code === 4 || code === 5 ? "La cuenta conectada a Forma no tiene acceso a este modelo, o la conexión venció. Un administrador debe volver a conectar Forma." : "No se pudo abrir el modelo de Forma (" + (msg || code) + ").");
@@ -1428,6 +1501,7 @@
       else { if (cambiaVista("todo", [])) v.showAll(); if (lids.length && encuadrar) v.fitToView(lids, m); }
       if (v.impl && v.impl.invalidate) v.impl.invalidate(true, true, true); // fuerza a redibujar con los colores nuevos
       S.pintados = { pedidas: Object.keys(col).length, enModelo: lids.length };
+      etiquetas3D();
       return;
     }
     var ids = [];
@@ -1450,6 +1524,7 @@
     } else {
       if (cambiaVista("todo", [])) v.showAll();
     }
+    etiquetas3D();
   }
 
   // Selección múltiple sin Ctrl: con el botón activo, cada clic agrega o quita una pieza y se ve todo el modelo.
@@ -1507,6 +1582,7 @@
       S.sel = new Set(gs);
     }
     pintarMulti();
+    etiquetas3D();
     if (S.modulo === "lean") return;
     renderLista();
     var sel = document.querySelector("#lista li.sel");
@@ -1597,7 +1673,7 @@
   // Puente para el módulo Lean (public/lean.js).
   window.OBYRA = {
     S: S, api: api, el: el, $: $, qsa: qsa, toast: toast, fecha: fecha, f2: f2, nf0: nf0, pill: pill, COLOR: COLOR,
-    paintModel: paintModel, focusPieces: focusPieces, renderLegend: renderLegend,
+    paintModel: paintModel, focusPieces: focusPieces, etiquetas3D: etiquetas3D, renderLegend: renderLegend,
     alIniciar: [], // funciones que corren cuando la app ya cargó obra y piezas
     _onViewerSelect: onViewerSelect, // para pruebas
   };

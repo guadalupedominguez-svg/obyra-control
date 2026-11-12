@@ -138,7 +138,28 @@
       });
       return out;
     },
+    // Piezas que llevan etiqueta en la vista 3D: lo que se ejecuta en el día simulado, la tarea o el día
+    // elegido; si no hay nada en foco, las piezas seleccionadas en el modelo.
+    etiquetas: function () {
+      var gs = [], col = {};
+      if (L.cargado && L.tab === "pull") {
+        var hito = hitoActual();
+        if (hito) {
+          col = OBYRA_LEAN.colores();
+          var d = L.sim.on && L.sim.dia ? L.sim.dia : L.diaSel;
+          if (d) {
+            (hito.tarjetas || []).forEach(function (t) { (repartir(t.guids || [], diasDe(t), t.reparto)[d] || []).forEach(function (g) { if (gs.indexOf(g) < 0) gs.push(g); }); });
+          } else if (L.tarSel) {
+            var t = (hito.tarjetas || []).find(function (x) { return x.id === L.tarSel; });
+            gs = t ? (t.guids || []).slice() : [];
+          }
+        }
+      }
+      if (!gs.length && S.sel && S.sel.size) gs = Array.from(S.sel);
+      return gs.map(function (g) { return { guid: g, texto: etiquetaPieza(g), color: col[g] || O.COLOR.Planeado || "#94A3B8" }; });
+    },
   };
+  var OBYRA_LEAN = window.OBYRA_LEAN;
 
   function render() {
     if (S.modulo !== "lean" || !L.cargado) return;
@@ -868,9 +889,11 @@
       var ds = diasDe(t).slice().sort(), k = ds.indexOf(f);
       if (k < 0) return;
       var ult = k === ds.length - 1 && ds.length > 1;
+      // Marcas de las piezas que se ejecutan ese día (para ubicarlas en el modelo).
+      var marcasDia = Array.from(new Set((repartir(t.guids || [], ds, t.reparto)[f] || []).map(etiquetaPieza)));
       var b = el("button", { type: "button", "data-t": t.id, class: "ln-postit" + (t.actId ? " pasada" : "") + (k === ds.length - 1 ? " ultimo" : "") + (L.flag && L.flag.has(t.id) ? " embudo" : ""), style: "background:" + tinte(c), draggable: puedeMover(t) ? "true" : null,
-        title: t.entregable + " · día " + (k + 1) + " de " + ds.length + (ult && puedeMover(t) ? " · arrástralo para mover toda la serie" : "") + (t.entregaA ? " · entrega a " + t.entregaA : "") + (t.necesita ? " · necesita: " + t.necesita : "") }, [
-        el("b", { text: t.entregable }), el("small", { text: (ult && puedeMover(t) ? "⇄ " : "") + (k + 1) + "/" + ds.length + ((t.guids || []).length ? " · ◆" : "") + (k === ds.length - 1 && t.entregaA ? " → " + t.entregaA : "") }),
+        title: t.entregable + " · día " + (k + 1) + " de " + ds.length + (marcasDia.length ? " · piezas: " + marcasDia.join(", ") : "") + (ult && puedeMover(t) ? " · arrástralo para mover toda la serie" : "") + (t.entregaA ? " · entrega a " + t.entregaA : "") + (t.necesita ? " · necesita: " + t.necesita : "") }, [
+        el("b", { text: t.entregable }), el("small", { text: (ult && puedeMover(t) ? "⇄ " : "") + (k + 1) + "/" + ds.length + (marcasDia.length ? " · " + marcasDia.join(", ") : ((t.guids || []).length ? " · ◆" : "")) + (k === ds.length - 1 && t.entregaA ? " → " + t.entregaA : "") }),
       ]);
       if (L.tarSel === t.id) b.classList.add("activa");
       // Se une visualmente con el día siguiente / anterior de la misma serie.
