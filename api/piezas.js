@@ -16,7 +16,7 @@ const AVANCE = () => key("avance");
 
 export const ESTATUS = ["Planeado", "Liberado", "En ejecución", "Terminado", "Estimado", "Pagado"];
 // Lo que puede reportar cada quien. Estimado y Pagado salen del flujo de estimación, no del reporte.
-const REPORTABLE = { contratista: ["En ejecución", "Terminado"], aprobador: ["Planeado", "Liberado", "En ejecución", "Terminado"] };
+const REPORTABLE = { contratista: ["Planeado", "Liberado", "En ejecución", "Terminado"], aprobador: ["Planeado", "Liberado", "En ejecución", "Terminado"] };
 
 const NUM = ["area", "areaBruta", "volumen", "largo", "alto", "espesor"];
 const TXT = { marca: 40, contratista: 60, clave: 40, partida: 60, concepto: 120, zona: 60, takt: 60, eje: 30, nivel: 60, categoria: 60, tipo: 160 };
@@ -102,7 +102,7 @@ export default route(["GET", "POST"], async (req, res) => {
       const est = String(body.estatus || "");
       if (!(esContratista ? REPORTABLE.contratista : REPORTABLE.aprobador).includes(est)) throw new HttpError(400, "Estatus no válido para reportar.");
       if (["Estimado", "Pagado"].includes(rec.estatus)) { omitidas.push(g); return; }
-      let pct = est === "Terminado" ? 100 : Number(body.pct || 0);
+      let pct = est === "Terminado" ? 100 : est === "En ejecución" ? Number(body.pct || 0) : 0;
       if (!Number.isFinite(pct) || pct < 0 || pct > 100) throw new HttpError(400, "El porcentaje debe estar entre 0 y 100.");
       pct = Math.round(pct);
       if (!can(me, "aprobar")) {

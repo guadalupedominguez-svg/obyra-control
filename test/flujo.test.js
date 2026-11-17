@@ -124,7 +124,7 @@ test("el contratista reporta lo suyo y queda por aprobar", async () => {
   assert.equal(r.json.omitidas, 1); // la de AD-001
   assert.equal(r.json.avance[G(1)].pend.estatus, "Terminado");
   assert.equal(r.json.avance[G(1)].estatus, "Planeado");
-  assert.equal((await copresa("piezas", { action: "reportar", guids: [G(1)], estatus: "Liberado" })).status, 400);
+  assert.equal((await copresa("piezas", { action: "reportar", guids: [G(1)], estatus: "Estimado" })).status, 400); // Estimado sale del generador
   assert.equal((await copresa("piezas", { action: "aprobar", guids: [G(1)] })).status, 403);
 });
 

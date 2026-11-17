@@ -128,7 +128,8 @@
     if ($("reporte")) {
       $("r-btn").textContent = "Enviar avance para aprobación";
       $("r-hint").textContent = "El residente o el superintendente revisa y aprueba el reporte antes de que cuente para el generador.";
-      fillSelect($("r-estatus"), ["En ejecución", "Terminado"]);
+      fillSelect($("r-estatus"), ["Planeado", "Liberado", "En ejecución", "Terminado"]);
+      $("r-estatus").value = "En ejecución";
     }
     $("ap-intro").textContent = S.permisos.aprobar
       ? "Avance reportado que espera tu revisión. Revisa en obra o en el modelo y aprueba o rechaza con el motivo."
@@ -343,7 +344,8 @@
   }
 
   if ($("reporte")) {
-    var syncPct = function () { var t = $("r-estatus").value === "Terminado"; $("r-pct").disabled = t; if (t) $("r-pct").value = ""; };
+    // El % solo aplica a En ejecución (Terminado es 100 %; Planeado y Liberado, 0 %).
+    var syncPct = function () { var t = $("r-estatus").value !== "En ejecución"; $("r-pct").disabled = t; if (t) $("r-pct").value = ""; };
     $("r-estatus").addEventListener("change", function () { syncPct(); previewReporte(); }); syncPct();
     $("reporte").addEventListener("submit", function (ev) {
       ev.preventDefault();
