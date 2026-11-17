@@ -699,6 +699,67 @@
     });
     return lista;
   }
+  // ---- Orientación del modelo: las cajas de zona van a escuadra con el edificio, no con el norte ----
+  // Plano horizontal según el eje vertical del visor (z o y).
+  function planoH() {
+    var u = S.viewer.navigation.getWorldUpVector();
+    return Math.abs(u.z) >= Math.abs(u.y) ? { a: "x", b: "y", up: "z" } : { a: "x", b: "z", up: "y" };
+  }
+  function girar(a, b, ang) { var c = Math.cos(ang), s = Math.sin(ang); return [a * c - b * s, a * s + b * c]; }
+  // Puntos (en mundo) de un fragmento: una muestra de sus vértices; si su geometría no está cargada, las esquinas de su caja.
+  function puntosFrag(f, cada) {
+    var out = [], v = S.viewer, p = new THREE.Vector3();
+    try {
+      var proxy = v.impl.getRenderProxy(S.model, f), g = proxy && proxy.geometry;
+      if (g && g.vb && g.attributes && g.attributes.position) {
+        var st = g.vbstride, off = g.attributes.position.itemOffset || g.attributes.position.offset || 0, n = Math.floor(g.vb.length / st);
+        var paso = Math.max(1, Math.floor(n / (cada || 48)));
+        for (var i = 0; i < n; i += paso) { p.set(g.vb[i * st + off], g.vb[i * st + off + 1], g.vb[i * st + off + 2]).applyMatrix4(proxy.matrixWorld); out.push(p.clone()); }
+        if (out.length) return out;
+      }
+    } catch (e) { /* sin geometría */ }
+    var b = new THREE.Box3(); S.model.getFragmentList().getWorldBounds(f, b);
+    [b.min.x, b.max.x].forEach(function (x) { [b.min.y, b.max.y].forEach(function (y) { [b.min.z, b.max.z].forEach(function (z) { out.push(new THREE.Vector3(x, y, z)); }); }); });
+    return out;
+  }
+  // Ángulo del edificio respecto a los ejes del mundo: dirección dominante (módulo 90°) de los elementos alargados.
+  function rumboModelo() {
+    if (S.rumbo != null) return S.rumbo;
+    var it = S.model.getInstanceTree(), pl = planoH(), hist = new Float64Array(180), frags = [];
+    Object.keys(S.piezas).forEach(function (g) { var id = S.guid2db.get(g); if (id != null) it.enumNodeFragments(id, function (f) { frags.push(f); }, true); });
+    var paso = Math.max(1, Math.floor(frags.length / 600));
+    for (var k = 0; k < frags.length; k += paso) {
+      var pts = puntosFrag(frags[k], 32); if (pts.length < 3) continue;
+      var ma = 0, mb = 0; pts.forEach(function (q) { ma += q[pl.a]; mb += q[pl.b]; }); ma /= pts.length; mb /= pts.length;
+      var saa = 0, sbb = 0, sab = 0; pts.forEach(function (q) { var da = q[pl.a] - ma, db = q[pl.b] - mb; saa += da * da; sbb += db * db; sab += da * db; });
+      var tr = saa + sbb; if (!tr) continue;
+      var dif = Math.sqrt((saa - sbb) * (saa - sbb) + 4 * sab * sab), alarg = dif / tr; // 1 = línea, 0 = sin dirección
+      if (alarg < 0.5) continue;
+      var phi = 0.5 * Math.atan2(2 * sab, saa - sbb); // dirección principal
+      var grados = ((phi * 180 / Math.PI) % 90 + 90) % 90;
+      hist[Math.round(grados * 2) % 180] += alarg * Math.sqrt(tr / pts.length);
+    }
+    var mejor = 0, max = 0;
+    for (var i = 0; i < 180; i++) { var s = hist[(i + 179) % 180] + 2 * hist[i] + hist[(i + 1) % 180]; if (s > max) { max = s; mejor = i; } }
+    var ang = mejor / 2; if (ang > 45) ang -= 90; // el giro más chico
+    S.rumbo = max ? ang * Math.PI / 180 : 0;
+    return S.rumbo;
+  }
+  // Caja de las piezas en el marco del edificio (girado «rumbo»): {min, max} locales.
+  function cajaLocal(guids, rumbo) {
+    var it = S.model.getInstanceTree(), pl = planoH(), caja = new THREE.Box3();
+    guids.forEach(function (g) {
+      var id = S.guid2db.get(g); if (id == null) return;
+      it.enumNodeFragments(id, function (f) {
+        puntosFrag(f, 24).forEach(function (q) {
+          var r = girar(q[pl.a], q[pl.b], -rumbo), w = new THREE.Vector3();
+          w[pl.a] = r[0]; w[pl.b] = r[1]; w[pl.up] = q[pl.up];
+          caja.expandByPoint(w);
+        });
+      }, true);
+    });
+    return caja;
+  }
   function cajaPiezas(guids) {
     var it = S.model.getInstanceTree(), fl = S.model.getFragmentList(), caja = new THREE.Box3(), tmp = new THREE.Box3();
     guids.forEach(function (g) {
@@ -720,13 +781,20 @@
     var lista = datosZonas();
     if (!lista.length) { $("zonas-lista").hidden = false; $("zonas-lista").replaceChildren(el("b", { text: "Zonas" }), el("span", { class: "muted", text: "Las piezas no traen tren takt ni zona." })); return; }
     v.impl.createOverlayScene("zonas"); S.zonasEscena = true;
+    var rumbo = rumboModelo(); S.zonasRumbo = rumbo;
     lista.forEach(function (o) {
-      var caja = cajaPiezas(o.guids); if (caja.isEmpty()) return;
-      var t = caja.size(), c = caja.center();
+      // Caja a escuadra con el edificio: se calcula en su marco girado y se coloca girada de vuelta.
+      var caja = cajaLocal(o.guids, rumbo); if (caja.isEmpty()) return;
+      var t = caja.size(), cl = caja.center(), pl = planoH();
       var margen = Math.max(t.x, t.y, t.z) * 0.01 + 0.05; // un poco más grande que sus piezas
+      caja.expandByScalar(margen / 2);
       var geo = new THREE.BoxGeometry(t.x + margen, t.y + margen, t.z + margen);
       var mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(o.color), transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide });
-      var masa = new THREE.Mesh(geo, mat); masa.position.copy(c);
+      var masa = new THREE.Mesh(geo, mat);
+      var cw = girar(cl[pl.a], cl[pl.b], rumbo), c = new THREE.Vector3(); c[pl.a] = cw[0]; c[pl.b] = cw[1]; c[pl.up] = cl[pl.up];
+      masa.position.copy(c);
+      if (pl.up === "z") masa.rotation.z = rumbo; else masa.rotation.y = -rumbo;
+      o.cajaMundo = cajaPiezas(o.guids);
       v.impl.addOverlay("zonas", masa);
       try { var bordes = new THREE.EdgesHelper(masa, new THREE.Color(o.color).getHex()); bordes.material.transparent = true; bordes.material.opacity = 0.7; v.impl.addOverlay("zonas", bordes); } catch (e) { /* sin bordes */ }
       o.caja = caja; o.masa = masa;
@@ -738,7 +806,7 @@
       var b = el("button", { type: "button", title: "Encuadrar " + o.nombre }, [el("i", { style: "background:" + o.color }), el("span", { text: o.nombre }), el("span", { class: "pct", text: o.pct + " %" })]);
       b.addEventListener("mouseenter", function () { resaltarZona(o); });
       b.addEventListener("mouseleave", function () { resaltarZona(null); $("zona-tip").hidden = true; });
-      b.addEventListener("click", function () { v.navigation.fitBounds(false, o.caja); });
+      b.addEventListener("click", function () { v.navigation.fitBounds(false, o.cajaMundo || o.caja); });
       return b;
     })));
     box.hidden = false;
@@ -767,6 +835,10 @@
     var r = $("viewer").getBoundingClientRect();
     var vp = v.impl.clientToViewport(x - r.left, y - r.top);
     var rayo = new THREE.Ray(); v.impl.viewportToRay(vp, rayo);
+    // El rayo se lleva al marco del edificio, donde las cajas son ortogonales.
+    var pl = planoH(), rumbo = S.zonasRumbo || 0;
+    var loc = function (q) { var r = girar(q[pl.a], q[pl.b], -rumbo), w = new THREE.Vector3(); w[pl.a] = r[0]; w[pl.b] = r[1]; w[pl.up] = q[pl.up]; return w; };
+    rayo = new THREE.Ray(loc(rayo.origin), loc(rayo.direction));
     var mejor = null, vol = Infinity;
     S.zonas.forEach(function (o) {
       if (!rayo.intersectBox(o.caja)) return;
@@ -1664,7 +1736,7 @@
           v.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, function () { buildMaps().then(listoMapas); });
           if (model.getInstanceTree()) buildMaps().then(listoMapas);
           v.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, onViewerSelect);
-          S.centros = new Map(); S.marcasModelo = new Map();
+          S.centros = new Map(); S.marcasModelo = new Map(); S.rumbo = null;
           v.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, etiquetas3D);
           v.addEventListener(Autodesk.Viewing.ISOLATE_EVENT, etiquetas3D);
           v.addEventListener(Autodesk.Viewing.HIDE_EVENT, etiquetas3D);
