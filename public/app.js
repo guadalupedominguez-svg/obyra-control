@@ -388,6 +388,7 @@
     return pendientes().filter(function (g) { return !c || S.piezas[g].contratista === c; });
   }
   function updateBadge() {
+    if (S.zonasOn && S.zonasEscena) pintarZonas(); // el % de avance de cada zona cambia con el avance
     var b = $("badge-aprobar"); if (!b) return;
     var n = pendientes().length; b.textContent = n; b.hidden = !n;
   }
@@ -659,6 +660,140 @@
         dentro.forEach(function (pt) { if (pt.guid) pts[pt.guid] = { x: pt.x, y: pt.y }; });
         return pts;
   }
+
+  // ---------- Zonas: volúmenes de color con % de avance ----------
+  // Una caja semitransparente por zona (tren takt o, si no hay, GCP_Zona) que envuelve sus piezas.
+  // Al pasar el cursor encima, o sobre la lista, se ve el % de avance aprobado de la zona.
+  var ZONA_COLORES = ["#22D3EE", "#F472B6", "#A3E635", "#FB923C", "#818CF8", "#FACC15", "#34D399", "#F87171", "#C084FC", "#38BDF8", "#FDBA74", "#4ADE80"];
+  S.zonasOn = false;
+  try { S.zonasOn = localStorage.getItem("ctrl_zonas") === "1"; } catch (e) { /* nada */ }
+  function zonaDe(p) { return p.takt || p.zona || ""; }
+  function avancePieza(g) {
+    var r = rec(g), e = r.estatus || "Planeado";
+    if (e === "Terminado" || e === "Estimado" || e === "Pagado") return 100;
+    if (e === "En ejecución") return Math.max(0, Math.min(100, r.pct || 0));
+    return 0;
+  }
+  // Avance por zona: promedio de sus piezas (pesado por largo cuando las piezas lo traen, como en tramos).
+  function datosZonas() {
+    var z = {};
+    Object.keys(S.piezas).forEach(function (g) {
+      var nom = zonaDe(S.piezas[g]); if (!nom) return;
+      (z[nom] = z[nom] || { nombre: nom, guids: [] }).guids.push(g);
+    });
+    var lista = Object.values(z).sort(function (a, b) { return a.nombre.localeCompare(b.nombre, "es", { numeric: true }); });
+    lista.forEach(function (o, i) {
+      o.color = ZONA_COLORES[i % ZONA_COLORES.length];
+      var conLargo = o.guids.filter(function (g) { return S.piezas[g].largo > 0; });
+      var base = conLargo.length >= o.guids.length / 2 ? conLargo : o.guids;
+      var peso = function (g) { return base === conLargo ? S.piezas[g].largo : 1; };
+      var tot = 0, hecho = 0;
+      base.forEach(function (g) { tot += peso(g); hecho += peso(g) * avancePieza(g) / 100; });
+      o.pct = tot ? Math.round(hecho / tot * 1000) / 10 : 0;
+      o.terminadas = o.guids.filter(function (g) { return avancePieza(g) === 100; }).length;
+      o.ejecucion = o.guids.filter(function (g) { var a = avancePieza(g); return a > 0 && a < 100; }).length;
+      o.pendientes = o.guids.filter(function (g) { return rec(g).pend; }).length;
+      o.porLargo = base === conLargo;
+    });
+    return lista;
+  }
+  function cajaPiezas(guids) {
+    var it = S.model.getInstanceTree(), fl = S.model.getFragmentList(), caja = new THREE.Box3(), tmp = new THREE.Box3();
+    guids.forEach(function (g) {
+      var id = S.guid2db.get(g); if (id == null) return;
+      it.enumNodeFragments(id, function (f) { fl.getWorldBounds(f, tmp); caja.union(tmp); }, true);
+    });
+    return caja;
+  }
+  function quitarZonas() {
+    var v = S.viewer;
+    if (v && v.impl && S.zonasEscena) { v.impl.removeOverlayScene("zonas"); S.zonasEscena = false; v.impl.invalidate(false, false, true); }
+    S.zonas = [];
+    $("zonas-lista").hidden = true; $("zona-tip").hidden = true;
+  }
+  function pintarZonas() {
+    var v = S.viewer;
+    quitarZonas();
+    if (!S.zonasOn || !v || !S.model || !S.guid2db || !S.guid2db.size || typeof THREE === "undefined") return;
+    var lista = datosZonas();
+    if (!lista.length) { $("zonas-lista").hidden = false; $("zonas-lista").replaceChildren(el("b", { text: "Zonas" }), el("span", { class: "muted", text: "Las piezas no traen tren takt ni zona." })); return; }
+    v.impl.createOverlayScene("zonas"); S.zonasEscena = true;
+    lista.forEach(function (o) {
+      var caja = cajaPiezas(o.guids); if (caja.isEmpty()) return;
+      var t = caja.size(), c = caja.center();
+      var margen = Math.max(t.x, t.y, t.z) * 0.01 + 0.05; // un poco más grande que sus piezas
+      var geo = new THREE.BoxGeometry(t.x + margen, t.y + margen, t.z + margen);
+      var mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(o.color), transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide });
+      var masa = new THREE.Mesh(geo, mat); masa.position.copy(c);
+      v.impl.addOverlay("zonas", masa);
+      try { var bordes = new THREE.EdgesHelper(masa, new THREE.Color(o.color).getHex()); bordes.material.transparent = true; bordes.material.opacity = 0.7; v.impl.addOverlay("zonas", bordes); } catch (e) { /* sin bordes */ }
+      o.caja = caja; o.masa = masa;
+      S.zonas.push(o);
+    });
+    v.impl.invalidate(false, false, true);
+    var box = $("zonas-lista");
+    box.replaceChildren.apply(box, [el("b", { text: "Zonas · avance" })].concat(S.zonas.map(function (o) {
+      var b = el("button", { type: "button", title: "Encuadrar " + o.nombre }, [el("i", { style: "background:" + o.color }), el("span", { text: o.nombre }), el("span", { class: "pct", text: o.pct + " %" })]);
+      b.addEventListener("mouseenter", function () { resaltarZona(o); });
+      b.addEventListener("mouseleave", function () { resaltarZona(null); $("zona-tip").hidden = true; });
+      b.addEventListener("click", function () { v.navigation.fitBounds(false, o.caja); });
+      return b;
+    })));
+    box.hidden = false;
+  }
+  function resaltarZona(o) {
+    (S.zonas || []).forEach(function (z) { z.masa.material.opacity = z === o ? 0.32 : 0.14; });
+    qsa("#zonas-lista button").forEach(function (b, i) { b.classList.toggle("activa", S.zonas[i] === o); });
+    if (S.viewer) S.viewer.impl.invalidate(false, false, true);
+  }
+  function tipZona(o, x, y) {
+    var tip = $("zona-tip");
+    if (!o) { tip.hidden = true; return; }
+    tip.style.setProperty("--z", o.color);
+    tip.replaceChildren(
+      el("b", { text: o.nombre }),
+      el("div", { class: "barra" }, [el("span", { style: "width:" + o.pct + "%" })]),
+      el("div", { text: o.pct + " % de avance" + (o.porLargo ? " (por largo)" : "") }),
+      el("div", { class: "muted", text: o.guids.length + " piezas · " + o.terminadas + " terminadas · " + o.ejecucion + " en ejecución" + (o.pendientes ? " · " + o.pendientes + " por aprobar" : "") }));
+    var r = $("viewer").getBoundingClientRect();
+    tip.style.left = Math.min(x - r.left + 14, r.width - 230) + "px"; tip.style.top = Math.max(8, y - r.top + 14) + "px";
+    tip.hidden = false;
+  }
+  // Zona bajo el cursor: la caja más chica que cruza el rayo.
+  function zonaEn(x, y) {
+    var v = S.viewer; if (!v || !(S.zonas || []).length) return null;
+    var r = $("viewer").getBoundingClientRect();
+    var vp = v.impl.clientToViewport(x - r.left, y - r.top);
+    var rayo = new THREE.Ray(); v.impl.viewportToRay(vp, rayo);
+    var mejor = null, vol = Infinity;
+    S.zonas.forEach(function (o) {
+      if (!rayo.intersectBox(o.caja)) return;
+      var t = o.caja.size(), w = t.x * t.y * t.z;
+      if (w < vol) { vol = w; mejor = o; }
+    });
+    return mejor;
+  }
+  $("viewer").addEventListener("mousemove", function (ev) {
+    if (!S.zonasOn || !(S.zonas || []).length) return;
+    if (S.zonaRaf) return;
+    S.zonaRaf = requestAnimationFrame(function () {
+      S.zonaRaf = 0;
+      var o = zonaEn(ev.clientX, ev.clientY);
+      if (o !== S.zonaHover) { S.zonaHover = o; resaltarZona(o); }
+      tipZona(o, ev.clientX, ev.clientY);
+    });
+  });
+  $("viewer").addEventListener("mouseleave", function () { if (S.zonaHover) { S.zonaHover = null; resaltarZona(null); } $("zona-tip").hidden = true; });
+  function pintarZonasBtn() {
+    $("zonas-btn").setAttribute("aria-pressed", String(S.zonasOn));
+    $("zonas-btn").textContent = S.zonasOn ? "Zonas: sí" : "Zonas: no";
+  }
+  $("zonas-btn").addEventListener("click", function () {
+    S.zonasOn = !S.zonasOn;
+    try { localStorage.setItem("ctrl_zonas", S.zonasOn ? "1" : "0"); } catch (e) { /* nada */ }
+    pintarZonasBtn(); pintarZonas();
+  });
+  pintarZonasBtn();
 
   // ---------- Etiquetas en la vista 3D ----------
   // Las mismas etiquetas del generador, sobre el visor y siguiendo la cámara. Se etiqueta lo que está en foco:
@@ -1523,7 +1658,7 @@
         v.loadDocumentNode(doc, node).then(function (model) {
           S.model = model;
           $("multi").hidden = false;
-          var listoMapas = function () { viewerMsg(""); paintModel(); if (window.OBYRA_LEAN && window.OBYRA_LEAN.refrescar) window.OBYRA_LEAN.refrescar(); };
+          var listoMapas = function () { viewerMsg(""); paintModel(); pintarZonas(); if (window.OBYRA_LEAN && window.OBYRA_LEAN.refrescar) window.OBYRA_LEAN.refrescar(); };
           v.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, function () { buildMaps().then(listoMapas); });
           if (model.getInstanceTree()) buildMaps().then(listoMapas);
           v.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, onViewerSelect);
