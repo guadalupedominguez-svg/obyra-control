@@ -419,6 +419,22 @@
     }));
   }
   if ($("ap-contratista")) $("ap-contratista").addEventListener("change", function () { S.apSel.clear(); renderAprobar(); });
+  // Administrador: descarta las propuestas pendientes de la lista (con un segundo clic para confirmar).
+  if ($("ap-descartar")) $("ap-descartar").addEventListener("click", function () {
+    var b = $("ap-descartar"), guids = pendientesVista();
+    if (!guids.length) { toast("No hay pendientes en esta lista."); return; }
+    if (b.getAttribute("data-ok") !== "1") {
+      b.setAttribute("data-ok", "1"); b.textContent = "¿Descartar " + guids.length + (guids.length === 1 ? " pendiente" : " pendientes") + "? Clic otra vez";
+      setTimeout(function () { b.removeAttribute("data-ok"); b.textContent = "Descartar los pendientes de esta lista"; }, 5000);
+      return;
+    }
+    b.removeAttribute("data-ok"); b.textContent = "Descartar los pendientes de esta lista";
+    api("/api/piezas", { action: "descartar", guids: guids.slice(0, 500) }).then(function (r) {
+      Object.assign(S.avance, r.avance);
+      toast(nf0.format(r.actualizadas) + (r.actualizadas === 1 ? " pendiente descartado." : " pendientes descartados."));
+      updateBadge(); renderAprobar(); renderLista(); paintModel();
+    }).catch(function (e) { toast(e.message, true); });
+  });
   if ($("ap-all")) {
     $("ap-all").addEventListener("change", function () {
       pendientesVista().forEach(function (g) { if ($("ap-all").checked) S.apSel.add(g); else S.apSel["delete"](g); });

@@ -127,6 +127,12 @@ export default route(["GET", "POST"], async (req, res) => {
         rechazar(rec, me, comentario, rec.pend.estatus);
       }
       delete rec.pend;
+    } else if (body.action === "descartar") {
+      // Administrador: descarta la propuesta pendiente; la pieza se queda con el estatus que tenía.
+      if (!can(me, "administrar")) throw new HttpError(403, "Solo un administrador puede descartar avances pendientes.");
+      if (!rec.pend) { omitidas.push(g); return; }
+      push(rec, evento(me, "descarta", { estatus: rec.pend.estatus, pct: rec.pend.pct, comentario }));
+      delete rec.pend;
     } else if (body.action === "estimar") {
       if (!can(me, "estimar")) throw new HttpError(403, "Tu rol no puede asignar estimaciones.");
       const est = cleanText(body.estimacion, 30, "La estimación", { required: true }).toUpperCase();
