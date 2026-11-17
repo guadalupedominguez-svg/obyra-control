@@ -326,14 +326,21 @@
   }
   // Vista previa del avance: mientras el contratista elige el estatus, las piezas seleccionadas se ven
   // en el modelo con el color de ese estatus (el resaltado de selección toma ese color).
+  // Mientras el contratista elige el estatus, lo seleccionado se pinta con el color de ese estatus
+  // (también el resaltado de selección del visor toma ese color).
+  function previewActivo() { return !!($("reporte") && !$("reporte").hidden && S.sel && S.sel.size && $("r-estatus") && $("r-estatus").value); }
+  function colorVista(g) {
+    if (previewActivo() && S.sel.has(g)) return COLOR[$("r-estatus").value] || COLOR.Planeado;
+    return COLOR[estado(g)] || COLOR.Planeado;
+  }
   function previewReporte() {
-    var v = S.viewer;
-    if (!v || !v.setSelectionColor || typeof THREE === "undefined") return;
-    var activo = $("reporte") && !$("reporte").hidden && S.sel && S.sel.size;
-    var hex = activo ? (COLOR[$("r-estatus").value] || COLOR.Planeado) : "#6699FF";
-    if (S.colorSel === hex) return;
-    S.colorSel = hex;
-    try { v.setSelectionColor(new THREE.Color(hex), Autodesk.Viewing.SelectionType.MIXED); } catch (e) { /* visor sin soporte */ }
+    var v = S.viewer; if (!v || !S.model) return;
+    var clave = previewActivo() ? $("r-estatus").value + "|" + Array.from(S.sel).join(",") : "";
+    if (S.previewClave === clave) return;
+    var antes = S.previewClave; S.previewClave = clave;
+    // Lo que además está seleccionado en el visor se resalta con ese mismo color (en vez del azul).
+    try { if (v.setSelectionColor && typeof THREE !== "undefined") v.setSelectionColor(new THREE.Color(clave ? (COLOR[$("r-estatus").value] || COLOR.Planeado) : "#6699FF"), Autodesk.Viewing.SelectionType.MIXED); } catch (e) { /* visor sin soporte */ }
+    if (clave || antes) paintModel(false);
     if (v.impl && v.impl.invalidate) v.impl.invalidate(true, true, true);
   }
   function updateSel() {
@@ -1833,7 +1840,7 @@
       var id = S.guid2db.get(g);
       if (id == null) return;
       ids.push(id);
-      v.setThemingColor(id, hexToVec(COLOR[estado(g)] || COLOR.Planeado), m, true);
+      v.setThemingColor(id, hexToVec(colorVista(g)), m, true);
     });
     if (ids.length && S.verTodo) {
       if (cambiaVista("todo", [])) v.showAll(); if (encuadrar) v.fitToView(ids, m); // modelo completo con los colores encima
