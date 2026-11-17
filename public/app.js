@@ -127,14 +127,16 @@
     // El formulario de avance solo existe para el contratista (los demás no tienen el permiso "reportar").
     if ($("reporte")) {
       $("r-btn").textContent = "Actualizar avance";
-      $("r-hint").textContent = "El residente o el superintendente revisa y aprueba el reporte antes de que cuente para el generador.";
+      $("r-hint").textContent = "Se aplica de inmediato y queda sin validar hasta que el residente lo revisa. Solo lo Terminado y validado se puede enviar a estimar.";
       fillSelect($("r-estatus"), ["Planeado", "Liberado", "En ejecución", "Terminado"]);
       $("r-estatus").value = "En ejecución";
       if (S.syncPct) S.syncPct();
     }
-    $("ap-intro").textContent = S.permisos.aprobar
-      ? "Avance reportado que espera tu revisión. Revisa en obra o en el modelo y aprueba o rechaza con el motivo."
-      : "Avance reportado que espera la revisión del residente o del superintendente. Solo ellos pueden aprobar o rechazar.";
+    $("ap-intro").textContent = S.permisos.autorizar
+      ? "Estimaciones que el residente ya validó: apruébalas (quedan Estimado) o regrésalas a Terminado con el motivo. También puedes validar avance."
+      : S.permisos.validarGenerador
+        ? "Valida el avance que actualiza el contratista y los generadores que envía a estimar; lo validado pasa al superintendente."
+        : "Lo que espera revisión: el residente valida el avance y los generadores; el superintendente aprueba las estimaciones.";
     fillSelect($("f-estatus"), [["", "Todos los estatus"]].concat(ORDEN.map(function (e) { return [e, e]; })));
     renderLegend();
     renderCuenta();
@@ -286,7 +288,8 @@
       cb.checked = S.sel.has(g);
       cb.addEventListener("click", function (ev) { ev.stopPropagation(); toggleSel(g, cb.checked); });
       var notes = [];
-      if (r.pend) notes.push(el("span", { class: "note warn", text: "Propuesto: " + r.pend.estatus + (r.pend.estatus !== "Terminado" && r.pend.pct ? " " + r.pend.pct + " %" : "") + " · " + r.pend.por }));
+      if (r.pend) notes.push(el("span", { class: "note warn", text: notaPend(r.pend) }));
+      if (r.porValidar) notes.push(el("span", { class: "note warn", text: "Sin validar · " + r.porValidar.por }));
       if (r.rechazo) notes.push(el("span", { class: "note bad", text: "Rechazado: " + r.rechazo.motivo }));
       // Lo que se va a enviar (aún no guardado): se ve en la lista igual que en el modelo.
       if (previewActivo() && S.sel.has(g)) {
@@ -398,45 +401,90 @@
   }
 
   // ---------- Por aprobar ----------
-  function pendientes() { return Object.keys(S.piezas).filter(function (g) { return rec(g).pend; }); }
-  // Pendientes que se ven en la pestaña, según el filtro de contratista.
+  // Tres colas: avance sin validar (residente), generadores enviados (residente) y estimaciones (superintendente).
+  // «Por aprobar» es solo lo que va a estimar.
+  function etapaGen(r) { return r.pend && r.pend.estatus === "Estimado" ? (r.pend.etapa || "superintendente") : null; }
+  function notaPend(pe) {
+    if (pe.estatus !== "Estimado") return "Propuesto: " + pe.estatus + (pe.estatus !== "Terminado" && pe.pct ? " " + pe.pct + " %" : "") + " · " + pe.por;
+    return "Estimación " + pe.estimacion + " · " + ((pe.etapa || "superintendente") === "residente" ? "espera validación del residente" : "espera aprobación del superintendente");
+  }
+  var COLAS = {
+    avance: { nombre: "Avance por validar", puede: "aprobar", ok: "Validar", no: "Rechazar", acc: ["validar", "rechazar"],
+      es: function (r) { return !!r.porValidar || (!!r.pend && r.pend.estatus !== "Estimado"); },
+      vacio: "No hay avance por validar." },
+    generador: { nombre: "Generadores por validar", puede: "validarGenerador", ok: "Validar generador", no: "Regresar", acc: ["gen-validar", "gen-regresar"],
+      es: function (r) { return etapaGen(r) === "residente"; }, vacio: "No hay generadores por validar." },
+    estimacion: { nombre: "Estimaciones por aprobar", puede: "autorizar", ok: "Aprobar (Estimado)", no: "Regresar a Terminado", acc: ["aprobar", "regresar"],
+      es: function (r) { return etapaGen(r) === "superintendente"; }, vacio: "No hay estimaciones por aprobar." },
+  };
+  function enCola(k) { return Object.keys(S.piezas).filter(function (g) { return COLAS[k].es(rec(g)); }); }
+  function colaActual() { return ($("ap-cola") && $("ap-cola").value) || "avance"; }
+  function pendientes() { return enCola(colaActual()); }
+  // Pendientes que se ven en la pestaña, según la cola y el filtro de contratista.
   function pendientesVista() {
     var c = $("ap-contratista") ? $("ap-contratista").value : "";
     return pendientes().filter(function (g) { return !c || S.piezas[g].contratista === c; });
   }
+  // Las colas que le tocan a cada quien primero; quien solo consulta ve todas.
+  function colasMias() { return ["estimacion", "avance", "generador"].filter(function (k) { return S.permisos[COLAS[k].puede]; }); }
+  function pintarColas() {
+    var sel = $("ap-cola"); if (!sel) return;
+    var mias = colasMias(), orden = mias.concat(Object.keys(COLAS).filter(function (k) { return mias.indexOf(k) < 0; }));
+    var prev = sel.value;
+    fillSelect(sel, orden.map(function (k) { return [k, COLAS[k].nombre + " (" + enCola(k).length + ")"]; }));
+    if (prev && orden.indexOf(prev) >= 0) sel.value = prev;
+    else { var conAlgo = orden.filter(function (k) { return enCola(k).length; }); sel.value = (mias.filter(function (k) { return enCola(k).length; })[0]) || conAlgo[0] || orden[0]; }
+  }
   function updateBadge() {
     if (S.zonasOn && S.zonasEscena) pintarZonas(); // el % de avance de cada zona cambia con el avance
     var b = $("badge-aprobar"); if (!b) return;
-    var n = pendientes().length; b.textContent = n; b.hidden = !n;
+    var mias = colasMias(); if (!mias.length) mias = Object.keys(COLAS);
+    var n = mias.reduce(function (s, k) { return s + enCola(k).length; }, 0); b.textContent = n; b.hidden = !n;
   }
+  function cuandoAp(g) { var r = rec(g); return (r.pend && r.pend.at) || (r.porValidar && r.porValidar.at) || ""; }
   function renderAprobar() {
     if (!$("lista-ap")) return;
-    var list = pendientesVista().sort(function (a, b) { return rec(a).pend.at < rec(b).pend.at ? -1 : 1; });
+    pintarColas();
+    var cola = COLAS[colaActual()], actua = !!S.permisos[cola.puede];
+    $("ap-acciones").hidden = !actua;
+    if ($("ap-all")) $("ap-all").hidden = !actua;
+    $("ap-ok").textContent = cola.ok; $("ap-no").textContent = cola.no;
+    var list = pendientesVista().sort(function (a, b) { return cuandoAp(a) < cuandoAp(b) ? -1 : 1; });
     S.apSel.forEach(function (g) { if (list.indexOf(g) < 0) S.apSel["delete"](g); });
     $("ap-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pendiente" : " pendientes");
     if ($("ap-all")) $("ap-all").checked = list.length > 0 && list.every(function (g) { return S.apSel.has(g); });
-    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: $("ap-contratista") && $("ap-contratista").value ? "Este contratista no tiene avance pendiente de aprobar." : "No hay avance pendiente de aprobar." })); return; }
+    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: cola.vacio })); return; }
     $("lista-ap").replaceChildren.apply($("lista-ap"), list.map(function (g) {
-      var p = S.piezas[g], pe = rec(g).pend;
+      var p = S.piezas[g], r = rec(g);
       var cb = el("span"); // sin casilla para quien solo consulta
-      if (S.permisos.aprobar) {
+      if (actua) {
         cb = el("input", { type: "checkbox", "aria-label": "Seleccionar " + (p.marca || g) });
         cb.checked = S.apSel.has(g);
         cb.addEventListener("click", function (ev) { ev.stopPropagation(); if (cb.checked) S.apSel.add(g); else S.apSel["delete"](g); renderAprobar(); });
       }
-      var li = el("li", { class: S.apSel.has(g) ? "sel" : "" }, [
-        cb,
-        el("span", { class: "m", text: (p.marca || "(sin marca)") + " · " + p.contratista }),
-        pill(pe.estatus, pe.estatus + (pe.estatus !== "Terminado" && pe.pct ? " " + pe.pct + " %" : "")),
-        el("span", { class: "s", text: [p.clave, p.zona, p.eje && "Eje " + p.eje, "de " + estado(g).replace("Por aprobar", rec(g).estatus || "Planeado")].filter(Boolean).join(" · ") }),
-        el("span", { class: "note", text: pe.por + " · " + fecha(pe.at) + (pe.comentario ? " · " + pe.comentario : "") }),
-      ]);
+      var cuerpo;
+      if (r.pend && r.pend.estatus === "Estimado") {
+        cuerpo = [pill("Por aprobar", "Estimación " + r.pend.estimacion),
+          el("span", { class: "s", text: [p.clave, p.takt && "Takt " + p.takt, p.eje && "Eje " + p.eje, (p.largo ? f2(p.largo) + " m" : "")].filter(Boolean).join(" · ") }),
+          el("span", { class: "note", text: "Enviado por " + r.pend.por + " · " + fecha(r.pend.at) + (r.pend.validadoPor ? " · validado por " + r.pend.validadoPor : "") + (r.pend.comentario ? " · " + r.pend.comentario : "") })];
+      } else if (r.pend) { // reporte del flujo anterior
+        cuerpo = [pill(r.pend.estatus, r.pend.estatus + (r.pend.estatus !== "Terminado" && r.pend.pct ? " " + r.pend.pct + " %" : "")),
+          el("span", { class: "s", text: [p.clave, p.zona, p.eje && "Eje " + p.eje, "de " + (r.estatus || "Planeado")].filter(Boolean).join(" · ") }),
+          el("span", { class: "note", text: r.pend.por + " · " + fecha(r.pend.at) + (r.pend.comentario ? " · " + r.pend.comentario : "") })];
+      } else {
+        var antes = r.antes ? r.antes.estatus + (r.antes.estatus === "En ejecución" && r.antes.pct ? " " + r.antes.pct + " %" : "") : "Planeado";
+        cuerpo = [pill(r.estatus, r.estatus + (r.estatus === "En ejecución" && r.pct ? " " + r.pct + " %" : "")),
+          el("span", { class: "s", text: [p.clave, p.takt && "Takt " + p.takt, p.eje && "Eje " + p.eje, "antes: " + antes].filter(Boolean).join(" · ") }),
+          el("span", { class: "note", text: r.porValidar.por + " · " + fecha(r.porValidar.at) + (r.porValidar.comentario ? " · " + r.porValidar.comentario : "") })];
+      }
+      var li = el("li", { class: S.apSel.has(g) ? "sel" : "" }, [cb, el("span", { class: "m", text: (p.marca || "(sin marca)") + " · " + p.contratista })].concat(cuerpo));
       li.addEventListener("click", function () { focusPieces([g]); });
       li.addEventListener("dblclick", function () { showDetalle(g); });
       return li;
     }));
   }
   if ($("ap-contratista")) $("ap-contratista").addEventListener("change", function () { S.apSel.clear(); renderAprobar(); });
+  if ($("ap-cola")) $("ap-cola").addEventListener("change", function () { S.apSel.clear(); renderAprobar(); });
   // Administrador: descarta las propuestas pendientes de la lista (con un segundo clic para confirmar).
   if ($("ap-descartar")) $("ap-descartar").addEventListener("click", function () {
     var b = $("ap-descartar"), guids = pendientesVista();
@@ -458,20 +506,22 @@
       pendientesVista().forEach(function (g) { if ($("ap-all").checked) S.apSel.add(g); else S.apSel["delete"](g); });
       renderAprobar();
     });
-    var decide = function (action) {
+    var decide = function (cual) {
+      var cola = COLAS[colaActual()], action = cola.acc[cual === "ok" ? 0 : 1];
       var guids = Array.from(S.apSel);
-      if (!guids.length) { toast("Selecciona al menos un avance."); return; }
+      if (!guids.length) { toast("Selecciona al menos una pieza."); return; }
       api("/api/piezas", { action: action, guids: guids, comentario: $("ap-coment").value })
         .then(function (r) {
           Object.assign(S.avance, r.avance);
           S.apSel.clear(); $("ap-coment").value = "";
-          toast(nf0.format(r.actualizadas) + (action === "aprobar" ? " aprobados." : " rechazados."));
+          var hecho = { validar: " validadas.", rechazar: " rechazadas: regresan a como estaban.", "gen-validar": " validadas: pasan al superintendente.", "gen-regresar": " regresadas a Terminado.", aprobar: " aprobadas: quedan Estimado.", regresar: " regresadas a Terminado." }[action];
+          toast(nf0.format(r.actualizadas) + hecho + (r.omitidas ? " (" + r.omitidas + " sin cambio)" : ""));
           updateBadge(); renderAprobar(); renderLista(); paintModel();
         })
         .catch(function (e) { toast(e.message, true); });
     };
-    $("ap-ok").addEventListener("click", function () { decide("aprobar"); });
-    $("ap-no").addEventListener("click", function () { decide("rechazar"); });
+    $("ap-ok").addEventListener("click", function () { decide("ok"); });
+    $("ap-no").addEventListener("click", function () { decide("no"); });
   }
 
   // ---------- Generador ----------
@@ -554,13 +604,13 @@
     $("g-tabla").replaceChildren(el("thead", null, [head]), el("tbody", null, rows));
     actualizarMarcar();
   }
-  function estimable(g) { var r = rec(g); return r.estatus === "Terminado" && !r.pend; }
+  function estimable(g) { var r = rec(g); return r.estatus === "Terminado" && !r.pend && !r.porValidar && !r.estimacion; }
   // Piezas seleccionadas con la casilla (si hay); si no, null.
   function genSeleccion() { var sel = genFilas().filter(function (g) { return S.gSel.has(g); }); return sel.length ? sel : null; }
   function actualizarMarcar() {
     var b = $("g-marcar"); if (!b || b.getAttribute("data-confirm")) return;
     var n = S.gSel.size;
-    b.textContent = n ? "Marcar " + n + (n === 1 ? " seleccionada" : " seleccionadas") + " como estimado" : "Marcar como estimado";
+    b.textContent = n ? "Enviar " + n + (n === 1 ? " seleccionada" : " seleccionadas") + " a estimar" : "Enviar a estimar";
     $("g-ver").textContent = n ? "Ver generador (" + n + (n === 1 ? " seleccionada)" : " seleccionadas)") : "Ver generador";
   }
   function selectGenEnModelo() {
@@ -1386,22 +1436,22 @@
       var est = $("g-est").value.trim();
       if (!est) { toast("Escribe la estimación (ej. AD-003)."); $("g-est").focus(); return; }
       var guids = (genSeleccion() || genFilas()).filter(estimable);
-      if (!guids.length) { toast("No hay piezas terminadas y aprobadas para estimar con este filtro."); return; }
+      if (!guids.length) { toast("No hay piezas Terminadas y validadas por el residente para estimar con este filtro."); return; }
       var btn = $("g-marcar");
       if (btn.getAttribute("data-confirm") !== est) {
         btn.setAttribute("data-confirm", est);
-        btn.textContent = "Confirmar: " + guids.length + (guids.length === 1 ? " terminada" : " terminadas") + " a " + est.toUpperCase();
+        btn.textContent = "Confirmar: enviar " + guids.length + (guids.length === 1 ? " terminada" : " terminadas") + " en " + est.toUpperCase();
         setTimeout(function () { btn.removeAttribute("data-confirm"); actualizarMarcar(); }, 6000);
         return;
       }
       btn.removeAttribute("data-confirm");
       actualizarMarcar();
-      api("/api/piezas", { action: "estimar", guids: guids, estimacion: est })
+      api("/api/piezas", { action: "enviar", guids: guids, estimacion: est })
         .then(function (r) {
           Object.assign(S.avance, r.avance);
-          toast(nf0.format(r.actualizadas) + " piezas asignadas a " + est.toUpperCase() + ".");
+          toast(nf0.format(r.actualizadas) + " piezas enviadas en la estimación " + est.toUpperCase() + ": ahora las valida el residente.");
           S.gSel.clear();
-          renderGenerador(); renderLista(); paintModel();
+          updateBadge(); renderGenerador(); renderLista(); paintModel();
         })
         .catch(function (e) { toast(e.message, true); });
     });

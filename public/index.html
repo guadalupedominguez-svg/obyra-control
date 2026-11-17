@@ -120,12 +120,13 @@
         <!-- Por aprobar -->
         <section class="tabpane" data-pane="aprobar" hidden>
           <p class="pane-intro" id="ap-intro"></p>
+          <select id="ap-cola" aria-label="Qué revisar"></select>
           <select id="ap-contratista" aria-label="Contratista" data-perm="verTodo"></select>
           <div class="list-head">
             <label class="check"><input type="checkbox" id="ap-all" data-perm="aprobar"> <span id="ap-count">0 pendientes</span></label>
           </div>
           <ul id="lista-ap" class="lista" aria-label="Avance por aprobar"></ul>
-          <div class="actionbar" data-perm="aprobar">
+          <div class="actionbar" id="ap-acciones">
             <input id="ap-coment" type="text" maxlength="500" placeholder="Comentario o motivo del rechazo" aria-label="Comentario">
             <div class="row">
               <button id="ap-ok" class="btn btn-primary" type="button">Aprobar</button>
@@ -134,7 +135,7 @@
           </div>
           <div class="actionbar" data-perm="administrar">
             <button id="ap-descartar" class="btn btn-ghost btn-sm" type="button">Descartar los pendientes de esta lista</button>
-            <p class="hint">Quita las propuestas sin aprobar ni rechazar: cada pieza regresa al estatus que tenía. Queda en su historial.</p>
+            <p class="hint">Quita los generadores enviados sin aprobar ni regresar: cada pieza se queda con su estatus. Queda en su historial.</p>
           </div>
         </section>
 
@@ -157,11 +158,11 @@
               <button id="g-ver" class="btn btn-ghost" type="button">Ver generador</button>
               <button id="g-envios" class="btn btn-ghost" type="button">Enviados a Forma</button>
             </div>
-            <div class="row" data-perm="estimar">
+            <div class="row" data-perm="enviarEstimacion">
               <input id="g-est" type="text" maxlength="30" placeholder="Estimación (ej. AD-003)" aria-label="Estimación">
-              <button id="g-marcar" class="btn btn-primary" type="button">Marcar como estimado</button>
+              <button id="g-marcar" class="btn btn-primary" type="button">Enviar a estimar</button>
             </div>
-            <p class="hint" id="g-hint">Aquí está todo lo que resta por estimar, en cualquier estatus. Al marcar, solo las piezas aprobadas como Terminado pasan a Estimado; las demás se quedan.</p>
+            <p class="hint" id="g-hint">Aquí está todo lo que resta por estimar, en cualquier estatus. Al enviar, solo las piezas Terminadas y validadas por el residente van a estimar: el residente valida el generador y el superintendente lo aprueba (Estimado) o lo regresa (Terminado).</p>
           </div>
         </section>
 

@@ -4,9 +4,16 @@
 //       Un contratista solo recibe las suyas.
 //   POST /api/piezas {action:"catalogo", version, piezas:[...]}     admin: guarda las piezas leídas del modelo
 //   POST /api/piezas {action:"reportar", guids, estatus, pct?, comentario?}
-//   POST /api/piezas {action:"aprobar", guids, comentario?}
-//   POST /api/piezas {action:"rechazar", guids, comentario}
-//   POST /api/piezas {action:"estimar", guids, estimacion}
+//       Contratista: el avance se aplica de inmediato y queda «sin validar».
+//   POST /api/piezas {action:"validar", guids, comentario?}          residente/superintendente: valida el avance
+//   POST /api/piezas {action:"rechazar", guids, comentario}          residente/superintendente: no valida; regresa a como estaba
+//   POST /api/piezas {action:"enviar", guids, estimacion}            contratista: envía su generador (lo Terminado y validado);
+//                                                                    queda Por aprobar, primero con el residente
+//   POST /api/piezas {action:"gen-validar", guids, comentario?}      residente: valida el generador → pasa al superintendente
+//   POST /api/piezas {action:"gen-regresar", guids, comentario}      residente: no lo valida → regresa a Terminado
+//   POST /api/piezas {action:"aprobar", guids, comentario?}          superintendente: aprueba la estimación → Estimado
+//   POST /api/piezas {action:"regresar", guids, comentario}          superintendente: no aprueba → regresa a Terminado
+//   POST /api/piezas {action:"descartar", guids}                     admin: quita lo pendiente sin decidir
 import { route, readJson, HttpError, cleanText } from "../lib/http.js";
 import { key, getJson, setJson, hgetallJson, hmgetJson, hsetJson } from "../lib/store.js";
 import { requireUser, can } from "../lib/users.js";
@@ -16,7 +23,7 @@ const AVANCE = () => key("avance");
 
 export const ESTATUS = ["Planeado", "Liberado", "En ejecución", "Terminado", "Estimado", "Pagado"];
 // Lo que puede reportar cada quien. Estimado y Pagado salen del flujo de estimación, no del reporte.
-const REPORTABLE = { contratista: ["Planeado", "Liberado", "En ejecución", "Terminado"], aprobador: ["Planeado", "Liberado", "En ejecución", "Terminado"] };
+const REPORTABLE = { contratista: ["Planeado", "Liberado", "En ejecución", "Terminado"] };
 
 const NUM = ["area", "areaBruta", "volumen", "largo", "alto", "espesor"];
 const TXT = { marca: 40, contratista: 60, clave: 40, partida: 60, concepto: 120, zona: 60, takt: 60, eje: 30, nivel: 60, categoria: 60, tipo: 160 };
@@ -44,16 +51,9 @@ function push(rec, ev) {
   return rec;
 }
 
-// Un rechazo regresa la pieza a En ejecución para que el contratista atienda las indicaciones.
-// Conserva el % que tenía si ya estaba en ejecución.
-function rechazar(rec, me, comentario, propuesto) {
-  if (!comentario) throw new HttpError(400, "Escribe el motivo del rechazo para que el contratista sepa qué corregir.");
-  const pct = rec.estatus === "En ejecución" ? rec.pct || 0 : 0;
-  rec.rechazo = { motivo: comentario, por: me.nombre, at: new Date().toISOString(), estatus: propuesto };
-  Object.assign(rec, { estatus: "En ejecución", pct });
-  delete rec.aprobado; delete rec.pend;
-  push(rec, evento(me, "rechaza", { estatus: propuesto, comentario }));
-}
+const ahora = () => new Date().toISOString();
+// Avance del contratista que el residente aún no valida (lo de antes de este flujo cuenta como validado).
+const sinValidar = (rec) => !!rec.porValidar;
 
 export default route(["GET", "POST"], async (req, res) => {
   const me = await requireUser(req);
@@ -97,48 +97,85 @@ export default route(["GET", "POST"], async (req, res) => {
 
     if (body.action === "reportar") {
       if (!can(me, "reportar")) throw new HttpError(403, "Tu rol no puede reportar avance.");
-      const esContratista = me.rol === "contratista";
-      if (esContratista && p.contratista !== me.contratista) { omitidas.push(g); return; }
+      if (me.rol === "contratista" && p.contratista !== me.contratista) { omitidas.push(g); return; }
       const est = String(body.estatus || "");
-      if (!(esContratista ? REPORTABLE.contratista : REPORTABLE.aprobador).includes(est)) throw new HttpError(400, "Estatus no válido para reportar.");
-      if (["Estimado", "Pagado"].includes(rec.estatus)) { omitidas.push(g); return; }
+      if (!REPORTABLE.contratista.includes(est)) throw new HttpError(400, "Estatus no válido para reportar.");
+      // Lo que ya va a estimar (o se estimó) ya no se mueve desde aquí.
+      if (rec.pend || ["Estimado", "Pagado"].includes(rec.estatus)) { omitidas.push(g); return; }
       let pct = est === "Terminado" ? 100 : est === "En ejecución" ? Number(body.pct || 0) : 0;
       if (!Number.isFinite(pct) || pct < 0 || pct > 100) throw new HttpError(400, "El porcentaje debe estar entre 0 y 100.");
       pct = Math.round(pct);
-      if (!can(me, "aprobar")) {
-        // Quien no puede aprobar (contratista, administrador) propone; queda pendiente hasta que el residente o el superintendente apruebe.
-        rec.pend = { estatus: est, pct, comentario, por: me.nombre, email: me.email, at: new Date().toISOString() };
-        delete rec.rechazo;
-        push(rec, evento(me, "reporta", { estatus: est, pct, comentario }));
-      } else {
-        // Residente o superintendente registran el avance directo.
-        Object.assign(rec, { estatus: est, pct, aprobado: { por: me.nombre, at: new Date().toISOString() } });
-        delete rec.pend; delete rec.rechazo;
-        push(rec, evento(me, "registra", { estatus: est, pct, comentario }));
+      // Se aplica de inmediato; se guarda cómo estaba por si el residente no lo valida.
+      if (!sinValidar(rec)) rec.antes = { estatus: rec.estatus || "Planeado", pct: rec.pct || 0 };
+      rec.porValidar = { por: me.nombre, email: me.email, at: ahora(), comentario };
+      Object.assign(rec, { estatus: est, pct });
+      delete rec.rechazo; delete rec.validado;
+      push(rec, evento(me, "reporta", { estatus: est, pct, comentario }));
+    } else if (body.action === "validar" || body.action === "rechazar") {
+      if (!can(me, "aprobar")) throw new HttpError(403, "Tu rol no puede validar avance.");
+      // Compatibilidad: una propuesta del flujo anterior (pendiente que no es estimación) se valida igual.
+      if (rec.pend && rec.pend.estatus !== "Estimado") {
+        if (body.action === "validar") Object.assign(rec, { estatus: rec.pend.estatus, pct: rec.pend.pct });
+        else if (!comentario) throw new HttpError(400, "Escribe el motivo para que el contratista sepa qué corregir.");
+        else rec.rechazo = { motivo: comentario, por: me.nombre, at: ahora(), estatus: rec.pend.estatus };
+        push(rec, evento(me, body.action === "validar" ? "valida" : "rechaza", { estatus: rec.pend.estatus, pct: rec.pend.pct, comentario }));
+        delete rec.pend;
+        if (body.action === "validar") rec.validado = { por: me.nombre, at: ahora() };
+        cambios[g] = rec; return;
       }
-    } else if (body.action === "aprobar" || body.action === "rechazar") {
-      if (!can(me, "aprobar")) throw new HttpError(403, "Tu rol no puede aprobar avance.");
-      if (!rec.pend) { omitidas.push(g); return; }
-      if (body.action === "aprobar") {
-        Object.assign(rec, { estatus: rec.pend.estatus, pct: rec.pend.pct, aprobado: { por: me.nombre, at: new Date().toISOString() } });
-        push(rec, evento(me, "aprueba", { estatus: rec.pend.estatus, pct: rec.pend.pct, comentario }));
+      if (!sinValidar(rec)) { omitidas.push(g); return; }
+      if (body.action === "validar") {
+        rec.validado = { por: me.nombre, at: ahora() };
+        push(rec, evento(me, "valida", { estatus: rec.estatus, pct: rec.pct, comentario }));
       } else {
-        if (!comentario) throw new HttpError(400, "Escribe el motivo del rechazo para que el contratista sepa qué corregir.");
-        rechazar(rec, me, comentario, rec.pend.estatus);
+        if (!comentario) throw new HttpError(400, "Escribe el motivo para que el contratista sepa qué corregir.");
+        const propuesto = { estatus: rec.estatus, pct: rec.pct };
+        Object.assign(rec, rec.antes || { estatus: "Planeado", pct: 0 });
+        rec.rechazo = { motivo: comentario, por: me.nombre, at: ahora(), estatus: propuesto.estatus, pct: propuesto.pct };
+        push(rec, evento(me, "rechaza", { estatus: propuesto.estatus, pct: propuesto.pct, comentario }));
+      }
+      delete rec.porValidar; delete rec.antes;
+    } else if (body.action === "enviar") {
+      // El contratista manda a estimar lo terminado y validado: queda Por aprobar del superintendente.
+      if (!can(me, "enviarEstimacion")) throw new HttpError(403, "Tu rol no puede enviar a estimar.");
+      if (me.rol === "contratista" && p.contratista !== me.contratista) { omitidas.push(g); return; }
+      const est = cleanText(body.estimacion, 30, "La estimación", { required: true }).toUpperCase();
+      if (rec.estatus !== "Terminado" || rec.pend || sinValidar(rec)) { omitidas.push(g); return; }
+      rec.pend = { estatus: "Estimado", estimacion: est, etapa: "residente", por: me.nombre, email: me.email, at: ahora(), comentario };
+      delete rec.rechazo;
+      push(rec, evento(me, "envia", { estimacion: est, comentario }));
+    } else if (body.action === "gen-validar" || body.action === "gen-regresar") {
+      // El residente revisa el generador del contratista.
+      if (!can(me, "validarGenerador")) throw new HttpError(403, "Solo el residente valida generadores.");
+      if (!rec.pend || rec.pend.estatus !== "Estimado" || rec.pend.etapa !== "residente") { omitidas.push(g); return; }
+      if (body.action === "gen-validar") {
+        Object.assign(rec.pend, { etapa: "superintendente", validadoPor: me.nombre, validadoAt: ahora() });
+        push(rec, evento(me, "valida-generador", { estimacion: rec.pend.estimacion, comentario }));
+      } else {
+        if (!comentario) throw new HttpError(400, "Escribe el motivo para que el contratista sepa qué corregir.");
+        rec.rechazo = { motivo: comentario, por: me.nombre, at: ahora(), estimacion: rec.pend.estimacion };
+        push(rec, evento(me, "regresa", { estimacion: rec.pend.estimacion, comentario }));
+        delete rec.pend;
+      }
+    } else if (body.action === "aprobar" || body.action === "regresar") {
+      if (!can(me, "autorizar")) throw new HttpError(403, "Solo el superintendente aprueba estimaciones.");
+      // Lo enviado antes de que existiera la validación del residente (sin etapa) llega directo al superintendente.
+      if (!rec.pend || rec.pend.estatus !== "Estimado" || (rec.pend.etapa && rec.pend.etapa !== "superintendente")) { omitidas.push(g); return; }
+      if (body.action === "aprobar") {
+        Object.assign(rec, { estatus: "Estimado", pct: 100, estimacion: rec.pend.estimacion, aprobado: { por: me.nombre, at: ahora() } });
+        push(rec, evento(me, "estima", { estimacion: rec.pend.estimacion, comentario }));
+      } else {
+        if (!comentario) throw new HttpError(400, "Escribe el motivo para que el contratista sepa qué corregir.");
+        rec.rechazo = { motivo: comentario, por: me.nombre, at: ahora(), estimacion: rec.pend.estimacion };
+        push(rec, evento(me, "regresa", { estimacion: rec.pend.estimacion, comentario }));
       }
       delete rec.pend;
     } else if (body.action === "descartar") {
-      // Administrador: descarta la propuesta pendiente; la pieza se queda con el estatus que tenía.
-      if (!can(me, "administrar")) throw new HttpError(403, "Solo un administrador puede descartar avances pendientes.");
+      // Administrador: quita lo pendiente sin decidir (propuesta anterior o estimación enviada).
+      if (!can(me, "administrar")) throw new HttpError(403, "Solo un administrador puede descartar pendientes.");
       if (!rec.pend) { omitidas.push(g); return; }
-      push(rec, evento(me, "descarta", { estatus: rec.pend.estatus, pct: rec.pend.pct, comentario }));
+      push(rec, evento(me, "descarta", { estatus: rec.pend.estatus, pct: rec.pend.pct, estimacion: rec.pend.estimacion, comentario }));
       delete rec.pend;
-    } else if (body.action === "estimar") {
-      if (!can(me, "estimar")) throw new HttpError(403, "Tu rol no puede asignar estimaciones.");
-      const est = cleanText(body.estimacion, 30, "La estimación", { required: true }).toUpperCase();
-      if (rec.estatus !== "Terminado" || rec.pend) { omitidas.push(g); return; }
-      Object.assign(rec, { estatus: "Estimado", estimacion: est });
-      push(rec, evento(me, "estima", { estimacion: est }));
     } else {
       throw new HttpError(400, "Acción no reconocida.");
     }

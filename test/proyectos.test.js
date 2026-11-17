@@ -108,22 +108,26 @@ test("cada proyecto tiene sus propios datos y cada usuario entra solo a los suyo
   assert.equal(await hitosDe(), 0);
 });
 
-test("el administrador descarta avances pendientes y la pieza conserva su estatus", async () => {
+test("el administrador descarta un generador pendiente y la pieza conserva su estatus", async () => {
   const admin = client();
   await login(admin, "admin@obra.mx", "Admin-12345");
   const g = "0000000000000000000002";
   await admin("users", { action: "save", email: "hvac@obra.mx", nombre: "Hvac", rol: "contratista", contratista: "HVAC", password: "Contratista-1", proyectos: ["torre-medica"] });
   const con = client();
   await login(con, "hvac@obra.mx", "Contratista-1");
-  let r = await con("piezas", { action: "reportar", guids: [g], estatus: "En ejecución", pct: 30 }, { proyecto: "torre-medica" });
+  const res0 = client();
+  await login(res0, "res@obra.mx", "Residente-123");
+  let r = await con("piezas", { action: "reportar", guids: [g], estatus: "Terminado" }, { proyecto: "torre-medica" });
   assert.equal(r.status, 200, JSON.stringify(r.json));
-  assert.equal(r.json.avance[g].pend.estatus, "En ejecución");
+  await res0("piezas", { action: "validar", guids: [g] }, { proyecto: "torre-medica" });
+  r = await con("piezas", { action: "enviar", guids: [g], estimacion: "E-01" }, { proyecto: "torre-medica" });
+  assert.equal(r.json.avance[g].pend.estatus, "Estimado"); // generador enviado
   r = await admin("piezas", { action: "descartar", guids: [g, "0000000000000000000003"] }, { proyecto: "torre-medica" });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(r.json.actualizadas, 1);
   assert.equal(r.json.omitidas, 1); // la otra no tenía nada pendiente
   assert.equal(r.json.avance[g].pend, undefined);
-  assert.equal(r.json.avance[g].estatus, "Planeado");
+  assert.equal(r.json.avance[g].estatus, "Terminado"); // conserva su estatus
   const res = client();
   await login(res, "res@obra.mx", "Residente-123");
   assert.equal((await res("piezas", { action: "descartar", guids: [g] }, { proyecto: "torre-medica" })).status, 403);

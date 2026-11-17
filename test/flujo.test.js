@@ -117,39 +117,66 @@ test("el admin carga el catálogo; cada contratista solo ve lo suyo", async () =
   assert.equal(Object.keys(v.json.piezas).length, 3);
 });
 
-test("el contratista reporta lo suyo y queda por aprobar", async () => {
+const sup = client();
+test("el contratista actualiza su avance: se aplica de inmediato y queda sin validar", async () => {
   const r = await copresa("piezas", { action: "reportar", guids: [G(1), G(2), G(3)], estatus: "Terminado", comentario: "Listo" });
   assert.equal(r.status, 200);
   assert.equal(r.json.actualizadas, 2);
   assert.equal(r.json.omitidas, 1); // la de AD-001
-  assert.equal(r.json.avance[G(1)].pend.estatus, "Terminado");
-  assert.equal(r.json.avance[G(1)].estatus, "Planeado");
+  assert.equal(r.json.avance[G(1)].estatus, "Terminado"); // directo, sin «Por aprobar»
+  assert.equal(r.json.avance[G(1)].pend, undefined);
+  assert.equal(r.json.avance[G(1)].porValidar.por, "Copresa");
   assert.equal((await copresa("piezas", { action: "reportar", guids: [G(1)], estatus: "Estimado" })).status, 400); // Estimado sale del generador
-  assert.equal((await copresa("piezas", { action: "aprobar", guids: [G(1)] })).status, 403);
+  assert.equal((await copresa("piezas", { action: "validar", guids: [G(1)] })).status, 403);
 });
 
-test("rechazar exige motivo; aprobar aplica el estatus", async () => {
+test("el residente valida el avance o lo rechaza (regresa a como estaba)", async () => {
   assert.equal((await resi("piezas", { action: "rechazar", guids: [G(2)] })).status, 400);
   let r = await resi("piezas", { action: "rechazar", guids: [G(2)], comentario: "Falta aplanado" });
   assert.equal(r.json.avance[G(2)].rechazo.motivo, "Falta aplanado");
-  assert.equal(r.json.avance[G(2)].estatus, "En ejecución"); // rechazado: regresa a En ejecución
-  assert.equal(r.json.avance[G(2)].pend, undefined);
-  r = await resi("piezas", { action: "aprobar", guids: [G(1)] });
+  assert.equal(r.json.avance[G(2)].estatus, "Planeado"); // regresa a como estaba antes del reporte
+  assert.equal(r.json.avance[G(2)].porValidar, undefined);
+  r = await resi("piezas", { action: "validar", guids: [G(1)] });
   assert.equal(r.json.avance[G(1)].estatus, "Terminado");
-  assert.equal(r.json.avance[G(1)].pct, 100);
-  assert.equal(r.json.avance[G(1)].aprobado.por, "Residente");
+  assert.equal(r.json.avance[G(1)].validado.por, "Residente");
+  assert.equal(r.json.avance[G(1)].porValidar, undefined);
 });
 
-test("solo lo terminado y aprobado pasa a estimación, una sola vez", async () => {
-  assert.equal((await copresa("piezas", { action: "estimar", guids: [G(1)], estimacion: "x" })).status, 403);
-  let r = await resi("piezas", { action: "estimar", guids: [G(1), G(2)], estimacion: "ad-003" });
+test("generador: contratista envía, residente valida, superintendente aprueba o regresa", async () => {
+  await admin("users", { action: "save", email: "sup@obra.mx", nombre: "Super", rol: "superintendente", activo: true, password: "Super-123456" });
+  assert.equal((await sup("session", { action: "login", email: "sup@obra.mx", password: "Super-123456" })).status, 200);
+  // Lo terminado y validado sí; lo demás no.
+  await copresa("piezas", { action: "reportar", guids: [G(2)], estatus: "Terminado" }); // sin validar
+  let r = await copresa("piezas", { action: "enviar", guids: [G(1), G(2)], estimacion: "ad-003" });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(r.json.actualizadas, 1);
+  assert.equal(r.json.avance[G(1)].pend.etapa, "residente");
+  assert.equal(r.json.avance[G(1)].pend.estimacion, "AD-003");
+  assert.equal((await resi("piezas", { action: "enviar", guids: [G(1)], estimacion: "x" })).status, 403);
+  // El superintendente aún no la ve: primero el residente.
+  r = await sup("piezas", { action: "aprobar", guids: [G(1)] });
+  assert.equal(r.json.actualizadas, 0);
+  assert.equal((await sup("piezas", { action: "gen-validar", guids: [G(1)] })).status, 403);
+  assert.equal((await resi("piezas", { action: "gen-regresar", guids: [G(1)] })).status, 400); // pide motivo
+  r = await resi("piezas", { action: "gen-validar", guids: [G(1)] });
+  assert.equal(r.json.avance[G(1)].pend.etapa, "superintendente");
+  assert.equal(r.json.avance[G(1)].pend.validadoPor, "Residente");
+  assert.equal((await resi("piezas", { action: "aprobar", guids: [G(1)] })).status, 403);
+  // El superintendente lo regresa: vuelve a Terminado.
+  r = await sup("piezas", { action: "regresar", guids: [G(1)], comentario: "Revisar cantidades" });
+  assert.equal(r.json.avance[G(1)].estatus, "Terminado");
+  assert.equal(r.json.avance[G(1)].pend, undefined);
+  assert.equal(r.json.avance[G(1)].rechazo.motivo, "Revisar cantidades");
+  // Se vuelve a enviar y ahora sí se aprueba: Estimado.
+  await copresa("piezas", { action: "enviar", guids: [G(1)], estimacion: "AD-003" });
+  await resi("piezas", { action: "gen-validar", guids: [G(1)] });
+  r = await sup("piezas", { action: "aprobar", guids: [G(1)] });
   assert.equal(r.json.avance[G(1)].estatus, "Estimado");
   assert.equal(r.json.avance[G(1)].estimacion, "AD-003");
   r = await copresa("piezas", { action: "reportar", guids: [G(1)], estatus: "En ejecución", pct: 50 });
   assert.equal(r.json.actualizadas, 0); // ya estimada: no se puede reabrir
   const h = (await resi("piezas")).json.avance[G(1)].hist.map((e) => e.accion);
-  assert.deepEqual(h, ["reporta", "aprueba", "estima"]);
+  assert.deepEqual(h, ["reporta", "valida", "envia", "valida-generador", "regresa", "envia", "valida-generador", "estima"]);
 });
 
 test("cambiar la contraseña cierra las otras sesiones", async () => {
@@ -174,17 +201,18 @@ test("las escrituras sin JSON se rechazan", async () => {
   assert.equal(status, 415);
 });
 
-test("solo el contratista reporta; el administrador tampoco aprueba", async () => {
+test("solo el contratista reporta; el administrador tampoco valida", async () => {
   assert.equal((await admin("piezas", { action: "reportar", guids: [G(3)], estatus: "En ejecución", pct: 30 })).status, 403);
   assert.equal((await resi("piezas", { action: "reportar", guids: [G(3)], estatus: "En ejecución", pct: 30 })).status, 403);
   assert.equal((await resi("session")).json.permisos.reportar, false);
   let r = await otro("piezas", { action: "reportar", guids: [G(3)], estatus: "En ejecución", pct: 30 });
-  assert.equal(r.json.avance[G(3)].pend.estatus, "En ejecución");
-  assert.equal((await admin("piezas", { action: "aprobar", guids: [G(3)] })).status, 403);
+  assert.equal(r.json.avance[G(3)].estatus, "En ejecución");
+  assert.equal(r.json.avance[G(3)].pct, 30);
+  assert.equal((await admin("piezas", { action: "validar", guids: [G(3)] })).status, 403);
   const s = await admin("session");
   assert.equal(s.json.permisos.aprobar, false);
-  r = await resi("piezas", { action: "aprobar", guids: [G(3)] });
-  assert.equal(r.json.avance[G(3)].estatus, "En ejecución");
+  r = await resi("piezas", { action: "validar", guids: [G(3)] });
+  assert.equal(r.json.avance[G(3)].validado.por, "Residente");
 });
 
 test("el envío a Forma queda en la bitácora", async () => {
