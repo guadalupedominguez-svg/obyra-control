@@ -323,15 +323,28 @@
     if (on) S.sel.add(g); else S.sel["delete"](g);
     renderLista(); selectInViewer();
   }
+  // Vista previa del avance: mientras el contratista elige el estatus, las piezas seleccionadas se ven
+  // en el modelo con el color de ese estatus (el resaltado de selección toma ese color).
+  function previewReporte() {
+    var v = S.viewer;
+    if (!v || !v.setSelectionColor || typeof THREE === "undefined") return;
+    var activo = $("reporte") && !$("reporte").hidden && S.sel && S.sel.size;
+    var hex = activo ? (COLOR[$("r-estatus").value] || COLOR.Planeado) : "#6699FF";
+    if (S.colorSel === hex) return;
+    S.colorSel = hex;
+    try { v.setSelectionColor(new THREE.Color(hex), Autodesk.Viewing.SelectionType.MIXED); } catch (e) { /* visor sin soporte */ }
+    if (v.impl && v.impl.invalidate) v.impl.invalidate(true, true, true);
+  }
   function updateSel() {
     if ($("reporte")) { $("reporte").hidden = !S.sel.size; $("sel-count").textContent = nf0.format(S.sel.size); }
+    previewReporte();
     var list = filtradas();
     $("sel-all").checked = list.length > 0 && list.every(function (g) { return S.sel.has(g); });
   }
 
   if ($("reporte")) {
     var syncPct = function () { var t = $("r-estatus").value === "Terminado"; $("r-pct").disabled = t; if (t) $("r-pct").value = ""; };
-    $("r-estatus").addEventListener("change", syncPct); syncPct();
+    $("r-estatus").addEventListener("change", function () { syncPct(); previewReporte(); }); syncPct();
     $("reporte").addEventListener("submit", function (ev) {
       ev.preventDefault();
       var guids = Array.from(S.sel);
@@ -341,7 +354,7 @@
           Object.assign(S.avance, r.avance);
           toast(nf0.format(r.actualizadas) + (r.actualizadas === 1 ? " pieza actualizada" : " piezas actualizadas") + (r.omitidas ? " · " + r.omitidas + " sin cambio (ya estimadas o de otro contratista)" : "") + ".");
           S.sel.clear(); $("r-coment").value = "";
-          updateBadge(); renderLista(); paintModel(); selectInViewer();
+          updateBadge(); renderLista(); paintModel(); selectInViewer(); previewReporte();
         })
         .catch(function (e) { toast(e.message, true); })
         .finally(function () { $("r-btn").disabled = false; });
