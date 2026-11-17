@@ -126,7 +126,7 @@
     qsa("[data-perm]").forEach(function (n) { if (!S.permisos[n.getAttribute("data-perm")]) n.remove(); });
     // El formulario de avance solo existe para el contratista (los demás no tienen el permiso "reportar").
     if ($("reporte")) {
-      $("r-btn").textContent = "Enviar avance para aprobación";
+      $("r-btn").textContent = "Actualizar avance";
       $("r-hint").textContent = "El residente o el superintendente revisa y aprueba el reporte antes de que cuente para el generador.";
       fillSelect($("r-estatus"), ["Planeado", "Liberado", "En ejecución", "Terminado"]);
       $("r-estatus").value = "En ejecución";
