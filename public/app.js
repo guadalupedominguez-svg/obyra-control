@@ -287,6 +287,11 @@
       var notes = [];
       if (r.pend) notes.push(el("span", { class: "note warn", text: "Propuesto: " + r.pend.estatus + (r.pend.estatus !== "Terminado" && r.pend.pct ? " " + r.pend.pct + " %" : "") + " · " + r.pend.por }));
       if (r.rechazo) notes.push(el("span", { class: "note bad", text: "Rechazado: " + r.rechazo.motivo }));
+      // Lo que se va a enviar (aún no guardado): se ve en la lista igual que en el modelo.
+      if (previewActivo() && S.sel.has(g)) {
+        var nv = $("r-estatus").value, np = $("r-pct").value;
+        notes.push(el("span", { class: "note", text: "Por enviar: " + nv + (nv === "En ejecución" && np ? " " + np + " %" : "") + " · aún no se guarda" }));
+      }
       var li = el("li", { class: S.sel.has(g) ? "sel" : "" }, [
         cb,
         el("span", { class: "m", text: (p.marca || "(sin marca)") + " · " + (p.clave || "sin clave") }),
@@ -353,7 +358,8 @@
   if ($("reporte")) {
     // El % solo aplica a En ejecución (Terminado es 100 %; Planeado y Liberado, 0 %).
     var syncPct = function () { var t = $("r-estatus").value !== "En ejecución"; $("r-pct").disabled = t; if (t) $("r-pct").value = ""; };
-    $("r-estatus").addEventListener("change", function () { syncPct(); previewReporte(); }); syncPct();
+    $("r-estatus").addEventListener("change", function () { syncPct(); previewReporte(); renderLista(); }); syncPct();
+    $("r-pct").addEventListener("input", function () { clearTimeout(S.tPct); S.tPct = setTimeout(renderLista, 300); });
     $("reporte").addEventListener("submit", function (ev) {
       ev.preventDefault();
       var guids = Array.from(S.sel);
