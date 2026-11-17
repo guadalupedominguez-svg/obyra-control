@@ -1809,7 +1809,9 @@
     return (padres.length ? bulk(padres, null) : Promise.resolve([])).then(function (res) {
       res.forEach(function (r) {
         var props = r.properties || [];
-        var cat = pick(props, CAMPOS.categoria, false) + " " + (r.name || "");
+        // Solo ensambles reales (con GlobalId); no los nodos con que el visor agrupa por clase ("IfcElementAssembly").
+        if (!S.db2guid.get(r.dbId)) return;
+        var cat = pick(props, CAMPOS.categoria, false) || r.name || "";
         if (!ES_ENSAMBLE.test(cat)) return;
         var o = { dbId: r.dbId };
         Object.keys(CAMPOS).forEach(function (k) { o[k] = pick(props, CAMPOS[k], ["area", "areaBruta", "volumen", "largo", "alto", "espesor"].indexOf(k) >= 0); });
