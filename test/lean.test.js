@@ -232,3 +232,50 @@ test("takt plan: se importa al look-ahead, se reimporta sin duplicar y sirve de 
   g = (await pm("lean")).json;
   assert.equal(Object.values(g.acts || g.actividades || {}).filter((a) => a.takt).length, 2);
 });
+
+test("papelera: lo borrado se puede restaurar; actividades y tarjetas se pueden duplicar", async () => {
+  let r = await pm("lean", { action: "act-guardar", act: { partida: "Muros", contratista: "COPRESA", ubicacion: "Área 1", descripcion: "Muro M1", semanaIni: "2026-W48", semanaFin: "2026-W49", guids: ["0000000000000000000007"] } });
+  const a = r.json.actividad;
+  await pm("lean", { action: "restr-agregar", actId: a.id, texto: "Planos" });
+  // Duplicar actividad: copia sin clave takt, con restricciones abiertas nuevas.
+  r = await pm("lean", { action: "act-duplicar", id: a.id });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.notEqual(r.json.actividad.id, a.id);
+  assert.equal(r.json.actividad.descripcion, "Muro M1 (copia)");
+  assert.deepEqual(r.json.actividad.guids, ["0000000000000000000007"]);
+  assert.equal(r.json.actividad.restricciones.length, 1);
+  assert.equal((await copresa("lean", { action: "act-duplicar", id: a.id })).status, 403);
+  // Borrar y restaurar la actividad.
+  await pm("lean", { action: "act-borrar", id: a.id });
+  let g = (await pm("lean")).json;
+  assert.ok(!g.actividades.some((x) => x.id === a.id));
+  const enPap = g.papelera.find((x) => x.tipo === "actividad" && x.act.id === a.id);
+  assert.ok(enPap, "quedó en la papelera");
+  assert.equal((await copresa("lean")).json.papelera, undefined); // solo quien planea la ve
+  r = await pm("lean", { action: "restaurar", id: enPap.id });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  g = (await pm("lean")).json;
+  assert.ok(g.actividades.some((x) => x.id === a.id && x.descripcion === "Muro M1"));
+  assert.ok(!g.papelera.some((x) => x.id === enPap.id));
+  // Tarjetas: duplicar (el contratista, solo las suyas) y restaurar una borrada.
+  r = await pm("lean", { action: "hito-guardar", hito: { nombre: "Papelera", fecha: "2027-01-29" } });
+  const hitoId = r.json.hito.id;
+  r = await copresa("lean", { action: "tarjeta-guardar", hitoId, tarjeta: { contratista: "COPRESA", entregable: "Paneles", inicio: "2027-01-04", duracion: 3 } });
+  const t = r.json.tarjeta;
+  r = await copresa("lean", { action: "tarjeta-duplicar", hitoId, id: t.id });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(r.json.tarjeta.entregable, "Paneles (copia)");
+  assert.deepEqual(r.json.tarjeta.dias, t.dias);
+  assert.equal(r.json.hito.tarjetas.length, 2);
+  await copresa("lean", { action: "tarjeta-borrar", hitoId, id: t.id });
+  g = (await pm("lean")).json;
+  const pt = g.papelera.find((x) => x.tipo === "tarjeta" && x.tarjeta.id === t.id);
+  r = await pm("lean", { action: "restaurar", id: pt.id });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.ok(r.json.hito.tarjetas.some((x) => x.id === t.id && x.entregable === "Paneles"));
+  // Carga parcial del takt plan: agrega sin quitar lo demás.
+  const antes = (await pm("lean")).json.actividades.filter((x) => x.takt).length;
+  r = await pm("lean", { action: "takt-importar", parcial: true, acts: [{ clave: "P|1|X1|1", partida: "Civil", contratista: "", ubicacion: "FRENTE 1", descripcion: "X1", semanaIni: "2026-W50", semanaFin: "2026-W50" }] });
+  assert.equal(r.json.quitadas, 0);
+  assert.equal((await pm("lean")).json.actividades.filter((x) => x.takt).length, antes + 1);
+});

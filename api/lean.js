@@ -25,6 +25,10 @@
 //     takt-importar   {ubicaciones[], acts:[{clave, partida, contratista, ubicacion, descripcion, semanaIni, semanaFin}], hitos:[{nombre, fecha}]}
 //                     PM / admin: carga el takt plan (Excel) al look-ahead. Volver a importar actualiza por «clave»
 //                     y quita lo que ya no está en el plan (si no tiene compromisos calificados).
+//     act-duplicar    {id}                                              PM / admin: copia de la actividad (sin compromisos)
+//     tarjeta-duplicar {hitoId, id}                                     copia de la tarjeta en el mismo hito (sin liga al look-ahead)
+//     restaurar       {id}                                              PM / admin: regresa algo borrado desde la papelera
+//                     (lo borrado se guarda 30 días; GET lo devuelve en «papelera» a quien puede planear)
 //     pull-desde-plan {hitoId}                                          PM / admin: tarjetas de la sesión pull a partir de las
 //                     actividades del look-ahead que terminan antes del hito y aún no acaban
 import crypto from "node:crypto";
@@ -36,6 +40,18 @@ const CONFIG = () => key("lean", "config");
 const ACTS = () => key("lean", "act");
 const PLAN = () => key("lean", "plan");
 const HITOS = () => key("lean", "hitos");
+const PAPELERA = () => key("lean", "papelera");
+const DIAS_PAPELERA = 30;
+async function aPapelera(me, item) {
+  const lim = Date.now() - DIAS_PAPELERA * 864e5;
+  const lista = ((await getJson(PAPELERA())) || []).filter((x) => Date.parse(x.borrado.at) > lim);
+  lista.unshift({ id: id(), ...item, borrado: firma(me) });
+  await setJson(PAPELERA(), lista.slice(0, 100));
+}
+async function papelera() {
+  const lim = Date.now() - DIAS_PAPELERA * 864e5;
+  return ((await getJson(PAPELERA())) || []).filter((x) => Date.parse(x.borrado.at) > lim);
+}
 
 export const CAUSAS = ["Material no disponible", "Predecesora no terminada", "Mano de obra insuficiente", "Falta de información / RFI", "Clima", "Equipo", "Cambio de prioridad"];
 export const TIPOS = ["Material", "Mano de obra", "Equipo", "Información / diseño", "Predecesora", "Permiso", "Otro"];
@@ -140,7 +156,9 @@ export default route(["GET", "POST"], async (req, res) => {
 
   if (req.method === "GET") {
     const [cfg, acts, plan, hitos] = await Promise.all([config(), hgetallJson(ACTS()), hgetallJson(PLAN()), hgetallJson(HITOS())]);
-    res.status(200).json({ config: cfg, tipos: TIPOS, actividades: Object.values(acts), plan: Object.values(plan), hitos: Object.values(hitos) });
+    const out = { config: cfg, tipos: TIPOS, actividades: Object.values(acts), plan: Object.values(plan), hitos: Object.values(hitos) };
+    if (can(me, "planear")) out.papelera = await papelera();
+    res.status(200).json(out);
     return;
   }
 
@@ -193,6 +211,8 @@ export default route(["GET", "POST"], async (req, res) => {
       const aid = String(b.id || "");
       const plan = await hgetallJson(PLAN());
       if (Object.values(plan).some((p) => p.actId === aid && p.res)) throw new HttpError(409, "La actividad ya tiene compromisos calificados; no se puede borrar.");
+      const act = await hgetJson(ACTS(), aid);
+      if (act) await aPapelera(me, { tipo: "actividad", act, plan: Object.values(plan).filter((p) => p.actId === aid) });
       await hdel(ACTS(), aid);
       for (const [k, p] of Object.entries(plan)) if (p.actId === aid) await hdel(PLAN(), k);
       break;
@@ -291,6 +311,8 @@ export default route(["GET", "POST"], async (req, res) => {
 
     case "hito-borrar": {
       pedirPlan(me);
+      const h = await hgetJson(HITOS(), String(b.id || ""));
+      if (h) await aPapelera(me, { tipo: "hito", hito: h });
       await hdel(HITOS(), String(b.id || ""));
       break;
     }
@@ -306,6 +328,7 @@ export default route(["GET", "POST"], async (req, res) => {
       if (!can(me, "planear") && !(prev ? propia(prev.contratista) : me.rol === "contratista")) throw new HttpError(403, "Solo puedes mover tus tarjetas.");
       if (prev && prev.actId) throw new HttpError(409, "Esa tarjeta ya pasó al look-ahead.");
       if (b.action === "tarjeta-borrar") {
+        await aPapelera(me, { tipo: "tarjeta", hitoId: hito.id, hitoNombre: hito.nombre, tarjeta: prev });
         hito.tarjetas = hito.tarjetas.filter((x) => x.id !== t.id);
       } else {
         const contratista = me.rol === "contratista" ? me.contratista : upper(t.contratista, 60, "El contratista");
@@ -410,6 +433,66 @@ export default route(["GET", "POST"], async (req, res) => {
       break;
     }
 
+    case "act-duplicar": {
+      pedirPlan(me);
+      const a = await hgetJson(ACTS(), String(b.id || ""));
+      if (!a) throw new HttpError(404, "La actividad ya no existe.");
+      const copia = {
+        ...a, id: id(), creada: firma(me), actualizada: firma(me),
+        descripcion: ((a.descripcion || a.partida || "") + " (copia)").slice(0, 300),
+        // Sin la clave del takt plan: reimportar el Excel no la toca. Las restricciones abiertas se copian como nuevas.
+        restricciones: (a.restricciones || []).filter((r) => r.estado !== "liberada").map((r) => ({ ...r, id: id(), creada: firma(me) })),
+      };
+      delete copia.takt;
+      await hsetJson(ACTS(), { [copia.id]: copia });
+      out.actividad = copia;
+      break;
+    }
+
+    case "tarjeta-duplicar": {
+      const hito = await hgetJson(HITOS(), String(b.hitoId || ""));
+      if (!hito) throw new HttpError(404, "El hito ya no existe.");
+      const t = (hito.tarjetas || []).find((x) => x.id === String(b.id || ""));
+      if (!t) throw new HttpError(404, "La tarjeta ya no existe.");
+      if (!can(me, "planear") && !(me.rol === "contratista" && t.contratista === me.contratista)) throw new HttpError(403, "Solo puedes copiar tus tarjetas.");
+      const copia = { ...JSON.parse(JSON.stringify(t)), id: id(), creada: firma(me), actualizada: firma(me), entregable: (t.entregable + " (copia)").slice(0, 120) };
+      delete copia.actId; delete copia.deAct; // la copia es nueva: no está ligada al look-ahead
+      if ((hito.tarjetas || []).length >= 300) throw new HttpError(409, "El hito ya tiene 300 tarjetas.");
+      hito.tarjetas = [...(hito.tarjetas || []), copia];
+      await hsetJson(HITOS(), { [hito.id]: hito });
+      out.tarjeta = copia; out.hito = hito;
+      break;
+    }
+
+    case "restaurar": {
+      pedirPlan(me);
+      const lista = (await getJson(PAPELERA())) || [];
+      const x = lista.find((y) => y.id === String(b.id || ""));
+      if (!x) throw new HttpError(404, "Eso ya no está en la papelera.");
+      if (x.tipo === "actividad") {
+        const ya = await hgetJson(ACTS(), x.act.id);
+        const act = ya ? { ...x.act, id: id() } : x.act;
+        await hsetJson(ACTS(), { [act.id]: act });
+        const pl = {};
+        for (const p of x.plan || []) pl[p.semana + "|" + act.id] = { ...p, actId: act.id };
+        if (Object.keys(pl).length) await hsetJson(PLAN(), pl);
+        out.actividad = act;
+      } else if (x.tipo === "tarjeta") {
+        const hito = await hgetJson(HITOS(), x.hitoId);
+        if (!hito) throw new HttpError(409, "El hito de esa tarjeta ya no existe; restaura primero el hito.");
+        const t = (hito.tarjetas || []).some((y) => y.id === x.tarjeta.id) ? { ...x.tarjeta, id: id() } : x.tarjeta;
+        hito.tarjetas = [...(hito.tarjetas || []), t];
+        await hsetJson(HITOS(), { [hito.id]: hito });
+        out.tarjeta = t; out.hito = hito;
+      } else if (x.tipo === "hito") {
+        const h = (await hgetJson(HITOS(), x.hito.id)) ? { ...x.hito, id: id() } : x.hito;
+        await hsetJson(HITOS(), { [h.id]: h });
+        out.hito = h;
+      } else throw new HttpError(400, "No se puede restaurar eso.");
+      await setJson(PAPELERA(), lista.filter((y) => y.id !== x.id));
+      break;
+    }
+
     case "takt-importar": {
       pedirPlan(me);
       const lista = Array.isArray(b.acts) ? b.acts.slice(0, 3000) : [];
@@ -439,12 +522,13 @@ export default route(["GET", "POST"], async (req, res) => {
       }
       for (const [k, v] of Object.entries(nuevas)) v.id = k;
       await hsetJson(ACTS(), nuevas);
-      // Lo que ya no está en el plan se quita, salvo que tenga compromisos calificados.
+      // Lo que ya no está en el plan se quita, salvo que tenga compromisos calificados (no en una carga parcial).
       const plan = await hgetallJson(PLAN());
       let quitadas = 0;
-      for (const a of Object.values(prev)) {
+      for (const a of b.parcial ? [] : Object.values(prev)) {
         if (!a.takt || vistas.has(a.takt)) continue;
         if (Object.values(plan).some((p) => p.actId === a.id && p.res)) continue;
+        await aPapelera(me, { tipo: "actividad", act: a, plan: Object.values(plan).filter((p) => p.actId === a.id) });
         await hdel(ACTS(), a.id);
         for (const [k, p] of Object.entries(plan)) if (p.actId === a.id) await hdel(PLAN(), k);
         quitadas++;

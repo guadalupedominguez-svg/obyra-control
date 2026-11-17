@@ -67,6 +67,8 @@
   function cargar() {
     return api("/api/lean").then(function (r) {
       L.cfg = r.config; L.tipos = r.tipos || []; L.acts = r.actividades || []; L.plan = r.plan || []; L.hitos = (r.hitos || []).sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
+      L.papelera = r.papelera || [];
+      if ($("ln-pap").open) renderPapelera();
       if (!L.hitos.some(function (h) { return h.id === L.hitoId; })) L.hitoId = L.hitos.length ? L.hitos[0].id : "";
       L.cargado = true;
       render();
@@ -276,6 +278,7 @@
     }
     ctrl.push(el("span", { class: "esp" }));
     if (P("planear")) {
+      ctrl.push(botonPapelera());
       ctrl.push(el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Ajustes", onclick: abrirAjustes }));
       ctrl.push(el("button", { class: "btn btn-primary btn-sm", type: "button", text: "+ Nueva actividad", onclick: function () { abrirAct(null); } }));
     }
@@ -433,7 +436,7 @@
     $("la-eje").value = x.eje || ""; $("la-desc").value = x.descripcion || "";
     opcionesSemanas($("la-ini"), sumar(HOY, -2), 14, x.semanaIni); opcionesSemanas($("la-fin"), sumar(HOY, -2), 14, x.semanaFin);
     O.qsa("#ln-act-form input, #ln-act-form select").forEach(function (i) { if (!i.closest("#la-restr-form") && !i.closest("#la-plan")) i.disabled = !ed; });
-    $("la-acciones").hidden = !ed; $("la-borrar").hidden = !a; $("la-usar").hidden = !ed;
+    $("la-acciones").hidden = !ed; $("la-borrar").hidden = !a; $("la-duplicar").hidden = !a; $("la-usar").hidden = !ed;
     piezasTxt(); renderPlanAct(); renderRestrAct();
     $("lr-tipo").replaceChildren.apply($("lr-tipo"), L.tipos.map(function (t) { return el("option", { value: t, text: t }); }));
     var puedeRestr = a && (ed || P("calificar") || P("validar") || (esContratista() && a.contratista === S.me.contratista));
@@ -501,6 +504,11 @@
       if (b.getAttribute("data-c") !== "1") { b.setAttribute("data-c", "1"); b.textContent = "¿Borrar? Clic otra vez"; setTimeout(function () { b.removeAttribute("data-c"); b.textContent = "Borrar"; }, 4000); return; }
       accion({ action: "act-borrar", id: L.act.id }, "Actividad borrada.").then(function () { $("ln-act").close(); });
     });
+    $("la-duplicar").addEventListener("click", function () {
+      accion({ action: "act-duplicar", id: L.act.id }, "Actividad duplicada: edita la copia.").then(function (r) { abrirAct(actPorId(r.actividad.id)); });
+    });
+    $("lt-duplicar").addEventListener("click", function () { duplicarTarjeta(L.hitoId, L.tar); });
+    $("ln-pap-x").addEventListener("click", function () { $("ln-pap").close(); });
     $("lr-add").addEventListener("click", function () {
       if (!$("lr-texto").value.trim()) { toast("Describe la restricción."); $("lr-texto").focus(); return; }
       accion({ action: "restr-agregar", actId: L.act.id, texto: $("lr-texto").value, tipo: $("lr-tipo").value, responsable: $("lr-resp").value, fecha: $("lr-fecha").value }, "Restricción agregada.")
@@ -963,6 +971,7 @@
     sel.addEventListener("change", function () { L.hitoId = sel.value; render(); });
     var ctrl = [el("label", { class: "check" }, ["Hito ", sel]), el("span", { class: "muted", style: "font-size:13px", text: "Se planea de derecha a izquierda: desde el hito hacia hoy" }), el("span", { class: "esp" })];
     if (P("planear")) {
+      ctrl.push(botonPapelera());
       ctrl.push(el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "+ Hito", onclick: function () { abrirHito(null); } }));
       if (hito) ctrl.push(el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Editar hito", onclick: function () { abrirHito(hito); } }));
     }
@@ -1177,6 +1186,7 @@
       n ? { text: "Ajustar días por pieza (" + n + ")", fn: function () { abrirTarjeta(t, null, null, { reparto: true }); } } : null,
       { text: n ? "Ver sus piezas en el modelo" : "Ligar piezas del modelo", fn: function () { if (n) { if (L.tarSel !== t.id) activarTarjeta(t); } else abrirTarjeta(t, null, null); } },
       { text: "Simular desde este día", fn: function () { simPausa(); L.tarSel = null; L.diaSel = null; simIr(f); } },
+      P("planear") || (esContratista() && t.contratista === S.me.contratista) ? { text: "Duplicar tarea", fn: function () { duplicarTarjeta(hito.id, t); } } : null,
       ed ? { sep: true } : null,
       ed ? { text: "Borrar tarea…", peligro: true, keep: true, fn: function (b) {
         if (b.getAttribute("data-ok")) { cerrarMenu(); accion({ action: "tarjeta-borrar", hitoId: hito.id, id: t.id }, "Tarea borrada."); return; }
@@ -1301,6 +1311,40 @@
     var ds = auto && $("lt-inicio").value && +$("lt-dur").value > 0 ? diasHabiles($("lt-inicio").value, +$("lt-dur").value) : (L.tar ? diasDe(L.tar) : []);
     $("lt-dias").textContent = textoDias(ds, !auto);
   }
+  // Copia de una tarjeta en el mismo hito; se abre para editarla (fechas, piezas, entregable).
+  function duplicarTarjeta(hitoId, t) {
+    if (!t) return;
+    accion({ action: "tarjeta-duplicar", hitoId: hitoId, id: t.id }, "Tarjeta duplicada: ajusta la copia.").then(function (r) {
+      if ($("ln-tar").open) $("ln-tar").close();
+      var h = L.hitos.find(function (x) { return x.id === hitoId; });
+      var copia = h && (h.tarjetas || []).find(function (x) { return x.id === r.tarjeta.id; });
+      if (copia) { L.hitoId = hitoId; abrirTarjeta(copia, null, null); }
+    });
+  }
+  // ---------- Papelera ----------
+  function botonPapelera() {
+    var n = (L.papelera || []).length;
+    return el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Papelera" + (n ? " (" + n + ")" : ""), title: "Recupera lo que se borró en los últimos 30 días",
+      onclick: function () { renderPapelera(); $("ln-pap").showModal(); } });
+  }
+  function renderPapelera() {
+    var box = $("ln-pap-lista"), xs = L.papelera || [];
+    var desc = function (x) {
+      if (x.tipo === "actividad") return ["Actividad", nombreAct(x.act) + (x.act.descripcion && x.act.partida ? " · " + x.act.descripcion : ""), corta(x.act.semanaIni) + (x.act.semanaFin !== x.act.semanaIni ? " – " + corta(x.act.semanaFin) : "")];
+      if (x.tipo === "tarjeta") return ["Tarjeta", x.tarjeta.entregable + " · " + x.tarjeta.contratista, "Hito " + (x.hitoNombre || "") + " · " + (x.tarjeta.duracion || (x.tarjeta.dias || []).length) + " días desde " + String(x.tarjeta.inicio || "").split("-").reverse().join("/")];
+      if (x.tipo === "hito") return ["Hito", x.hito.nombre, (x.hito.tarjetas || []).length + " tarjetas"];
+      return [x.tipo, "", ""];
+    };
+    box.replaceChildren.apply(box, xs.length ? xs.map(function (x) {
+      var d = desc(x), cuando = new Date(x.borrado.at);
+      return el("li", null, [
+        el("div", null, [el("b", { text: d[0] + " · " + d[1] }), el("small", { text: d[2] + " · borrada por " + x.borrado.por + " el " + cuando.toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) })]),
+        el("button", { class: "btn btn-primary btn-sm", type: "button", text: "Restaurar", onclick: function () {
+          accion({ action: "restaurar", id: x.id }, d[0] + " restaurada.");
+        } }),
+      ]);
+    }) : [el("li", { class: "muted", text: "La papelera está vacía." })]);
+  }
   function abrirTarjeta(t, c, f, opc) {
     var hito = L.hitos.find(function (h) { return h.id === L.hitoId; });
     if (!hito) return;
@@ -1337,6 +1381,7 @@
     $("lt-marcas").disabled = !(!t || puedeMover(t));
     $("lt-usar").hidden = !ed; if (!ed) $("lt-quitar").hidden = true;
     $("lt-borrar").hidden = !t || !ed;
+    $("lt-duplicar").hidden = !t || !(P("planear") || (esContratista() && t.contratista === S.me.contratista));
     $("ln-tar-form").querySelector("button[type=submit]").hidden = !ed;
     $("ln-tar").showModal();
     if (opc && opc.reparto) $("lt-reparto-box").scrollIntoView({ block: "start" });

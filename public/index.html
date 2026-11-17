@@ -350,6 +350,7 @@
         </div>
         <div class="row end" id="la-acciones">
           <button type="button" class="btn btn-danger btn-sm" id="la-borrar">Borrar</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="la-duplicar" title="Crea una copia de esta actividad para editarla">Duplicar</button>
           <button type="submit" class="btn btn-primary btn-sm" id="la-guardar">Guardar actividad</button>
         </div>
         <div class="card" id="la-plan"></div>
@@ -365,6 +366,15 @@
           </div>
         </div>
       </form>
+    </dialog>
+
+    <!-- Lean: papelera (lo borrado se puede restaurar durante 30 días) -->
+    <dialog id="ln-pap" class="dialog dialog-lg" aria-labelledby="ln-pap-t">
+      <div class="dialog-body">
+        <div class="gp-head"><h3 id="ln-pap-t">Papelera</h3><button type="button" class="btn btn-ghost btn-sm" id="ln-pap-x">Cerrar</button></div>
+        <p class="hint">Lo que se borra del look-ahead o de la sesión pull se guarda aquí 30 días. Restaurarlo lo regresa tal como estaba.</p>
+        <ul class="ln-pap" id="ln-pap-lista"></ul>
+      </div>
     </dialog>
 
     <!-- Lean: tarjeta de sesión pull -->
@@ -404,6 +414,7 @@
         <p class="hint" id="lt-dias"></p>
         <div class="row end">
           <button type="button" class="btn btn-danger btn-sm" id="lt-borrar">Borrar</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="lt-duplicar" title="Crea una copia de esta tarjeta en el mismo hito">Duplicar</button>
           <button type="button" class="btn btn-ghost btn-sm" id="lt-cancelar">Cancelar</button>
           <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
         </div>
