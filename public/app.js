@@ -227,7 +227,7 @@
       if (c && p.contratista !== c) return false;
       if (e && estado(g) !== e) return false;
       if (n && rec(g).estimacion !== n) return false;
-      if (q && [p.marca, p.clave, p.zona, p.eje, p.concepto].join(" ").toLowerCase().indexOf(q) < 0) return false;
+      if (q && [p.marca, p.clave, p.zona, p.takt, p.eje, p.concepto].join(" ").toLowerCase().indexOf(q) < 0) return false;
       return true;
     }).sort(function (a, b) {
       var pa = S.piezas[a], pb = S.piezas[b];
@@ -277,7 +277,7 @@
         cb,
         el("span", { class: "m", text: (p.marca || "(sin marca)") + " · " + (p.clave || "sin clave") }),
         pill(est, est + (est === "En ejecución" && r.pct ? " " + r.pct + " %" : "")),
-        el("span", { class: "s", text: [p.contratista, p.zona, p.eje && "Eje " + p.eje, p.nivel].filter(Boolean).join(" · ") }),
+        el("span", { class: "s", text: [p.contratista, p.takt && "Takt " + p.takt, p.zona, p.eje && "Eje " + p.eje, p.nivel].filter(Boolean).join(" · ") }),
       ].concat(notes));
       li.addEventListener("click", function () { focusPieces([g]); });
       li.addEventListener("dblclick", function () { showDetalle(g); });
@@ -331,7 +331,7 @@
     var p = S.piezas[g], r = rec(g);
     $("d-titulo").textContent = (p.marca || "(sin marca)") + " · " + (p.clave || "sin clave");
     var datos = [
-      ["Contratista", p.contratista], ["Partida", p.partida], ["Concepto", p.concepto], ["Zona", p.zona], ["Eje", p.eje], ["Nivel", p.nivel],
+      ["Contratista", p.contratista], ["Partida", p.partida], ["Concepto", p.concepto], ["Zona", p.zona], ["Tren takt", p.takt], ["Eje", p.eje], ["Nivel", p.nivel],
       ["Estatus", estado(g) + (r.pct && r.estatus === "En ejecución" ? " (" + r.pct + " %)" : "")], ["Estimación", r.estimacion],
       ["Área (m²)", f2(p.area)], ["Volumen (m³)", f2(p.volumen)], ["Largo (m)", f2(p.largo)], ["Alto (m)", f2(p.alto)], ["Espesor (m)", f2(p.espesor)],
       ["GlobalId", g],
@@ -1720,7 +1720,7 @@
   // ---------- Leer piezas del modelo (admin) ----------
   function norm(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, ""); }
   var CAMPOS = {
-    contratista: ["gcpcontratista"], clave: ["gcpclaveconcepto"], partida: ["gcppartida"], zona: ["gcpzona"], eje: ["gcpeje"],
+    contratista: ["gcpcontratista"], clave: ["gcpclaveconcepto"], partida: ["gcppartida"], zona: ["gcpzona"], eje: ["gcpeje"], takt: ["gcptrentakt", "trentakt"],
     marca: ["marca", "mark"], nivel: ["level", "nivel", "buildingstorey", "referencelevel", "basebuildingstorey"],
     area: ["netsidearea", "netarea", "netfloorarea", "arearevit", "area", "outersurfacearea"],
     areaBruta: ["grosssidearea", "grossarea", "grossfloorarea"],
@@ -1746,9 +1746,10 @@
     var btn = $("cat-btn"); btn.disabled = true;
     $("cat-estado").textContent = "Leyendo propiedades del modelo…";
     var ids = allIds();
-    bulk(ids, ["GCP_Contratista", "GCP_ClaveConcepto"]).then(function (res) {
+    // En modo ensamble también entran las partes que solo traen tren takt, zona o partida: el ensamble los hereda.
+    bulk(ids, porEnsamble() ? ["GCP_Contratista", "GCP_ClaveConcepto", "GCP_TrenTakt", "GCP_Zona", "GCP_Partida", "GCP_Eje"] : ["GCP_Contratista", "GCP_ClaveConcepto"]).then(function (res) {
       var cand = res.filter(function (r) { return (r.properties || []).some(function (p) { return String(p.displayValue || "").trim(); }); }).map(function (r) { return r.dbId; });
-      if (!cand.length) throw new Error("Ninguna pieza del modelo tiene GCP_Contratista ni GCP_ClaveConcepto. Revisa que el IFC se exportó con el Pset GCP_ControlObra.");
+      if (!cand.length) throw new Error("Ninguna pieza del modelo tiene GCP_Contratista ni GCP_ClaveConcepto" + (porEnsamble() ? " (en los ensambles ni en sus partes)" : "") + ". Revisa que el IFC se exportó con el Pset GCP_ControlObra.");
       return bulk(cand, null);
     }).then(function (res) {
       var it = S.model.getInstanceTree();
@@ -1790,6 +1791,12 @@
   // ---------- Avance por ensamble ----------
   function porEnsamble() { return !!(S.obra && S.obra.unidad === "ensamble"); }
   var ES_ENSAMBLE = /assembl|ensambl|montaje/i;
+  var HEREDA = ["contratista", "clave", "partida", "zona", "eje", "nivel", "takt"];
+  function masRepetido(vals) {
+    var n = {}, mejor = "", max = 0;
+    vals.forEach(function (v) { if (!v) return; n[v] = (n[v] || 0) + 1; if (n[v] > max) { max = n[v]; mejor = v; } });
+    return mejor;
+  }
   var CANT = ["Length", "Largo", "Longitud", "NetVolume", "Volume", "GrossVolume", "NetArea", "Area", "GrossArea", "NetSideArea", "OuterSurfaceArea"];
   // La pieza es el ensamble: si un elemento con datos está dentro de otro con datos, cuenta solo el de afuera.
   // Si el ensamble no trae los datos pero sus partes sí, el ensamble toma los de sus partes.
@@ -1804,20 +1811,27 @@
         var props = r.properties || [];
         var cat = pick(props, CAMPOS.categoria, false) + " " + (r.name || "");
         if (!ES_ENSAMBLE.test(cat)) return;
-        var hijo = null;
-        it.enumNodeChildren(r.dbId, function (c) { if (!hijo && c !== r.dbId && byDb[c]) hijo = byDb[c]; }, true);
-        if (!hijo) return;
         var o = { dbId: r.dbId };
         Object.keys(CAMPOS).forEach(function (k) { o[k] = pick(props, CAMPOS[k], ["area", "areaBruta", "volumen", "largo", "alto", "espesor"].indexOf(k) >= 0); });
-        ["contratista", "clave", "partida", "zona", "eje", "nivel"].forEach(function (k) { if (!o[k]) o[k] = hijo[k]; });
-        o.tipo = o.tipo || r.name || hijo.tipo; o.concepto = o.tipo;
-        o.marca = o.marca || hijo.marca;
+        o.tipo = o.tipo || r.name || ""; o.concepto = o.tipo;
         o.guid = S.db2guid.get(r.dbId) || pick(props, GUID_PROPS.map(norm), false);
         byDb[r.dbId] = o;
       });
-      // 2) Solo cuenta el de más afuera.
+      // 2) Solo cuenta el de más afuera; lo que le falte lo toma de sus partes (el valor más repetido),
+      //    así se respeta el tren takt, zona, partida o contratista que ya tenían las piezas.
       var dentro = function (id) { for (var p = arriba(id); p != null; p = arriba(p)) if (byDb[p]) return true; return false; };
-      Object.keys(byDb).forEach(function (id) { if (dentro(Number(id))) delete byDb[id]; });
+      var tops = Object.keys(byDb).filter(function (id) { return !dentro(Number(id)); });
+      tops.forEach(function (id) {
+        var o = byDb[id], desc = [];
+        it.enumNodeChildren(Number(id), function (c) { if (c !== Number(id) && byDb[c]) desc.push(byDb[c]); }, true);
+        if (!desc.length) return;
+        HEREDA.forEach(function (k) { if (!o[k]) o[k] = masRepetido(desc.map(function (d) { return d[k]; })); });
+        if (!o.marca && desc.length === 1) o.marca = desc[0].marca;
+        if (!o.tipo) { o.tipo = desc[0].tipo; o.concepto = o.tipo; }
+      });
+      Object.keys(byDb).forEach(function (id) { if (tops.indexOf(id) < 0) delete byDb[id]; });
+      // Sin contratista ni clave (ni propios ni de sus partes) no es pieza de control.
+      Object.keys(byDb).forEach(function (id) { if (!byDb[id].contratista && !byDb[id].clave) delete byDb[id]; });
       // 3) Cantidades: suma de las partes si el ensamble no las trae.
       var falta = Object.values(byDb).filter(function (o) { return o.largo == null || o.area == null || o.volumen == null; });
       var partes = {}, todas = [];

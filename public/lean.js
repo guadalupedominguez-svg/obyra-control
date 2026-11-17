@@ -50,9 +50,11 @@
     L.hitos.forEach(function (h) { (h.tarjetas || []).forEach(function (t) { s.add(t.contratista); }); });
     return Array.from(s).sort();
   }
+  // Ubicación de una pieza: en modo takt, su tren takt (si lo trae); si no, su zona.
+  function ubicPieza(p) { return (L.cfg && L.cfg.modo === "takt" && p.takt) || p.zona || ""; }
   function ubicaciones() {
     var s = (L.cfg && L.cfg.ubicaciones.slice()) || [];
-    if (!s.length) Object.values(S.piezas || {}).forEach(function (p) { if (p.zona && s.indexOf(p.zona) < 0) s.push(p.zona); });
+    if (!s.length) Object.values(S.piezas || {}).forEach(function (p) { var u = ubicPieza(p); if (u && s.indexOf(u) < 0) s.push(u); });
     L.acts.forEach(function (a) { if (a.ubicacion && s.indexOf(a.ubicacion) < 0) s.push(a.ubicacion); });
     return s;
   }
@@ -692,7 +694,7 @@
       texto: rep.length + (rep.length === 1 ? " pieza está" : " piezas están") + " en más de una tarjeta: " + rep.slice(0, 6).map(etiquetaPieza).join(", ") + (rep.length > 6 ? "…" : "") });
     // Piezas del alcance sin tarea.
     if ((hito.alcance || []).length) {
-      var sin = Object.keys(S.piezas || {}).filter(function (g) { return hito.alcance.indexOf(S.piezas[g].zona) >= 0 && !cuenta[g]; });
+      var sin = Object.keys(S.piezas || {}).filter(function (g) { return hito.alcance.indexOf(ubicPieza(S.piezas[g])) >= 0 && !cuenta[g]; });
       if (sin.length) issues.push({ tipo: "Piezas sin tarea", grave: false, tars: [], guids: sin, texto: sin.length + (sin.length === 1 ? " pieza" : " piezas") + " de " + hito.alcance.join(", ") + (sin.length === 1 ? " no está" : " no están") + " en ninguna tarjeta: " + sin.slice(0, 8).map(etiquetaPieza).join(", ") + (sin.length > 8 ? "…" : "") });
     }
     return { issues: issues, carga: carga, prom: prom };
@@ -1212,7 +1214,7 @@
     $("ln-hito-t").textContent = h ? "Editar hito" : "Nuevo hito";
     $("lh-nombre").value = h ? h.nombre : ""; $("lh-fecha").value = h ? h.fecha : "";
     $("lh-alcance").value = h && h.alcance ? h.alcance.join(", ") : "";
-    var zonas = Array.from(new Set(Object.values(S.piezas || {}).map(function (p) { return p.zona; }).filter(Boolean))).sort();
+    var zonas = Array.from(new Set(Object.values(S.piezas || {}).map(ubicPieza).filter(Boolean))).sort();
     $("lh-zonas").replaceChildren.apply($("lh-zonas"), zonas.map(function (z) { return el("option", { value: z }); }));
     $("lh-borrar").hidden = !h;
     $("ln-hito").showModal();

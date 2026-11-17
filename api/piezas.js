@@ -19,7 +19,7 @@ export const ESTATUS = ["Planeado", "Liberado", "En ejecución", "Terminado", "E
 const REPORTABLE = { contratista: ["En ejecución", "Terminado"], aprobador: ["Planeado", "Liberado", "En ejecución", "Terminado"] };
 
 const NUM = ["area", "areaBruta", "volumen", "largo", "alto", "espesor"];
-const TXT = { marca: 40, contratista: 60, clave: 40, partida: 60, concepto: 120, zona: 60, eje: 30, nivel: 60, categoria: 60, tipo: 160 };
+const TXT = { marca: 40, contratista: 60, clave: 40, partida: 60, concepto: 120, zona: 60, takt: 60, eje: 30, nivel: 60, categoria: 60, tipo: 160 };
 
 function cleanPieza(p) {
   const guid = String(p.guid || "");

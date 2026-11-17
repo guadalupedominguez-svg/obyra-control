@@ -71,7 +71,9 @@ test("cada proyecto tiene sus propios datos y cada usuario entra solo a los suyo
   assert.equal((await admin("obra")).json.unidad, "elemento"); // Frio Express sigue igual
 
   // Piezas separadas.
-  await admin("piezas", { action: "catalogo", version: "1", piezas: [pieza(2), pieza(3)] }, { proyecto: id });
+  await admin("piezas", { action: "catalogo", version: "1", piezas: [pieza(2, { takt: "T3" }), pieza(3)] }, { proyecto: id });
+  const cat = (await admin("piezas", null, { proyecto: id })).json.piezas;
+  assert.equal(cat["0000000000000000000002"].takt, "T3"); // el tren takt se guarda con la pieza
   const piezasDe = async (c, p) => Object.keys((await c("piezas", null, { proyecto: p })).json.piezas || {});
   assert.equal((await piezasDe(admin)).length, 1);
   assert.equal((await piezasDe(admin, id)).length, 2);
