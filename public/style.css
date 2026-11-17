@@ -418,3 +418,30 @@ input::placeholder { color: var(--muted); }
 .ln-pap li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
 .ln-pap li div { display: grid; gap: 2px; min-width: 0; }
 .ln-pap li small { color: var(--muted); }
+/* Lean: selector de vista y vistas mensual / diaria */
+.ln-vistas { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.ln-vistas .btn { border: 0; border-radius: 0; }
+.ln-vistas .btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.ln-diaN { color: var(--muted); font-size: 10px; }
+.ln-mes { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+.ln-mes-fila { display: grid; min-width: 900px; align-items: stretch; border-top: 1px solid rgba(255, 255, 255, .04); }
+.ln-mes-fila > * { grid-row: 1; }
+.ln-mes-fila > i { border-left: 1px solid rgba(255, 255, 255, .04); min-height: 30px; }
+.ln-mes-fila > i.lunes { border-left-color: var(--line); }
+.ln-mes-fila > i.hoy, .ln-mes-head > div.hoy { background: rgba(34, 211, 238, .10); }
+.ln-mes-fila.tenue { opacity: .35; }
+.ln-mes-head { background: var(--surface-2); color: var(--muted); font-size: 11px; border-top: 0; position: sticky; top: 0; z-index: 1; }
+.ln-mes-head > div { display: grid; justify-items: center; padding: 4px 0; border-left: 1px solid rgba(255, 255, 255, .04); }
+.ln-mes-head > div:first-child { justify-items: start; padding-left: 8px; }
+.ln-mes-head > div.lunes { border-left-color: var(--line); }
+.ln-mes-head b { color: var(--text); font-size: 12px; }
+.ln-mes-nom { grid-column: 1; display: grid; padding: 4px 8px; font-size: 12px; min-width: 0; }
+.ln-mes-nom b, .ln-mes-nom span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ln-mes-nom span { color: var(--muted); font-size: 11px; }
+.ln-mes-grupo { display: flex; gap: 8px; align-items: baseline; padding: 6px 8px; background: rgba(255, 255, 255, .03); border-top: 1px solid var(--line); font-weight: 700; font-size: 12px; min-width: 900px; }
+.ln-barra { align-self: center; height: 22px; margin: 0 2px; border-radius: 5px; border: 2px solid transparent; color: #0b1220; font: inherit; font-size: 11px; font-weight: 700; text-align: left; padding: 0 6px; cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; position: relative; z-index: 1; }
+.ln-barra span { overflow: hidden; text-overflow: ellipsis; display: block; }
+.ln-barra:hover { filter: brightness(1.12); }
+.ln-barra.ok { border-color: #2BD483; }
+.ln-barra.bad { border-color: #F2545B; }
+.ln-barra.warn { border-color: #F5B83D; }

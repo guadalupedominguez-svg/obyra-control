@@ -33,7 +33,7 @@
   var hoyISO = function () { var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
 
   // ---------- Estado ----------
-  var L = { sim: { on: false, dia: null, timer: null, vel: 1 }, simDias: [], tarSel: null, diaSel: null, tarGuids: [], cfg: null, tipos: [], acts: [], plan: [], hitos: [], semana: HOY, tab: null, hitoId: "", contr: "", resaltar: true, act: null, tar: null, cargado: false };
+  var L = { vista: (function () { try { return localStorage.getItem("ctrl_ln_vista") || "6sem"; } catch (e) { return "6sem"; } })(), sim: { on: false, dia: null, timer: null, vel: 1 }, simDias: [], tarSel: null, diaSel: null, tarGuids: [], cfg: null, tipos: [], acts: [], plan: [], hitos: [], semana: HOY, tab: null, hitoId: "", contr: "", resaltar: true, act: null, tar: null, cargado: false };
   var P = function (k) { return !!(S.permisos && S.permisos[k]); };
   var esContratista = function () { return S.me && S.me.rol === "contratista"; };
   var C_LEAN = { comp: "#22D3EE", ok: "#2BD483", bad: "#F2616A", restr: "#F5B83D", lista: "#3B82F6" };
@@ -285,6 +285,18 @@
       ctrl.push(el("button", { class: "btn btn-primary btn-sm", type: "button", text: "+ Nueva actividad", onclick: function () { abrirAct(null); } }));
     }
 
+    // Selector de vista: mensual (barras), 6 semanas (look-ahead) o diario (semana actual, lunes a sábado).
+    var vistas = [["mes", "Mensual"], ["6sem", "6 semanas"], ["dia", "Diario"]];
+    ctrl.unshift(el("div", { class: "ln-vistas", role: "group", "aria-label": "Vista" }, vistas.map(function (v) {
+      return el("button", { type: "button", class: "btn btn-sm", "aria-pressed": String(L.vista === v[0]), text: v[1], onclick: function () {
+        L.vista = v[0]; try { localStorage.setItem("ctrl_ln_vista", v[0]); } catch (e) { /* nada */ } render();
+      } });
+    })));
+    if (L.vista !== "6sem") ctrl.splice(2, 1, el("span", { class: "muted", text: L.vista === "mes" ? tituloMes() : corta(L.semana) + " · " + rango(L.semana) }));
+    var accsAbajo = [tablaPlan(), tablaRestr(semanas)];
+    if (L.vista === "mes") { $("ln-la").replaceChildren.apply($("ln-la"), [el("div", { class: "ln-ctrl" }, ctrl), vistaMes()].concat(accsAbajo)); return; }
+    if (L.vista === "dia") { $("ln-la").replaceChildren.apply($("ln-la"), [el("div", { class: "ln-ctrl" }, ctrl), vistaDia()].concat(accsAbajo)); return; }
+
     // Rejilla: ubicaciones × 6 semanas (la primera es el plan semanal).
     var cols = "grid-template-columns: 140px repeat(6, minmax(0, 1fr))";
     var head = el("div", { class: "fila", style: cols }, [el("div", { text: L.cfg.modo === "takt" ? "Área takt" : "Zona" })].concat(semanas.map(function (s, k) {
@@ -303,6 +315,85 @@
       el("span", { text: P("planear") ? "Clic en una actividad para editarla, ligar piezas o comprometerla." : "Clic en una actividad para ver su detalle y restricciones." }),
     ]);
     $("ln-la").replaceChildren(el("div", { class: "ln-ctrl" }, ctrl), rejilla, notas, tablaPlan(), tablaRestr(semanas));
+  }
+  // ---- Días de una actividad: los de su tarjeta de la sesión pull si salió de una; si no, lunes a sábado de sus semanas ----
+  function fISO(d) { return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0"); }
+  function tarjetaDeAct(a) {
+    var t = null;
+    L.hitos.some(function (h) { return (h.tarjetas || []).some(function (x) {
+      if (x.actId === a.id || x.deAct === a.id || (a.origen && a.origen.tarjeta === x.id)) { t = x; return true; } return false; }); });
+    return t;
+  }
+  function diasAct(a) {
+    var t = tarjetaDeAct(a), ds = t ? diasDe(t) : [];
+    if (ds.length) return ds;
+    var out = [], d = lunes(a.semanaIni), fin = lunes(a.semanaFin); fin.setUTCDate(fin.getUTCDate() + 6);
+    while (d <= fin && out.length < 400) { if (d.getUTCDay() !== 0) out.push(fISO(d)); d.setUTCDate(d.getUTCDate() + 1); }
+    return out;
+  }
+  var actsFiltradas = function () { return L.acts.filter(function (a) { return !L.contr || a.contratista === L.contr; }); };
+  var DIAS_SEM = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+  function mesActual() { var d = lunes(L.semana); d.setUTCDate(d.getUTCDate() + 3); return { y: d.getUTCFullYear(), m: d.getUTCMonth() }; }
+  function tituloMes() { var x = mesActual(); return ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][x.m] + " " + x.y; }
+  // Vista diaria: la semana elegida de lunes a sábado; la actividad aparece en cada día que trabaja.
+  function vistaDia() {
+    var hoyF = hoyISO(), dias = [];
+    for (var i = 0; i < 6; i++) { var d = lunes(L.semana); d.setUTCDate(d.getUTCDate() + i); dias.push(fISO(d)); }
+    var cols = "grid-template-columns: 140px repeat(6, minmax(0, 1fr))";
+    var head = el("div", { class: "fila", style: cols }, [el("div", { text: L.cfg.modo === "takt" ? "Área takt" : "Zona" })].concat(dias.map(function (f) {
+      var d = new Date(f + "T12:00:00Z");
+      return el("div", { class: f === hoyF ? "actual" : null }, [DIAS_SEM[d.getUTCDay()] + " " + d.getUTCDate(), el("span", { style: "font-weight:400", text: MES[d.getUTCMonth()] + (f === hoyF ? " · hoy" : "") })]);
+    })));
+    var acts = actsFiltradas().filter(function (a) { return enSemana(a, L.semana); }).map(function (a) { return { a: a, ds: diasAct(a) }; });
+    var filas = ubicaciones().map(function (u) {
+      var deU = acts.filter(function (x) { return x.a.ubicacion === u; });
+      if (!deU.length) return null;
+      return el("div", { class: "fila", style: cols }, [el("div", { text: u })].concat(dias.map(function (f) {
+        return el("div", { class: f === hoyF ? "actual" : null }, deU.filter(function (x) { return x.ds.indexOf(f) >= 0; }).map(function (x) {
+          var c = chip(x.a, L.semana);
+          c.appendChild(el("small", { class: "ln-diaN", text: "Día " + (x.ds.indexOf(f) + 1) + " de " + x.ds.length }));
+          return c;
+        }));
+      })));
+    }).filter(Boolean);
+    return el("div", { class: "ln-rejilla" }, [head].concat(filas.length ? filas : [el("div", { class: "ln-vacio", text: "No hay actividades en " + corta(L.semana) + "." })]));
+  }
+  // Vista mensual: barras por actividad sobre los días hábiles del mes, agrupadas por área.
+  function vistaMes() {
+    var x = mesActual(), dias = [], d = new Date(Date.UTC(x.y, x.m, 1)), hoyF = hoyISO();
+    while (d.getUTCMonth() === x.m) { if (d.getUTCDay() !== 0) dias.push(fISO(d)); d.setUTCDate(d.getUTCDate() + 1); }
+    var ini = dias[0], fin = dias[dias.length - 1];
+    var cols = "grid-template-columns: 220px repeat(" + dias.length + ", minmax(20px, 1fr))";
+    var head = el("div", { class: "ln-mes-fila ln-mes-head", style: cols }, [el("div", { text: L.cfg.modo === "takt" ? "Área takt / actividad" : "Zona / actividad" })].concat(dias.map(function (f) {
+      var dd = new Date(f + "T12:00:00Z");
+      return el("div", { class: (dd.getUTCDay() === 1 ? "lunes " : "") + (f === hoyF ? "hoy" : ""), title: DIAS_SEM[dd.getUTCDay()] + " " + dd.getUTCDate() }, [el("b", { text: String(dd.getUTCDate()) }), el("span", { text: DIAS_SEM[dd.getUTCDay()][0] })]);
+    })));
+    var filas = [];
+    var acts = actsFiltradas().map(function (a) { return { a: a, ds: diasAct(a).filter(function (f) { return f >= ini && f <= fin; }) }; }).filter(function (y) { return y.ds.length; });
+    ubicaciones().forEach(function (u) {
+      var deU = acts.filter(function (y) { return y.a.ubicacion === u; }).sort(function (p, q) { return p.ds[0] < q.ds[0] ? -1 : p.ds[0] > q.ds[0] ? 1 : 0; });
+      if (!deU.length) return;
+      filas.push(el("div", { class: "ln-mes-grupo" }, [el("span", { text: u }), el("small", { class: "muted", text: deU.length + (deU.length === 1 ? " actividad" : " actividades") })]));
+      deU.forEach(function (y) {
+        var a = y.a, s0 = dias.indexOf(y.ds[0]), s1 = dias.indexOf(y.ds[y.ds.length - 1]);
+        var p = compromiso(L.semana, a.id), est = p && p.res ? (p.res.cumplido ? "ok" : "bad") : abiertas(a).length ? "warn" : "";
+        var barra = el("button", { type: "button", class: "ln-barra " + est, title: nombreAct(a) + (a.descripcion ? " · " + a.descripcion : "") + " · " + y.ds.length + " días en el mes",
+          style: "grid-column:" + (s0 + 2) + " / " + (s1 + 3) + ";background:" + colorDe(a.contratista) }, [el("span", { text: a.descripcion || a.partida || "Actividad" })]);
+        barra.addEventListener("click", function () { abrirAct(a); });
+        var tenue = esContratista() && L.resaltar && a.contratista !== S.me.contratista;
+        filas.push(el("div", { class: "ln-mes-fila" + (tenue ? " tenue" : ""), style: cols }, [
+          el("div", { class: "ln-mes-nom", title: a.descripcion || "" }, [el("b", { text: a.partida || "—" }), el("span", { text: a.contratista || "" })]),
+        ].concat(dias.map(function (f, i) { return el("i", { class: (new Date(f + "T12:00:00Z").getUTCDay() === 1 ? "lunes " : "") + (f === hoyF ? "hoy" : ""), style: "grid-column:" + (i + 2) }); }), [barra])));
+      });
+    });
+    var nav = el("div", { class: "ln-ctrl" }, [
+      el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "‹ Mes anterior", onclick: function () { var y = mesActual(); irA(new Date(Date.UTC(y.y, y.m - 1, 1))); } }),
+      el("b", { text: tituloMes() }),
+      el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Mes siguiente ›", onclick: function () { var y = mesActual(); irA(new Date(Date.UTC(y.y, y.m + 1, 1))); } }),
+      el("span", { class: "muted", style: "font-size:12px", text: "Barra = días de trabajo · color = contratista · borde verde/rojo = cumplida / no cumplida · ámbar = con restricciones" }),
+    ]);
+    function irA(primero) { while (primero.getUTCDay() === 0 || primero.getUTCDay() === 6) primero.setUTCDate(primero.getUTCDate() + 1); L.semana = isoSemana(new Date(primero.getUTCFullYear(), primero.getUTCMonth(), primero.getUTCDate())); render(); }
+    return el("div", null, [nav, el("div", { class: "ln-mes" }, [head].concat(filas.length ? filas : [el("div", { class: "ln-vacio", text: "No hay actividades en " + tituloMes() + "." })]))]);
   }
   function chip(a, s) {
     var p = compromiso(s, a.id), ab = abiertas(a).length, est, cls;
