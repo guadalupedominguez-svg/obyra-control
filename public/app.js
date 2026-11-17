@@ -1837,9 +1837,20 @@
       // 3) Cantidades: suma de las partes si el ensamble no las trae.
       var falta = Object.values(byDb).filter(function (o) { return o.largo == null || o.area == null || o.volumen == null; });
       var partes = {}, todas = [];
+      // Partes = elementos con GlobalId dentro del ensamble (sin bajar a sus puertos ni a su geometría,
+      // que repiten las cantidades de la parte). El largo solo suma tramos (segmentos), no conexiones.
+      var ES_PUERTO = /^IfcDistributionPort|^IfcPort/i;
       falta.forEach(function (o) {
         partes[o.dbId] = [];
-        it.enumNodeChildren(o.dbId, function (c) { if (c !== o.dbId && !it.getChildCount(c)) { partes[o.dbId].push(c); todas.push(c); } }, true);
+        var bajar = function (id) {
+          it.enumNodeChildren(id, function (c) {
+            if (c === id) return;
+            var n = it.getNodeName(c) || "";
+            if (ES_PUERTO.test(n)) return;
+            if (S.db2guid.has(c)) { partes[o.dbId].push(c); todas.push(c); } else bajar(c);
+          }, false);
+        };
+        bajar(o.dbId);
       });
       if (!todas.length) return byDb;
       return bulk(todas, CANT).then(function (rs) {
@@ -1848,7 +1859,10 @@
           ["largo", "area", "volumen"].forEach(function (k) {
             if (o[k] != null) return;
             var suma = 0, hay = false;
-            partes[o.dbId].forEach(function (c) { var v = pick(por.get(c) || [], CAMPOS[k], true); if (v != null) { suma += v; hay = true; } });
+            partes[o.dbId].forEach(function (c) {
+              if (k === "largo" && !/segment/i.test(it.getNodeName(c) || "")) return;
+              var v = pick(por.get(c) || [], CAMPOS[k], true); if (v != null) { suma += v; hay = true; }
+            });
             if (hay) o[k] = Math.round(suma * 1000) / 1000;
           });
         });
