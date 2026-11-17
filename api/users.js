@@ -1,8 +1,10 @@
 // Administración de usuarios (solo administrador).
 //   GET  /api/users                         lista
-//   POST /api/users {action:"save", email, nombre, rol, contratista, activo, password?}
+//   POST /api/users {action:"save", email, nombre, rol, contratista, activo, password?, proyectos?[]}
 //   POST /api/users {action:"delete", email}
 import { route, readJson, HttpError, cleanText } from "../lib/http.js";
+import { listaProyectos } from "./proyectos.js";
+import { PRINCIPAL } from "../lib/proyecto.js";
 import {
   ROLES, requireUser, allUsers, getUser, saveUser, deleteUser, publicUser, normEmail, checkPassword, hashPassword,
 } from "../lib/users.js";
@@ -39,6 +41,13 @@ export default route(["GET", "POST"], async (req, res) => {
     u.rol = rol;
     u.contratista = contratista;
     u.activo = body.activo !== false;
+    // Proyectos a los que entra (el admin entra a todos).
+    if (Array.isArray(body.proyectos)) {
+      const existen = new Set((await listaProyectos()).map((p) => p.id));
+      const elegidos = [...new Set(body.proyectos.map(String))].filter((p) => existen.has(p));
+      if (!elegidos.length && rol !== "admin") throw new HttpError(400, "Elige al menos un proyecto para el usuario.");
+      u.proyectos = elegidos.length ? elegidos : [PRINCIPAL];
+    }
     if (body.password) {
       u.pw = await hashPassword(checkPassword(body.password));
       u.pwv = (u.pwv || 0) + 1; // cierra las sesiones abiertas con la contraseña anterior

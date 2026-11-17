@@ -106,6 +106,11 @@ input::placeholder { color: var(--muted); }
 .multi #vertodo-btn[aria-pressed="true"], .multi #multi-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
 .etiq-3d { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
 .multi #etiq-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.proyecto-sel { background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font: inherit; font-size: 14px; max-width: 260px; }
+.proyecto-sel option { background: var(--surface-2, #141C2E); color: var(--text); }
+.u-proyectos { flex-wrap: wrap; gap: 10px; }
+#np-form fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+#np-form legend { padding: 0 6px; color: var(--muted); font-size: 13px; }
 .multi-n { font-size: 13px; padding: 0 4px; }
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
 

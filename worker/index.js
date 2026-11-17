@@ -11,6 +11,7 @@ const API = {
   envio: () => import("../api/envio.js"),
   carpetas: () => import("../api/carpetas.js"),
   lean: () => import("../api/lean.js"),
+  proyectos: () => import("../api/proyectos.js"),
 };
 const FORMA = () => import("../api/forma/[action].js");
 

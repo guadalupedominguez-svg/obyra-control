@@ -7,6 +7,8 @@ import { route, readJson, HttpError } from "../lib/http.js";
 import { saveSession, clearSession } from "../lib/session.js";
 import { hit, storeConfigured, key, cmd } from "../lib/store.js";
 import { cuentaStatus, borrarCuenta } from "../lib/forma.js";
+import { listaProyectos } from "./proyectos.js";
+import { proyectoActual, tieneAcceso } from "../lib/proyecto.js";
 import {
   ROLES, CAN, currentUser, getUser, saveUser, verifyPassword, hashPassword, normEmail, checkPassword, ensureBootstrapAdmin,
 } from "../lib/users.js";
@@ -26,7 +28,10 @@ export default route(["GET", "POST"], async (req, res) => {
     const permisos = Object.fromEntries(Object.entries(CAN).map(([k, roles]) => [k, roles.includes(u.rol)]));
     // Cuenta de Autodesk propia (para enviar generadores a Forma).
     const autodesk = permisos.estimar ? await cuentaStatus(u.email) : null;
-    res.status(200).json({ loggedIn: true, user: { ...u, rolNombre: ROLES[u.rol] || u.rol }, permisos, roles: ROLES, config, autodesk });
+    // Proyectos a los que entra y si el pedido es uno de ellos (si no, la app cambia al primero).
+    const proyectos = (await listaProyectos()).filter((p) => tieneAcceso(u, p.id));
+    const actual = proyectos.some((p) => p.id === proyectoActual()) ? proyectoActual() : (proyectos[0] || {}).id || null;
+    res.status(200).json({ loggedIn: true, user: { ...u, rolNombre: ROLES[u.rol] || u.rol }, permisos, roles: ROLES, config, autodesk, proyectos, proyecto: actual });
     return;
   }
 

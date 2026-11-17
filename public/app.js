@@ -17,8 +17,14 @@
     (kids || []).forEach(function (c) { if (c != null) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
     return e;
   }
+  // Proyecto elegido: viaja en cada solicitud; se recuerda en este navegador.
+  function cambiarProyecto(id) {
+    try { localStorage.setItem("ctrl_proyecto", id); } catch (e) { /* nada */ }
+    location.reload();
+  }
   function api(path, body) {
     var opt = { credentials: "same-origin", headers: {} };
+    if (S.proyecto) opt.headers["X-Proyecto"] = S.proyecto;
     if (body !== undefined) { opt.method = "POST"; opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(body); }
     return fetch(path, opt).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
@@ -70,6 +76,7 @@
 
   // ---------- Inicio ----------
   function boot() {
+    try { S.proyecto = localStorage.getItem("ctrl_proyecto") || ""; } catch (e) { S.proyecto = ""; }
     var q = new URLSearchParams(location.search);
     var forma = q.get("forma");
     if (forma) {
@@ -80,6 +87,15 @@
     api("/api/session").then(function (s) {
       if (!s.loggedIn) { showLogin(s.config); return; }
       S.me = s.user; S.permisos = s.permisos; S.roles = s.roles; S.autodesk = s.autodesk || { conectada: false };
+      S.proyectos = s.proyectos || [];
+      if (s.proyectos && !s.proyecto) { toast("Tu usuario no tiene ningún proyecto asignado. Pide acceso al administrador.", true); return; }
+      if (s.proyecto && s.proyecto !== S.proyecto) {
+        // Lo recordado ya no aplica (o es la primera vez): se usa el que indica el servidor.
+        S.proyecto = s.proyecto;
+        try { localStorage.setItem("ctrl_proyecto", s.proyecto); } catch (e) { /* nada */ }
+        return api("/api/session").then(function (s2) { S.permisos = s2.permisos; pintarProyectos(); startApp(); });
+      }
+      pintarProyectos();
       startApp();
     }).catch(function () { showLogin(); });
   }
@@ -1155,6 +1171,7 @@
       : "Sin conectar. Conecta una cuenta de Autodesk con acceso al proyecto donde está el IFC.";
     $("forma-btn").textContent = f.conectado ? "Volver a conectar" : "Conectar Forma";
     $("modelo-url").value = o.formaUrl || "";
+    qsa('input[name="unidad"]').forEach(function (r) { r.checked = r.value === (o.unidad || "elemento"); });
     renderCarpetasContr();
     $("modelo-estado").textContent = o.modelo ? o.modelo.archivo + " · versión " + o.modelo.version + " · revisado " + fecha(o.modelo.actualizado) : "Sin modelo.";
     $("cat-estado").textContent = S.version ? Object.keys(S.piezas).length + " piezas leídas de la versión " + S.version + "." : "Aún no se han leído piezas.";
@@ -1310,10 +1327,37 @@
     pkCerrar({ id: d.id, nombre: d.nombre, ruta: ruta });
   });
 
+  // Selector de proyecto en el encabezado (y alta de proyectos para el administrador).
+  function pintarProyectos() {
+    var sel = $("proyecto-sel");
+    var ops = S.proyectos.map(function (p) { return el("option", { value: p.id, text: p.nombre }); });
+    if (S.permisos.administrar) ops.push(el("option", { value: "__nuevo", text: "+ Nuevo proyecto…" }));
+    sel.replaceChildren.apply(sel, ops);
+    sel.value = S.proyecto;
+    sel.hidden = S.proyectos.length < 2 && !S.permisos.administrar;
+    $("obra-nombre").hidden = !sel.hidden;
+  }
+  $("proyecto-sel").addEventListener("change", function () {
+    var v = $("proyecto-sel").value;
+    if (v === "__nuevo") { $("proyecto-sel").value = S.proyecto; $("np-form").reset(); $("nuevo-proyecto").showModal(); return; }
+    if (v && v !== S.proyecto) cambiarProyecto(v);
+  });
+  $("np-cancelar").addEventListener("click", function () { $("nuevo-proyecto").close(); });
+  $("np-form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var unidad = (document.querySelector('input[name="np-unidad"]:checked') || {}).value || "elemento";
+    api("/api/proyectos", { action: "crear", nombre: $("np-nombre").value, unidad: unidad }).then(function (r) {
+      toast("Proyecto creado. Cambiando a «" + r.proyecto.nombre + "»…");
+      setTimeout(function () { cambiarProyecto(r.proyecto.id); }, 600);
+    }).catch(function (e) { toast(e.message, true); });
+  });
+
   function saveObra(body, okMsg) {
     return api("/api/obra", body).then(function () { return api("/api/obra"); }).then(function (o) {
       var cambio = !S.obra.modelo || !o.modelo || S.obra.modelo.urn !== o.modelo.urn;
       S.obra = o; $("obra-nombre").textContent = o.nombre; renderAdmin(); toast(okMsg);
+      if (body.action === "nombre") { S.proyectos.forEach(function (p) { if (p.id === S.proyecto) p.nombre = o.nombre; }); pintarProyectos(); }
+      if (body.action === "unidad") { S.centros = new Map(); paintModel(); }
       if (cambio && o.modelo) { toast(okMsg + " Cargando el modelo…"); startViewer(); }
     }).catch(function (e) { toast(e.message, true); });
   }
@@ -1322,24 +1366,42 @@
     $("modelo-form").addEventListener("submit", function (ev) { ev.preventDefault(); saveObra({ action: "modelo", url: $("modelo-url").value }, "Modelo guardado."); });
     $("modelo-act").addEventListener("click", function () { saveObra({ action: "actualizar" }, "Versión revisada."); });
     $("cat-btn").addEventListener("click", leerCatalogo);
+    $("unidad-form").addEventListener("change", function () {
+      var v = (document.querySelector('input[name="unidad"]:checked') || {}).value;
+      if (v) saveObra({ action: "unidad", unidad: v }, v === "ensamble" ? "Las piezas ahora son los ensambles del IFC. Vuelve a leer las piezas del modelo." : "Las piezas ahora son los elementos del IFC. Vuelve a leer las piezas del modelo.");
+    });
     $("u-nuevo").addEventListener("click", resetUserForm);
-    $("u-rol").addEventListener("change", function () { $("u-contratista").hidden = $("u-rol").value !== "contratista"; });
+    $("u-rol").addEventListener("change", function () { $("u-contratista").hidden = $("u-rol").value !== "contratista"; $("u-proyectos").hidden = $("u-rol").value === "admin" || S.proyectos.length < 2; });
     $("u-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
-      api("/api/users", { action: "save", email: $("u-email").value, nombre: $("u-nombre").value, rol: $("u-rol").value, contratista: $("u-contratista").value, activo: $("u-activo").checked, password: $("u-pass").value || undefined })
+      var proys = qsa("#u-proyectos input:checked").map(function (x) { return x.value; });
+      api("/api/users", { action: "save", email: $("u-email").value, nombre: $("u-nombre").value, rol: $("u-rol").value, contratista: $("u-contratista").value, activo: $("u-activo").checked, password: $("u-pass").value || undefined, proyectos: proys })
         .then(function () { toast("Usuario guardado."); resetUserForm(); loadUsers(); })
         .catch(function (e) { toast(e.message, true); });
     });
   }
+  // Casillas de proyectos del usuario (por omisión, el proyecto en el que estás).
+  function pintarUProyectos(lista) {
+    var box = $("u-proyectos");
+    box.replaceChildren.apply(box, [el("span", { class: "muted", text: "Proyectos:" })].concat(S.proyectos.map(function (p) {
+      var c = el("input", { type: "checkbox", value: p.id }); c.checked = lista.indexOf(p.id) >= 0;
+      return el("label", { class: "check" }, [c, " " + p.nombre]);
+    })));
+    box.hidden = $("u-rol").value === "admin" || S.proyectos.length < 2;
+  }
   function resetUserForm() {
     $("u-form").reset(); $("u-email").readOnly = false; $("u-form-title").textContent = "Nuevo usuario"; $("u-activo").checked = true;
+    if ($("u-rol").querySelector('option[value="residente"]')) $("u-rol").value = "residente";
     $("u-contratista").hidden = $("u-rol").value !== "contratista";
+    pintarUProyectos([S.proyecto]);
   }
   function loadUsers() {
     if (!S.permisos.administrar) return;
     api("/api/users").then(function (r) {
-      if (!$("u-rol").options.length) { fillSelect($("u-rol"), Object.keys(r.roles).map(function (k) { return [k, r.roles[k]]; })); $("u-rol").value = "residente"; $("u-contratista").hidden = true; }
-      var head = el("tr", null, ["Nombre", "Correo", "Rol", "Contratista", ""].map(function (h) { return el("th", { text: h }); }));
+      if (!$("u-rol").options.length) { fillSelect($("u-rol"), Object.keys(r.roles).map(function (k) { return [k, r.roles[k]]; })); $("u-rol").value = "residente"; $("u-contratista").hidden = true; pintarUProyectos([S.proyecto]); }
+      var nombreP = {}; S.proyectos.forEach(function (p) { nombreP[p.id] = p.nombre; });
+      var varios = S.proyectos.length > 1;
+      var head = el("tr", null, ["Nombre", "Correo", "Rol", "Contratista"].concat(varios ? ["Proyectos"] : []).concat([""]).map(function (h) { return el("th", { text: h }); }));
       var rows = r.users.map(function (u) {
         var del = u.email === S.me.email ? el("span") : el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Eliminar", onclick: function (ev) {
           ev.stopPropagation();
@@ -1347,12 +1409,13 @@
           api("/api/users", { action: "delete", email: u.email }).then(function () { toast("Usuario eliminado."); loadUsers(); }).catch(function (e) { toast(e.message, true); });
         } });
         var tr = el("tr", { class: "click" }, [
-          el("td", { text: u.nombre + (u.activo ? "" : " (inactivo)") }), el("td", { text: u.email }), el("td", { text: r.roles[u.rol] || u.rol }), el("td", { text: u.contratista || "—" }), el("td", null, [del]),
-        ]);
+          el("td", { text: u.nombre + (u.activo ? "" : " (inactivo)") }), el("td", { text: u.email }), el("td", { text: r.roles[u.rol] || u.rol }), el("td", { text: u.contratista || "—" }),
+        ].concat(varios ? [el("td", { text: u.rol === "admin" ? "Todos" : (u.proyectos || []).map(function (p) { return nombreP[p] || p; }).join(", ") })] : []).concat([el("td", null, [del])]));
         tr.addEventListener("click", function () {
           $("u-email").value = u.email; $("u-email").readOnly = true; $("u-nombre").value = u.nombre; $("u-rol").value = u.rol;
           $("u-contratista").value = u.contratista; $("u-contratista").hidden = u.rol !== "contratista"; $("u-activo").checked = u.activo; $("u-pass").value = "";
           $("u-form-title").textContent = "Editar " + u.nombre + " (deja la contraseña vacía para no cambiarla)";
+          pintarUProyectos(u.proyectos || []);
         });
         return tr;
       });
@@ -1380,7 +1443,7 @@
         Autodesk.Viewing.Initializer({
           env: "AutodeskProduction2", api: "streamingV2",
           getAccessToken: function (cb) {
-            fetch("/api/forma/token", { credentials: "same-origin" })
+            fetch("/api/forma/token", { credentials: "same-origin", headers: S.proyecto ? { "X-Proyecto": S.proyecto } : {} })
               .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error); return j; }); })
               .then(function (t) { cb(t.access_token, t.expires_in); })
               .catch(function (e) { viewerMsg(e.message || "No se pudo obtener acceso al modelo."); cb("", 0); });
@@ -1562,14 +1625,22 @@
     var gs = (ev.dbIdArray || []).map(function (id) {
       // Si se selecciona una parte de una pieza, sube hasta la pieza.
       // En Lean sirve cualquier elemento del IFC con GlobalId (para ligarlo a tarjetas y actividades).
-      var it = S.model.getInstanceTree(), cur = id;
-      var vale = S.modulo === "lean" ? function (x) { return S.db2guid.has(x); } : function (x) { return !!S.piezas[S.db2guid.get(x)]; };
-      while (cur != null && !vale(cur)) {
-        cur = it.getNodeParentId(cur);
-        if (cur == null || cur < 0 || cur === it.getRootId()) cur = null;
-      }
+      var it = S.model.getInstanceTree();
+      var subir = function (vale) {
+        var cur = id;
+        while (cur != null && !vale(cur)) {
+          cur = it.getNodeParentId(cur);
+          if (cur == null || cur < 0 || cur === it.getRootId()) cur = null;
+        }
+        return cur;
+      };
+      var esPieza = function (x) { return !!S.piezas[S.db2guid.get(x)]; };
+      var cur;
+      if (S.modulo !== "lean") cur = subir(esPieza);
+      // En Lean sirve cualquier elemento con GlobalId; por ensamble, primero el tramo (ensamble) que lo contiene.
+      else cur = (porEnsamble() ? subir(esPieza) : null) || subir(function (x) { return S.db2guid.has(x); });
       return cur != null ? S.db2guid.get(cur) : null;
-    }).filter(Boolean);
+    }).filter(function (g, i, a) { return g && a.indexOf(g) === i; });
     if (multiActiva()) {
       // Clic en vacío no borra lo acumulado; un clic suelto alterna esa pieza; Ctrl + clic suma.
       if (!gs.length) { selectInViewer(); return; }
@@ -1583,6 +1654,7 @@
       // Ctrl + clic: el visor manda toda la selección; se conserva el orden en que se fue armando (orden de montaje).
       var prev = Array.from(S.sel || []).filter(function (g) { return gs.indexOf(g) >= 0; });
       S.sel = new Set(prev.concat(gs.filter(function (g) { return prev.indexOf(g) < 0; })));
+      if (porEnsamble()) selectInViewer(); // se resalta el tramo completo, no solo la parte que se tocó
     }
     pintarMulti();
     etiquetas3D();
@@ -1691,6 +1763,10 @@
         if (o.alto == null && o.area && o.largo) o.alto = o.area / o.largo;
         byDb[r.dbId] = o;
       });
+      if (porEnsamble()) return ensambles(byDb, it);
+      return byDb;
+    }).then(function (byDb) {
+      var it = S.model.getInstanceTree();
       // Una cubierta y sus losas internas traen los mismos datos: se cuenta solo la cubierta, con el volumen de sus losas.
       Object.keys(byDb).forEach(function (id) {
         var o = byDb[id], parent = byDb[it.getNodeParentId(Number(id))];
@@ -1709,6 +1785,60 @@
     }).then(function () { renderAdmin(); })
       .catch(function (e) { $("cat-estado").textContent = e.message; toast(e.message, true); })
       .finally(function () { btn.disabled = false; });
+  }
+
+  // ---------- Avance por ensamble ----------
+  function porEnsamble() { return !!(S.obra && S.obra.unidad === "ensamble"); }
+  var ES_ENSAMBLE = /assembl|ensambl|montaje/i;
+  var CANT = ["Length", "Largo", "Longitud", "NetVolume", "Volume", "GrossVolume", "NetArea", "Area", "GrossArea", "NetSideArea", "OuterSurfaceArea"];
+  // La pieza es el ensamble: si un elemento con datos está dentro de otro con datos, cuenta solo el de afuera.
+  // Si el ensamble no trae los datos pero sus partes sí, el ensamble toma los de sus partes.
+  // Las cantidades del ensamble son la suma de sus partes (cuando el ensamble no las trae).
+  function ensambles(byDb, it) {
+    var raiz = it.getRootId();
+    var arriba = function (id) { var p = it.getNodeParentId(id); return p == null || p < 0 || p === raiz ? null : p; };
+    // 1) Padres de elementos con datos que son ensambles del IFC sin datos propios.
+    var padres = Array.from(new Set(Object.keys(byDb).map(function (id) { return arriba(Number(id)); }).filter(function (p) { return p != null && !byDb[p]; })));
+    return (padres.length ? bulk(padres, null) : Promise.resolve([])).then(function (res) {
+      res.forEach(function (r) {
+        var props = r.properties || [];
+        var cat = pick(props, CAMPOS.categoria, false) + " " + (r.name || "");
+        if (!ES_ENSAMBLE.test(cat)) return;
+        var hijo = null;
+        it.enumNodeChildren(r.dbId, function (c) { if (!hijo && c !== r.dbId && byDb[c]) hijo = byDb[c]; }, true);
+        if (!hijo) return;
+        var o = { dbId: r.dbId };
+        Object.keys(CAMPOS).forEach(function (k) { o[k] = pick(props, CAMPOS[k], ["area", "areaBruta", "volumen", "largo", "alto", "espesor"].indexOf(k) >= 0); });
+        ["contratista", "clave", "partida", "zona", "eje", "nivel"].forEach(function (k) { if (!o[k]) o[k] = hijo[k]; });
+        o.tipo = o.tipo || r.name || hijo.tipo; o.concepto = o.tipo;
+        o.marca = o.marca || hijo.marca;
+        o.guid = S.db2guid.get(r.dbId) || pick(props, GUID_PROPS.map(norm), false);
+        byDb[r.dbId] = o;
+      });
+      // 2) Solo cuenta el de más afuera.
+      var dentro = function (id) { for (var p = arriba(id); p != null; p = arriba(p)) if (byDb[p]) return true; return false; };
+      Object.keys(byDb).forEach(function (id) { if (dentro(Number(id))) delete byDb[id]; });
+      // 3) Cantidades: suma de las partes si el ensamble no las trae.
+      var falta = Object.values(byDb).filter(function (o) { return o.largo == null || o.area == null || o.volumen == null; });
+      var partes = {}, todas = [];
+      falta.forEach(function (o) {
+        partes[o.dbId] = [];
+        it.enumNodeChildren(o.dbId, function (c) { if (c !== o.dbId && !it.getChildCount(c)) { partes[o.dbId].push(c); todas.push(c); } }, true);
+      });
+      if (!todas.length) return byDb;
+      return bulk(todas, CANT).then(function (rs) {
+        var por = new Map(); rs.forEach(function (r) { por.set(r.dbId, r.properties || []); });
+        falta.forEach(function (o) {
+          ["largo", "area", "volumen"].forEach(function (k) {
+            if (o[k] != null) return;
+            var suma = 0, hay = false;
+            partes[o.dbId].forEach(function (c) { var v = pick(por.get(c) || [], CAMPOS[k], true); if (v != null) { suma += v; hay = true; } });
+            if (hay) o[k] = Math.round(suma * 1000) / 1000;
+          });
+        });
+        return byDb;
+      });
+    });
   }
 
   // Puente para el módulo Lean (public/lean.js).

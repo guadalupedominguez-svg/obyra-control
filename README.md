@@ -74,3 +74,9 @@ npm test                    # flujo completo con Redis en memoria
 - **Lean**: look-ahead, sesiones pull y PPC sobre las mismas piezas y zonas.
 - **Finanzas**: conciliación del generador contra Enkontrol (volumen contratado y precio disponible).
 - Enlace con OBYRA (visor 360 / Forma).
+
+## Proyectos
+
+Varias obras en la misma app. El administrador crea proyectos desde el selector del encabezado (*+ Nuevo proyecto…*); cada uno tiene su propio modelo IFC, piezas, avance, generadores, carpetas de Forma y Lean. El proyecto original («principal») conserva sus datos sin cambios. Los usuarios son comunes: en *Configuración → Usuarios* se marca a qué proyectos entra cada uno (el administrador entra a todos; los usuarios existentes, solo al principal). El proyecto viaja en el encabezado `X-Proyecto` y el servidor separa las llaves (`ctrl:p:<id>:…`).
+
+**Unidad de avance** (*Configuración*): *Elemento* (cada elemento del IFC es una pieza) o *Ensamble* (cada assembly del IFC es una pieza, para instalaciones por tramos): al leer el catálogo solo cuenta el ensamble de más afuera (si no trae GCP_Contratista toma los de sus partes), sus cantidades son la suma de sus partes, y al dar clic en cualquier parte se elige el tramo completo.

@@ -28,6 +28,7 @@
     <header class="top">
       <div class="brand" aria-label="OBYRA Control">OBYRA <span>Control</span></div>
       <div class="top-obra" id="obra-nombre"></div>
+      <select id="proyecto-sel" class="proyecto-sel" aria-label="Proyecto" hidden></select>
       <nav class="modulos" id="modulos" aria-label="Módulo">
         <button type="button" data-mod="control" aria-pressed="true">Control de obra</button>
         <button type="button" data-mod="lean" aria-pressed="false">Lean</button>
@@ -188,6 +189,14 @@
             <div id="carpetas-contr" class="stack"></div>
           </div>
           <div class="card">
+            <h3>Unidad de avance</h3>
+            <p class="muted">Qué cuenta como una pieza al registrar avance.</p>
+            <form id="unidad-form" class="stack">
+              <label class="check"><input type="radio" name="unidad" value="elemento"> <span><b>Elemento</b> · cada elemento del IFC es una pieza (muros, losas, paneles).</span></label>
+              <label class="check"><input type="radio" name="unidad" value="ensamble"> <span><b>Ensamble</b> · cada ensamble (assembly) del IFC es una pieza, como un tramo de instalación: al dar clic en cualquier parte se elige el tramo completo.</span></label>
+            </form>
+          </div>
+          <div class="card">
             <h3>Piezas del modelo</h3>
             <p class="muted">Lee del modelo las piezas que tienen contratista o clave de concepto, con su marca, zona, eje y cantidades. Hazlo cada vez que cambie la versión del IFC.</p>
             <button class="btn btn-primary btn-sm" type="button" id="cat-btn">Leer piezas del modelo</button>
@@ -205,6 +214,7 @@
                 <input id="u-contratista" type="text" maxlength="60" placeholder="Empresa Contratista" aria-label="Empresa Contratista">
               </div>
               <input id="u-pass" type="text" autocomplete="new-password" placeholder="Contraseña (mínimo 10 caracteres)" aria-label="Contraseña">
+              <div class="row u-proyectos" id="u-proyectos" hidden></div>
               <label class="check"><input type="checkbox" id="u-activo" checked> Activo</label>
               <div class="row">
                 <button class="btn btn-primary btn-sm" type="submit">Guardar usuario</button>
@@ -364,6 +374,24 @@
           <button type="button" class="btn btn-danger btn-sm" id="lt-borrar">Borrar</button>
           <button type="button" class="btn btn-ghost btn-sm" id="lt-cancelar">Cancelar</button>
           <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Proyecto nuevo -->
+    <dialog id="nuevo-proyecto" class="dialog" aria-labelledby="np-t">
+      <form class="dialog-body" id="np-form" novalidate>
+        <h3 id="np-t">Nuevo proyecto</h3>
+        <p class="hint">Arranca vacío: su propio modelo IFC, piezas, generadores, carpetas de Forma y Lean. Los usuarios se asignan en Configuración → Usuarios.</p>
+        <label>Nombre del proyecto<input id="np-nombre" type="text" maxlength="120" required placeholder="Ej. Torre Médica"></label>
+        <fieldset class="stack">
+          <legend>Unidad de avance</legend>
+          <label class="check"><input type="radio" name="np-unidad" value="elemento" checked> <span><b>Elemento</b> · cada elemento del IFC es una pieza.</span></label>
+          <label class="check"><input type="radio" name="np-unidad" value="ensamble"> <span><b>Ensamble</b> · cada ensamble (assembly) del IFC es una pieza; ideal para instalaciones por tramos.</span></label>
+        </fieldset>
+        <div class="row end">
+          <button type="button" class="btn btn-ghost btn-sm" id="np-cancelar">Cancelar</button>
+          <button type="submit" class="btn btn-primary btn-sm">Crear proyecto</button>
         </div>
       </form>
     </dialog>
