@@ -883,25 +883,28 @@
   }
   // Doble clic en una zona: solo se ven sus piezas (para seleccionarlas fácil). Otro doble clic, «Mostrar todas»
   // o «Ver modelo completo» la quitan.
+  // La zona sigue aislada aunque se apaguen los volúmenes y la lista («Zonas: no»); se quita con el chip de la barra.
   function idsZonaAislada() {
-    if (!S.zonaAislada || !S.zonasOn) return null;
-    var o = (S.zonas || []).find(function (z) { return z.nombre === S.zonaAislada; }); if (!o) return null;
-    var ids = []; o.guids.forEach(function (g) { var id = S.guid2db.get(g); if (id != null) ids.push(id); });
+    if (!S.zonaAislada || !S.zonaAisladaGuids) return null;
+    var ids = []; S.zonaAisladaGuids.forEach(function (g) { var id = S.guid2db.get(g); if (id != null) ids.push(id); });
     return ids.length ? ids : null;
   }
   function marcarZonaAislada() {
     var z = S.zonaAislada;
+    var chip = $("zona-chip"); chip.hidden = !z; chip.textContent = z ? "Zona aislada: " + z + "  ×" : "";
     qsa("#zonas-lista .zona-item").forEach(function (b, i) { var o = S.zonas[i]; b.classList.toggle("aislada", !!o && o.nombre === z); });
     var q = document.querySelector("#zonas-lista .zona-ver-todas"); if (q) q.hidden = !z;
     (S.zonas || []).forEach(function (o) { var ver = !z || o.nombre === z; if (o.masa) o.masa.visible = ver; if (o.bordes) o.bordes.visible = ver; });
     if (S.viewer && S.viewer.impl) S.viewer.impl.invalidate(false, false, true);
   }
   function aislarZona(nombre) {
-    S.zonaAislada = nombre;
-    if (nombre && S.verTodo) ponerVerTodo(false);
+    var o = nombre && S.zonas.find(function (z) { return z.nombre === nombre; });
+    S.zonaAislada = o ? nombre : null;
+    S.zonaAisladaGuids = o ? o.guids.slice() : null;
+    if (o && S.verTodo) ponerVerTodo(false);
     marcarZonaAislada();
     paintModel(false);
-    var o = nombre && S.zonas.find(function (z) { return z.nombre === nombre; });
+    if (S.filselAbierto) filselContar();
     if (o && S.viewer) S.viewer.navigation.fitBounds(false, o.cajaMundo || o.caja);
     if (nombre) toast("Solo se muestra " + nombre + ". Doble clic otra vez o «Mostrar todas» para ver todo.");
   }
@@ -960,11 +963,9 @@
   $("zonas-btn").addEventListener("click", function () {
     S.zonasOn = !S.zonasOn;
     try { localStorage.setItem("ctrl_zonas", S.zonasOn ? "1" : "0"); } catch (e) { /* nada */ }
-    var habiaZona = !!S.zonaAislada;
-    if (!S.zonasOn) S.zonaAislada = null;
-    pintarZonasBtn(); pintarZonas();
-    if (habiaZona && !S.zonasOn) paintModel(false);
+    pintarZonasBtn(); pintarZonas(); // apagar solo esconde volúmenes y lista: la zona aislada se queda
   });
+  $("zona-chip").addEventListener("click", function () { aislarZona(null); });
   pintarZonasBtn();
 
   // ---------- Etiquetas en la vista 3D ----------
@@ -1961,6 +1962,8 @@
     $("multi-btn").textContent = S.multi ? "Selección múltiple: activa" : "Selección múltiple";
     $("multi-n").hidden = !n; $("multi-n").textContent = n + (n === 1 ? " pieza seleccionada" : " piezas seleccionadas");
     $("multi-clear").hidden = !n;
+    $("filsel-btn").hidden = !S.multi;
+    if (!S.multi && S.filselAbierto) filselAbrir(false);
   }
   // Ver modelo completo: deja de aislar (en cualquier pestaña) y conserva los colores.
   function ponerVerTodo(on) {
@@ -1981,6 +1984,107 @@
     pintarMulti();
     if (S.modulo !== "lean") renderLista();
   });
+
+  // ---------- Filtro de la selección múltiple: elegir de un jalón por workset, nombre, marca… ----------
+  var FILSEL_PROPS = { workset: ["workset"], nombre: ["name"], marca: ["marca", "mark"], categoria: ["category"], familia: ["family"], tipo: ["type"] };
+  function filselCandidatos() {
+    var v = S.viewer, m = S.model; if (!v || !m || !S.guid2db) return [];
+    var base = S.modulo === "lean" && !porEnsamble() ? Array.from(S.guid2db.keys()) : Object.keys(S.piezas);
+    return base.filter(function (g) { var id = S.guid2db.get(g); return id != null && v.isNodeVisible(id, m); });
+  }
+  function filselLeer(guids) {
+    S.filselProps = S.filselProps || new Map();
+    var falta = guids.filter(function (g) { return !S.filselProps.has(g); });
+    if (!falta.length) return Promise.resolve();
+    var leer = function (ids) { return bulk(ids, ["Workset", "Name", "Mark", "Marca", "MARCA", "Category", "Family", "Type"]); };
+    var deProps = function (r) {
+      var o = {};
+      (r.properties || []).forEach(function (p) {
+        if (/\(IFC TYPE\)/i.test(p.displayCategory || "")) return; // solo las del elemento, no las de su tipo
+        var k = norm(p.displayName), val = String(p.displayValue == null ? "" : p.displayValue).trim(); if (!val) return;
+        Object.keys(FILSEL_PROPS).forEach(function (c) { if (!o[c] && FILSEL_PROPS[c].indexOf(k) >= 0) o[c] = val; });
+      });
+      return o;
+    };
+    var ids = falta.map(function (g) { return S.guid2db.get(g); });
+    return leer(ids).then(function (res) {
+      var porId = new Map(); res.forEach(function (r) { porId.set(r.dbId, deProps(r)); });
+      // Un ensamble puede no traer workset/categoría: se toma el más repetido de sus partes.
+      var it = S.model.getInstanceTree(), hijos = {}, todos = [];
+      falta.forEach(function (g) {
+        var id = S.guid2db.get(g), o = porId.get(id) || {};
+        if (o.workset && o.categoria && o.familia) return;
+        var hs = []; it.enumNodeChildren(id, function (c) { if (c !== id) hs.push(c); }, true);
+        if (hs.length) { hijos[id] = hs; todos.push.apply(todos, hs); }
+      });
+      var fin = function (resH) {
+        var deH = new Map(); (resH || []).forEach(function (r) { deH.set(r.dbId, deProps(r)); });
+        falta.forEach(function (g) {
+          var id = S.guid2db.get(g), o = porId.get(id) || {};
+          (hijos[id] || []).length && Object.keys(FILSEL_PROPS).forEach(function (c) {
+            if (!o[c]) o[c] = masRepetido(hijos[id].map(function (h) { return (deH.get(h) || {})[c]; }));
+          });
+          if (!o.marca) o.marca = marcaDe(g);
+          if (!o.nombre && S.piezas[g]) o.nombre = S.piezas[g].nombre || "";
+          S.filselProps.set(g, o);
+        });
+      };
+      return todos.length ? leer(Array.from(new Set(todos))).then(fin, function () { fin([]); }) : fin([]);
+    });
+  }
+  function filselCoinciden() {
+    var campo = $("filsel-campo").value, t = norm($("filsel-texto").value), exacto = S.filselExacto;
+    return filselCandidatos().filter(function (g) {
+      var val = ((S.filselProps && S.filselProps.get(g)) || {})[campo] || "";
+      if (!t) return false;
+      return exacto ? val === $("filsel-texto").value : norm(val).indexOf(t) >= 0;
+    });
+  }
+  function filselContar() {
+    var campo = $("filsel-campo").value, cands = filselCandidatos();
+    $("filsel-n").textContent = "Leyendo propiedades…";
+    filselLeer(cands).then(function () {
+      // Valores del campo entre lo visible, con cuántos elementos tiene cada uno.
+      var cuenta = {};
+      cands.forEach(function (g) { var val = ((S.filselProps.get(g)) || {})[campo]; if (val) cuenta[val] = (cuenta[val] || 0) + 1; });
+      var t = norm($("filsel-texto").value);
+      var vals = Object.keys(cuenta).filter(function (k) { return !t || S.filselExacto || norm(k).indexOf(t) >= 0; })
+        .sort(function (a, b) { return a.localeCompare(b, "es", { numeric: true }); });
+      var box = $("filsel-valores");
+      box.replaceChildren.apply(box, vals.slice(0, 200).map(function (k) {
+        var b = el("button", { type: "button", title: k, class: S.filselExacto && $("filsel-texto").value === k ? "activo" : "" }, [k, el("small", { text: String(cuenta[k]) })]);
+        b.addEventListener("click", function () { $("filsel-texto").value = k; S.filselExacto = true; filselContar(); });
+        return b;
+      }));
+      if (!vals.length) box.replaceChildren(el("span", { class: "muted", text: Object.keys(cuenta).length ? "Ningún valor coincide." : "Los elementos visibles no traen esta propiedad." }));
+      var n = filselCoinciden().length;
+      $("filsel-n").textContent = $("filsel-texto").value ? n + " de " + cands.length + " visibles" : cands.length + " visibles";
+      ["filsel-agregar", "filsel-solo", "filsel-quitar"].forEach(function (id) { $(id).disabled = !n; });
+    }).catch(function () { $("filsel-n").textContent = "No se pudieron leer las propiedades."; });
+  }
+  function filselAplicar(modo) {
+    var gs = filselCoinciden(); if (!gs.length) return;
+    var antes = Array.from(S.sel || []);
+    if (modo === "solo") S.sel = new Set(gs);
+    else if (modo === "quitar") S.sel = new Set(antes.filter(function (g) { return gs.indexOf(g) < 0; }));
+    else S.sel = new Set(antes.concat(gs.filter(function (g) { return antes.indexOf(g) < 0; })));
+    selectInViewer(); pintarMulti(); etiquetas3D();
+    if (S.modulo !== "lean") renderLista();
+    toast((modo === "quitar" ? "Quitados " : "Seleccionados ") + gs.length + " elementos · " + S.sel.size + " en la selección.");
+  }
+  function filselAbrir(on) {
+    S.filselAbierto = on;
+    $("filsel").hidden = !on; $("filsel-btn").setAttribute("aria-pressed", String(on));
+    if (on) filselContar();
+  }
+  $("filsel-btn").addEventListener("click", function () { filselAbrir(!S.filselAbierto); });
+  $("filsel-campo").addEventListener("change", function () { $("filsel-texto").value = ""; S.filselExacto = false; filselContar(); });
+  $("filsel-texto").addEventListener("input", function () {
+    S.filselExacto = false; clearTimeout(S.filselT); S.filselT = setTimeout(filselContar, 200);
+  });
+  $("filsel-agregar").addEventListener("click", function () { filselAplicar("agregar"); });
+  $("filsel-solo").addEventListener("click", function () { filselAplicar("solo"); });
+  $("filsel-quitar").addEventListener("click", function () { filselAplicar("quitar"); });
 
   function onViewerSelect(ev) {
     if (S.syncing) return;

@@ -58,6 +58,29 @@
           <span id="etiq-n" class="multi-n" hidden></span>
           <span id="multi-n" class="multi-n" hidden></span>
           <button type="button" class="btn btn-ghost btn-sm" id="multi-clear" hidden>Limpiar</button>
+          <button type="button" class="btn btn-sm" id="filsel-btn" aria-pressed="false" hidden title="Selecciona de un jalón por workset, nombre, marca, categoría, familia o tipo">Filtrar selección</button>
+          <button type="button" class="btn btn-sm zona-chip" id="zona-chip" hidden title="Quitar el aislamiento de la zona"></button>
+          <div class="filsel" id="filsel" hidden>
+            <div class="filsel-fila">
+              <label>Por <select id="filsel-campo">
+                <option value="workset">Workset</option>
+                <option value="nombre">Nombre</option>
+                <option value="marca">Marca</option>
+                <option value="categoria">Categoría</option>
+                <option value="familia">Familia</option>
+                <option value="tipo">Tipo</option>
+              </select></label>
+              <input type="search" id="filsel-texto" placeholder="Contiene… (o elige un valor abajo)" autocomplete="off">
+              <span class="filsel-n" id="filsel-n"></span>
+            </div>
+            <div class="filsel-valores" id="filsel-valores"></div>
+            <div class="filsel-fila">
+              <button type="button" class="btn btn-sm btn-primary" id="filsel-agregar">Agregar a la selección</button>
+              <button type="button" class="btn btn-sm" id="filsel-solo">Seleccionar solo estos</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="filsel-quitar">Quitar de la selección</button>
+              <span class="muted filsel-nota">Busca solo entre lo que se ve en el modelo.</span>
+            </div>
+          </div>
         </div>
       </section>
 

@@ -131,6 +131,19 @@ input::placeholder { color: var(--muted); }
 #np-form fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
 #np-form legend { padding: 0 6px; color: var(--muted); font-size: 13px; }
 .multi-n { font-size: 13px; padding: 0 4px; }
+.multi #filsel-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.multi .zona-chip { border-color: #22d3ee; color: #22d3ee; }
+.filsel { flex-basis: 100%; display: grid; gap: 6px; padding: 6px 4px 2px; border-top: 1px solid var(--line); margin-top: 2px; font-size: 12px; }
+.filsel[hidden] { display: none; }
+.filsel-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.filsel select, .filsel input { background: rgba(255, 255, 255, .06); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font: inherit; }
+.filsel input { flex: 1; min-width: 160px; }
+.filsel-n { color: var(--muted); font-variant-numeric: tabular-nums; }
+.filsel-valores { display: flex; flex-wrap: wrap; gap: 4px; max-height: 120px; overflow: auto; }
+.filsel-valores button { background: rgba(255, 255, 255, .06); border: 1px solid var(--line); color: var(--text); border-radius: 999px; padding: 2px 8px; font: inherit; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filsel-valores button.activo { border-color: var(--accent); color: var(--accent); }
+.filsel-valores button small { color: var(--muted); margin-left: 4px; }
+.filsel-nota { font-size: 11px; }
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
 
 .panel { display: grid; grid-template-rows: auto 1fr; min-height: 0; border-left: 1px solid var(--line); background: var(--surface); }
