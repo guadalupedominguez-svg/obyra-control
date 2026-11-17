@@ -202,6 +202,7 @@
         fillSelect($("f-contratista"), [["", "Todos los contratistas"]].concat(contratistas.map(function (c) { return [c, c]; })));
         $("f-contratista").value = contratistas.indexOf(prev) >= 0 ? prev : "";
       }
+      pintarTakts();
       if ($("ap-contratista")) {
         var apPrev = $("ap-contratista").value;
         fillSelect($("ap-contratista"), [["", "Todos los contratistas"]].concat(contratistas.map(function (c) { return [c, c]; })));
@@ -217,14 +218,26 @@
     });
   }
 
+  // Áreas takt de las piezas (las del contratista elegido); el filtro solo aparece si el modelo trae tren takt.
+  function pintarTakts() {
+    var c = $("f-contratista") ? $("f-contratista").value : "";
+    var ts = Array.from(new Set(Object.values(S.piezas).filter(function (p) { return !c || p.contratista === c; }).map(function (p) { return p.takt; }).filter(Boolean)))
+      .sort(function (a, b) { return a.localeCompare(b, "es", { numeric: true }); });
+    var sel = $("f-takt"), prev = sel.value;
+    fillSelect(sel, [["", "Todas las áreas takt"]].concat(ts.map(function (t) { return [t, t]; })));
+    sel.value = ts.indexOf(prev) >= 0 ? prev : "";
+    sel.hidden = !ts.length;
+  }
   function filtradas() {
     var c = $("f-contratista") ? $("f-contratista").value : "";
+    var tk = $("f-takt").value;
     var e = $("f-estatus").value;
     var n = e === "Estimado" ? $("f-estnum").value : "";
     var q = $("f-buscar").value.trim().toLowerCase();
     return Object.keys(S.piezas).filter(function (g) {
       var p = S.piezas[g];
       if (c && p.contratista !== c) return false;
+      if (tk && p.takt !== tk) return false;
       if (e && estado(g) !== e) return false;
       if (n && rec(g).estimacion !== n) return false;
       if (q && [p.marca, p.clave, p.zona, p.takt, p.eje, p.concepto].join(" ").toLowerCase().indexOf(q) < 0) return false;
@@ -286,8 +299,16 @@
     updateSel();
   }
 
-  ["f-contratista", "f-estatus", "f-estnum"].forEach(function (id) { if ($(id)) $(id).addEventListener("change", function () { renderLista(); paintModel(true); }); });
-  $("f-buscar").addEventListener("input", function () { renderLista(); paintModel(false); });
+  // Al filtrar, el modelo muestra solo lo filtrado (si estaba «Modelo completo», se apaga) y se acerca a eso.
+  function verFiltrado() {
+    if (S.verTodo) ponerVerTodo(false);
+  }
+  ["f-contratista", "f-estatus", "f-estnum", "f-takt"].forEach(function (id) { if ($(id)) $(id).addEventListener("change", function () { if (id === "f-contratista") pintarTakts(); verFiltrado(); renderLista(); paintModel(true); }); });
+  $("f-buscar").addEventListener("input", function () {
+    verFiltrado(); renderLista(); paintModel(false);
+    clearTimeout(S.tBuscar);
+    S.tBuscar = setTimeout(function () { paintModel(true); }, 600); // al dejar de escribir, encuadra lo encontrado
+  });
   $("sel-all").addEventListener("change", function () {
     var list = filtradas();
     if ($("sel-all").checked) list.forEach(function (g) { S.sel.add(g); }); else S.sel.clear();
@@ -1601,12 +1622,12 @@
     $("multi-clear").hidden = !n;
   }
   // Ver modelo completo: deja de aislar (en cualquier pestaña) y conserva los colores.
-  $("vertodo-btn").addEventListener("click", function () {
-    S.verTodo = !S.verTodo;
+  function ponerVerTodo(on) {
+    S.verTodo = on;
     $("vertodo-btn").setAttribute("aria-pressed", String(S.verTodo));
     $("vertodo-btn").textContent = S.verTodo ? "Modelo completo: activo" : "Ver modelo completo";
-    paintModel(false);
-  });
+  }
+  $("vertodo-btn").addEventListener("click", function () { ponerVerTodo(!S.verTodo); paintModel(false); });
   $("multi-btn").addEventListener("click", function () {
     S.multi = !S.multi;
     pintarMulti();
