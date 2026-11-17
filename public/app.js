@@ -861,20 +861,49 @@
       if (pl.up === "z") masa.rotation.z = rumbo; else masa.rotation.y = -rumbo;
       o.cajaMundo = cajaPiezas(o.guids);
       v.impl.addOverlay("zonas", masa);
-      try { var bordes = new THREE.EdgesHelper(masa, new THREE.Color(o.color).getHex()); bordes.material.transparent = true; bordes.material.opacity = 0.7; v.impl.addOverlay("zonas", bordes); } catch (e) { /* sin bordes */ }
+      try { var bordes = new THREE.EdgesHelper(masa, new THREE.Color(o.color).getHex()); bordes.material.transparent = true; bordes.material.opacity = 0.7; v.impl.addOverlay("zonas", bordes); o.bordes = bordes; } catch (e) { /* sin bordes */ }
       o.caja = caja; o.masa = masa;
       S.zonas.push(o);
     });
     v.impl.invalidate(false, false, true);
     var box = $("zonas-lista");
-    box.replaceChildren.apply(box, [el("b", { text: "Zonas · avance" })].concat(S.zonas.map(function (o) {
-      var b = el("button", { type: "button", title: "Encuadrar " + o.nombre }, [el("i", { style: "background:" + o.color }), el("span", { text: o.nombre }), el("span", { class: "pct", text: o.pct + " %" })]);
+    var quitar = el("button", { type: "button", class: "zona-ver-todas", hidden: true, text: "× Mostrar todas" });
+    quitar.addEventListener("click", function () { aislarZona(null); });
+    box.replaceChildren.apply(box, [el("div", { class: "zonas-cab" }, [el("b", { text: "Zonas · avance" }), quitar])].concat(S.zonas.map(function (o) {
+      var b = el("button", { type: "button", class: "zona-item", title: "Clic: encuadrar · Doble clic: aislar " + o.nombre }, [el("i", { style: "background:" + o.color }), el("span", { text: o.nombre }), el("span", { class: "pct", text: o.pct + " %" })]);
       b.addEventListener("mouseenter", function () { resaltarZona(o); });
       b.addEventListener("mouseleave", function () { resaltarZona(null); $("zona-tip").hidden = true; });
       b.addEventListener("click", function () { v.navigation.fitBounds(false, o.cajaMundo || o.caja); });
+      b.addEventListener("dblclick", function (ev) { ev.preventDefault(); aislarZona(S.zonaAislada === o.nombre ? null : o.nombre); });
       return b;
     })));
     box.hidden = false;
+    if (S.zonaAislada && !S.zonas.some(function (o) { return o.nombre === S.zonaAislada; })) S.zonaAislada = null;
+    marcarZonaAislada();
+  }
+  // Doble clic en una zona: solo se ven sus piezas (para seleccionarlas fácil). Otro doble clic, «Mostrar todas»
+  // o «Ver modelo completo» la quitan.
+  function idsZonaAislada() {
+    if (!S.zonaAislada || !S.zonasOn) return null;
+    var o = (S.zonas || []).find(function (z) { return z.nombre === S.zonaAislada; }); if (!o) return null;
+    var ids = []; o.guids.forEach(function (g) { var id = S.guid2db.get(g); if (id != null) ids.push(id); });
+    return ids.length ? ids : null;
+  }
+  function marcarZonaAislada() {
+    var z = S.zonaAislada;
+    qsa("#zonas-lista .zona-item").forEach(function (b, i) { var o = S.zonas[i]; b.classList.toggle("aislada", !!o && o.nombre === z); });
+    var q = document.querySelector("#zonas-lista .zona-ver-todas"); if (q) q.hidden = !z;
+    (S.zonas || []).forEach(function (o) { var ver = !z || o.nombre === z; if (o.masa) o.masa.visible = ver; if (o.bordes) o.bordes.visible = ver; });
+    if (S.viewer && S.viewer.impl) S.viewer.impl.invalidate(false, false, true);
+  }
+  function aislarZona(nombre) {
+    S.zonaAislada = nombre;
+    if (nombre && S.verTodo) ponerVerTodo(false);
+    marcarZonaAislada();
+    paintModel(false);
+    var o = nombre && S.zonas.find(function (z) { return z.nombre === nombre; });
+    if (o && S.viewer) S.viewer.navigation.fitBounds(false, o.cajaMundo || o.caja);
+    if (nombre) toast("Solo se muestra " + nombre + ". Doble clic otra vez o «Mostrar todas» para ver todo.");
   }
   function resaltarZona(o) {
     (S.zonas || []).forEach(function (z) { z.masa.material.opacity = z === o ? 0.32 : 0.14; });
@@ -906,6 +935,7 @@
     rayo = new THREE.Ray(loc(rayo.origin), loc(rayo.direction));
     var mejor = null, vol = Infinity;
     S.zonas.forEach(function (o) {
+      if (o.masa && !o.masa.visible) return;
       if (!rayo.intersectBox(o.caja)) return;
       var t = o.caja.size(), w = t.x * t.y * t.z;
       if (w < vol) { vol = w; mejor = o; }
@@ -930,7 +960,10 @@
   $("zonas-btn").addEventListener("click", function () {
     S.zonasOn = !S.zonasOn;
     try { localStorage.setItem("ctrl_zonas", S.zonasOn ? "1" : "0"); } catch (e) { /* nada */ }
+    var habiaZona = !!S.zonaAislada;
+    if (!S.zonasOn) S.zonaAislada = null;
     pintarZonasBtn(); pintarZonas();
+    if (habiaZona && !S.zonasOn) paintModel(false);
   });
   pintarZonasBtn();
 
@@ -1885,7 +1918,9 @@
       var simulando = window.OBYRA_LEAN.simulando && window.OBYRA_LEAN.simulando();
       if (simulando) { S.syncing = true; v.clearSelection(); S.syncing = false; } // la selección azul tapa los colores
       // aislar = solo lo elegido; si no, todo el modelo visible con los colores encima (para poder seleccionar más).
-      if (lids.length && window.OBYRA_LEAN.aislar() && (!S.multi || simulando) && !S.verTodo) { if (cambiaVista("iso", lids)) v.isolate(lids, m); if (encuadrar) v.fitToView(lids, m); }
+      var zids = idsZonaAislada();
+      if (zids) { if (cambiaVista("zona", zids)) v.isolate(zids, m); if (encuadrar) v.fitToView(zids, m); }
+      else if (lids.length && window.OBYRA_LEAN.aislar() && (!S.multi || simulando) && !S.verTodo) { if (cambiaVista("iso", lids)) v.isolate(lids, m); if (encuadrar) v.fitToView(lids, m); }
       else { if (cambiaVista("todo", [])) v.showAll(); if (lids.length && encuadrar) v.fitToView(lids, m); }
       if (v.impl && v.impl.invalidate) v.impl.invalidate(true, true, true); // fuerza a redibujar con los colores nuevos
       S.pintados = { pedidas: Object.keys(col).length, enModelo: lids.length };
@@ -1900,7 +1935,10 @@
       ids.push(id);
       v.setThemingColor(id, hexToVec(colorVista(g)), m, true);
     });
-    if (ids.length && S.verTodo) {
+    var zonaIds = idsZonaAislada();
+    if (zonaIds) {
+      if (cambiaVista("zona", zonaIds)) v.isolate(zonaIds, m); if (encuadrar) v.fitToView(zonaIds, m); // solo la zona elegida
+    } else if (ids.length && S.verTodo) {
       if (cambiaVista("todo", [])) v.showAll(); if (encuadrar) v.fitToView(ids, m); // modelo completo con los colores encima
     } else if (ids.length) {
       if (cambiaVista("iso", ids)) v.isolate(ids, m);
@@ -1930,7 +1968,7 @@
     $("vertodo-btn").setAttribute("aria-pressed", String(S.verTodo));
     $("vertodo-btn").textContent = S.verTodo ? "Modelo completo: activo" : "Ver modelo completo";
   }
-  $("vertodo-btn").addEventListener("click", function () { ponerVerTodo(!S.verTodo); paintModel(false); });
+  $("vertodo-btn").addEventListener("click", function () { S.zonaAislada = null; marcarZonaAislada(); ponerVerTodo(!S.verTodo); paintModel(false); });
   $("multi-btn").addEventListener("click", function () {
     S.multi = !S.multi;
     pintarMulti();
