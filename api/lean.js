@@ -33,7 +33,7 @@
 //                     actividades del look-ahead que terminan antes del hito y aún no acaban
 import crypto from "node:crypto";
 import { route, readJson, HttpError, cleanText } from "../lib/http.js";
-import { key, getJson, setJson, hgetJson, hgetallJson, hsetJson, hdel } from "../lib/store.js";
+import { key, getJson, setJson, hgetJson, hgetallJson, hmgetJson, hsetJson, hdel } from "../lib/store.js";
 import { requireUser, can } from "../lib/users.js";
 
 const CONFIG = () => key("lean", "config");
@@ -41,6 +41,7 @@ const ACTS = () => key("lean", "act");
 const PLAN = () => key("lean", "plan");
 const HITOS = () => key("lean", "hitos");
 const PAPELERA = () => key("lean", "papelera");
+const AVANCE = () => key("avance");
 const DIAS_PAPELERA = 30;
 async function aPapelera(me, item) {
   const lim = Date.now() - DIAS_PAPELERA * 864e5;
@@ -95,6 +96,60 @@ export function diasDeTarjeta(t) {
   const m = /^(\d{4})-W(\d{2})$/.exec(t.semana), d = new Date(Date.UTC(+m[1], 0, 4));
   d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() || 7) - 1) + (+m[2] - 1) * 7);
   return diasHabiles(deFecha(d), t.duracion || 1);
+}
+
+// ---- Cumplimiento automático por el avance del modelo ----
+// Un compromiso del plan semanal cuya actividad tiene piezas ligadas se califica solo con el estatus que esas piezas
+// tienen en Control de obra: se cumple si todas quedaron terminadas a más tardar el domingo de su semana; si la semana
+// termina y falta alguna, no se cumple. Lo que el residente califica a mano o el superintendente ya validó no se toca.
+const TERMINADO = ["Terminado", "Estimado", "Pagado"];
+export const CAUSA_AUTO = "Elementos sin terminar";
+function fechaTerminado(rec) {
+  if (!rec || !TERMINADO.includes(rec.estatus)) return null;
+  const ev = (rec.hist || []).filter((e) => e.accion === "reporta" && e.estatus === "Terminado").pop();
+  return ev ? Date.parse(ev.at) : (rec.at ? Date.parse(rec.at) : 0);
+}
+function pctPieza(rec) {
+  if (!rec) return 0;
+  if (TERMINADO.includes(rec.estatus)) return 100;
+  if (rec.estatus === "En ejecución") return Math.max(0, Math.min(100, Number(rec.pct) || 0));
+  return 0;
+}
+// Fin de la semana: domingo 23:59 hora del centro de México (lunes 06:00 UTC).
+const finSemana = (sem) => Date.parse(lunesDe(sem) + "T00:00:00Z") + 7 * 864e5 + 6 * 36e5;
+export function evaluarAuto(p, act, avance, ahoraMs = Date.now()) {
+  const guids = (act && act.guids) || [];
+  if (!guids.length) return null;
+  const fin = finSemana(p.semana);
+  let hechas = 0, suma = 0;
+  for (const g of guids) {
+    const rec = avance[g], f = fechaTerminado(rec);
+    if (f != null && f < fin) hechas++;
+    suma += f != null && f >= fin ? 99 : pctPieza(rec); // terminada después de su semana: no cuenta como a tiempo
+  }
+  const info = { hechas, total: guids.length, pct: Math.round(suma / guids.length), cerrada: ahoraMs >= fin };
+  info.cumplido = hechas === guids.length ? true : info.cerrada ? false : null; // null = la semana sigue en curso
+  return info;
+}
+async function aplicarAuto(planObj, acts) {
+  const ps = Object.entries(planObj).filter(([, p]) => acts[p.actId] && (acts[p.actId].guids || []).length);
+  if (!ps.length) return;
+  const guids = [...new Set(ps.flatMap(([, p]) => acts[p.actId].guids))];
+  const recs = guids.length ? await hmgetJson(AVANCE(), guids) : [];
+  const avance = {}; guids.forEach((g, i) => { if (recs[i]) avance[g] = recs[i]; });
+  const cambios = {};
+  for (const [k, p] of ps) {
+    const info = evaluarAuto(p, acts[p.actId], avance);
+    p.auto = { hechas: info.hechas, total: info.total, pct: info.pct };
+    if (p.sup && p.sup.estado === "validado") continue; // ya es oficial
+    if (p.res && !p.res.auto) continue; // el residente lo calificó a mano
+    const antes = JSON.stringify(p.res || null);
+    if (info.cumplido === null) p.res = null;
+    else p.res = { cumplido: info.cumplido, causa: info.cumplido ? "" : CAUSA_AUTO, comentario: info.hechas + " de " + info.total + " elementos terminados en su semana",
+      auto: true, por: "Avance del modelo", at: p.res && p.res.auto && p.res.cumplido === info.cumplido ? p.res.at : new Date().toISOString() };
+    if (JSON.stringify(p.res || null) !== antes) { const { auto, ...guardar } = p; cambios[k] = guardar; }
+  }
+  if (Object.keys(cambios).length) await hsetJson(PLAN(), cambios);
 }
 
 // Piezas de una tarjeta, EN ORDEN DE EJECUCIÓN: primero las de las marcas en el orden escrito
@@ -156,6 +211,7 @@ export default route(["GET", "POST"], async (req, res) => {
 
   if (req.method === "GET") {
     const [cfg, acts, plan, hitos] = await Promise.all([config(), hgetallJson(ACTS()), hgetallJson(PLAN()), hgetallJson(HITOS())]);
+    await aplicarAuto(plan, acts);
     const out = { config: cfg, tipos: TIPOS, actividades: Object.values(acts), plan: Object.values(plan), hitos: Object.values(hitos) };
     if (can(me, "planear")) out.papelera = await papelera();
     res.status(200).json(out);

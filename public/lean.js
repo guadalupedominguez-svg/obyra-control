@@ -89,7 +89,9 @@
     try { localStorage.setItem("ctrl_mod", m); } catch (e) { /* nada */ }
     if (m === "lean") {
       leyenda();
-      if (!L.cargado) cargar().catch(function (e) { toast(e.message, true); }); else render();
+      // Siempre se recarga: el avance capturado en Control de obra califica solo los compromisos con piezas.
+      if (L.cargado) render();
+      cargar().catch(function (e) { toast(e.message, true); });
     } else {
       O.renderLegend();
     }
@@ -305,7 +307,7 @@
   function chip(a, s) {
     var p = compromiso(s, a.id), ab = abiertas(a).length, est, cls;
     if (p && p.res) { est = p.res.cumplido ? "✓ Cumplida" : "✕ No cumplida"; cls = p.res.cumplido ? "ln-ok" : "ln-bad"; }
-    else if (p) { est = "✓ Comprometida"; cls = ""; }
+    else if (p) { est = p.auto ? "Comprometida · " + p.auto.hechas + "/" + p.auto.total + " (" + p.auto.pct + " %)" : "✓ Comprometida"; cls = ""; }
     else if (ab) { est = ab + (ab === 1 ? " restricción" : " restricciones"); cls = "ln-warn"; }
     else { est = "Lista"; cls = "ln-ok"; }
     var tenue = esContratista() && L.resaltar && a.contratista !== S.me.contratista;
@@ -337,19 +339,23 @@
       ])]),
     ]);
   }
+  // Avance de las piezas ligadas (cuando el compromiso se califica solo con el estatus del modelo).
+  function textoAuto(p) { return p.auto ? p.auto.hechas + " de " + p.auto.total + " elementos terminados · " + p.auto.pct + " %" : ""; }
   function resultado(p) {
-    if (!p.res) return el("span", { class: "muted", text: "Por calificar" });
+    if (!p.res) return el("span", { class: "muted", text: p.auto ? "En curso · " + textoAuto(p) : "Por calificar" });
     var t = p.res.cumplido ? "✓ Cumplió" : "✕ No cumplió · " + p.res.causa;
     var v = p.sup ? (p.sup.estado === "validado" ? " · validado" : " · regresado") : " · en validación";
-    return el("span", { class: p.res.cumplido ? "ln-ok" : "ln-bad", text: t + v });
+    return el("span", { class: p.res.cumplido ? "ln-ok" : "ln-bad", text: t + (p.res.auto ? " (por avance del modelo)" : "") + v });
   }
   function celdaResidente(p) {
     var validado = p.sup && p.sup.estado === "validado";
     var hecho = p.res ? el("div", null, [el("span", { class: p.res.cumplido ? "ln-ok" : "ln-bad", text: p.res.cumplido ? "✓ Cumplió" : "✕ No cumplió" }),
       p.res.cumplido ? null : el("small", { class: "muted", style: "display:block", text: p.res.causa }),
       p.res.comentario ? el("small", { class: "muted", style: "display:block", text: p.res.comentario }) : null,
-      el("small", { class: "muted", style: "display:block", text: p.res.por })]) : el("span", { class: "muted", text: "Por calificar" });
+      el("small", { class: "muted", style: "display:block", text: p.res.auto ? "Automático por el estatus de los elementos" : p.res.por })])
+      : el("div", null, [el("span", { class: "muted", text: p.auto ? "En curso" : "Por calificar" }), p.auto ? el("small", { class: "muted", style: "display:block", text: textoAuto(p) + " · se califica solo" }) : null]);
     if (!P("calificar") || validado) return hecho;
+    if (!p.res && p.auto) return el("div", null, [hecho, el("button", { class: "linklike", type: "button", text: "Calificar a mano", onclick: function (ev) { ev.target.parentNode.replaceWith(formCalificar(p)); } })]);
     if (p.res && !(p.sup && p.sup.estado === "regresado")) {
       return el("div", null, [hecho, el("button", { class: "linklike", type: "button", text: "Cambiar", onclick: function (ev) { ev.target.parentNode.replaceWith(formCalificar(p)); } })]);
     }

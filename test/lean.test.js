@@ -279,3 +279,40 @@ test("papelera: lo borrado se puede restaurar; actividades y tarjetas se pueden 
   assert.equal(r.json.quitadas, 0);
   assert.equal((await pm("lean")).json.actividades.filter((x) => x.takt).length, antes + 1);
 });
+
+test("cumplimiento automático: el estatus de las piezas en Control de obra califica el compromiso", async () => {
+  const { evaluarAuto } = await import("../api/lean.js");
+  const act = { guids: ["A", "B"] };
+  const p = { semana: "2026-W47" }; // lunes 16 – domingo 22 de nov
+  const term = (at) => ({ estatus: "Terminado", hist: [{ accion: "reporta", estatus: "Terminado", at }] });
+  const dentro = Date.parse("2026-11-20T12:00:00Z"), despues = Date.parse("2026-11-24T12:00:00Z");
+  // Semana en curso, falta una pieza: sin calificar, con avance parcial.
+  let r = evaluarAuto(p, act, { A: term("2026-11-18T15:00:00Z"), B: { estatus: "En ejecución", pct: 50 } }, dentro);
+  assert.equal(r.cumplido, null); assert.equal(r.hechas, 1); assert.equal(r.pct, 75);
+  // Todas terminadas dentro de su semana: cumplido (aunque la semana siga).
+  r = evaluarAuto(p, act, { A: term("2026-11-18T15:00:00Z"), B: term("2026-11-22T23:00:00Z") }, dentro);
+  assert.equal(r.cumplido, true);
+  // Terminada el lunes siguiente: llegó tarde, no cumple al cerrar la semana.
+  r = evaluarAuto(p, act, { A: term("2026-11-18T15:00:00Z"), B: term("2026-11-23T18:00:00Z") }, despues);
+  assert.equal(r.cumplido, false);
+  // Sin piezas ligadas: se califica a mano.
+  assert.equal(evaluarAuto(p, { guids: [] }, {}, dentro), null);
+
+  // De punta a punta: compromiso de esta semana con una pieza ligada que el contratista termina.
+  const hoy = new Date(), t = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate())), dia = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - dia);
+  const sem = t.getUTCFullYear() + "-W" + String(Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7)).padStart(2, "0");
+  const G = "0000000000000000000099";
+  await admin("piezas", { action: "catalogo", version: "2", piezas: [{ guid: G, marca: "AUTO-1", contratista: "COPRESA" }] });
+  let x = await pm("lean", { action: "act-guardar", act: { partida: "Auto", contratista: "COPRESA", ubicacion: "Área 1", semanaIni: sem, semanaFin: sem, guids: [G] } });
+  const aid = x.json.actividad.id;
+  await pm("lean", { action: "plan-agregar", semana: sem, actId: aid, meta: "Terminar AUTO-1" });
+  let c = (await pm("lean")).json.plan.find((q) => q.actId === aid);
+  assert.equal(c.res, null); assert.deepEqual(c.auto, { hechas: 0, total: 1, pct: 0 });
+  x = await copresa("piezas", { action: "reportar", guids: [G], estatus: "Terminado" });
+  assert.equal(x.status, 200, JSON.stringify(x.json));
+  c = (await pm("lean")).json.plan.find((q) => q.actId === aid);
+  assert.equal(c.res.cumplido, true); assert.equal(c.res.auto, true);
+  // El superintendente valida; el PPC queda oficial.
+  assert.equal((await sup("lean", { action: "validar", semana: sem, actId: aid, ok: true })).status, 200);
+});
