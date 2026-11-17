@@ -21,6 +21,12 @@
 //     quitar-piezas   {hitoId, quitar:[{tarId, guids[]}]}               desasigna piezas (repetidas) de tarjetas;
 //                     si la pieza venía por marca se quita esa marca     PM / admin; contratista: solo sus tarjetas
 //     pasar           {hitoId}                                          PM / admin: tarjetas → actividades del look-ahead
+//                     (una tarjeta que salió del look-ahead actualiza su actividad en vez de crear otra)
+//     takt-importar   {ubicaciones[], acts:[{clave, partida, contratista, ubicacion, descripcion, semanaIni, semanaFin}], hitos:[{nombre, fecha}]}
+//                     PM / admin: carga el takt plan (Excel) al look-ahead. Volver a importar actualiza por «clave»
+//                     y quita lo que ya no está en el plan (si no tiene compromisos calificados).
+//     pull-desde-plan {hitoId}                                          PM / admin: tarjetas de la sesión pull a partir de las
+//                     actividades del look-ahead que terminan antes del hito y aún no acaban
 import crypto from "node:crypto";
 import { route, readJson, HttpError, cleanText } from "../lib/http.js";
 import { key, getJson, setJson, hgetJson, hgetallJson, hsetJson, hdel } from "../lib/store.js";
@@ -60,6 +66,12 @@ export function semanaDe(fecha) {
   const n = Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7);
   return t.getUTCFullYear() + "-W" + String(n).padStart(2, "0");
 }
+export function lunesDe(sem) {
+  const m = /^(\d{4})-W(\d{2})$/.exec(sem), d = new Date(Date.UTC(+m[1], 0, 4));
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() || 7) - 1) + (+m[2] - 1) * 7);
+  return deFecha(d);
+}
+const semanasEntre = (a, b) => Math.round((aFecha(lunesDe(b)) - aFecha(lunesDe(a))) / (7 * 86400000)) + 1;
 // Tarjetas anteriores sin días: se acomodan desde el lunes de su semana.
 export function diasDeTarjeta(t) {
   if (Array.isArray(t.dias) && t.dias.length) return t.dias;
@@ -110,6 +122,7 @@ function lista(v, max, maxLen) {
   return (Array.isArray(v) ? v : []).map((x) => String(x).replace(/[\u0000-\u001f]/g, " ").trim().slice(0, maxLen)).filter(Boolean).slice(0, max);
 }
 const upper = (v, max, name) => cleanText(v, max, name).toUpperCase();
+const lista2 = (arr) => [...new Set(arr.map((x) => String(x || "").trim()).filter(Boolean))].slice(0, 200).map((x) => x.slice(0, 60));
 function pedirPlan(me) { if (!can(me, "planear")) throw new HttpError(403, "Solo el PM puede hacer esto."); }
 
 async function config() {
@@ -368,8 +381,18 @@ export default route(["GET", "POST"], async (req, res) => {
       const hito = await hgetJson(HITOS(), String(b.hitoId || ""));
       if (!hito) throw new HttpError(404, "El hito ya no existe.");
       const nuevas = {};
+      const actsPrev = await hgetallJson(ACTS());
       for (const t of hito.tarjetas || []) {
         if (t.actId) continue;
+        // Si la tarjeta salió del look-ahead, se actualiza esa actividad con lo acordado en la sesión.
+        if (t.deAct && actsPrev[t.deAct]) {
+          const a = actsPrev[t.deAct];
+          Object.assign(a, { semanaIni: semanaDe(diasDeTarjeta(t)[0] || t.inicio), semanaFin: t.semana, actualizada: firma(me) });
+          if ((t.guids || []).length) a.guids = t.guids;
+          if (t.necesita && !(a.restricciones || []).some((r) => r.texto === t.necesita)) (a.restricciones = a.restricciones || []).push({ id: id(), texto: t.necesita, tipo: "Otro", responsable: t.contratista, fecha: "", estado: "abierta", creada: firma(me) });
+          nuevas[a.id] = a; t.actId = a.id;
+          continue;
+        }
         const act = {
           id: id(), restricciones: [], creada: firma(me), actualizada: firma(me),
           partida: t.partida, contratista: t.contratista, ubicacion: t.ubicacion || hito.nombre, eje: "",
@@ -383,6 +406,101 @@ export default route(["GET", "POST"], async (req, res) => {
       await hsetJson(ACTS(), nuevas);
       await hsetJson(HITOS(), { [hito.id]: hito });
       out.creadas = Object.keys(nuevas).length;
+      out.hito = hito;
+      break;
+    }
+
+    case "takt-importar": {
+      pedirPlan(me);
+      const lista = Array.isArray(b.acts) ? b.acts.slice(0, 3000) : [];
+      if (!lista.length) throw new HttpError(400, "El takt plan no trae actividades.");
+      const prev = await hgetallJson(ACTS());
+      const porClave = {};
+      for (const a of Object.values(prev)) if (a.takt) porClave[a.takt] = a;
+      const nuevas = {}, vistas = new Set();
+      for (const a of lista) {
+        const clave = cleanText(a.clave, 120, "La clave", { required: true });
+        if (vistas.has(clave)) continue;
+        vistas.add(clave);
+        const ini = semana(a.semanaIni, "Inicio"), fin = semana(a.semanaFin || a.semanaIni, "Fin");
+        const ant = porClave[clave];
+        nuevas[(ant && ant.id) || id()] = {
+          ...(ant || { restricciones: [], guids: [], creada: firma(me) }),
+          id: (ant && ant.id) || undefined,
+          takt: clave,
+          partida: upper(a.partida, 60, "La partida"),
+          contratista: upper(a.contratista, 60, "El contratista"),
+          ubicacion: cleanText(a.ubicacion, 60, "La ubicación", { required: true }),
+          eje: (ant && ant.eje) || "",
+          descripcion: cleanText(a.descripcion, 300, "La descripción"),
+          semanaIni: ini, semanaFin: fin < ini ? ini : fin,
+          actualizada: firma(me),
+        };
+      }
+      for (const [k, v] of Object.entries(nuevas)) v.id = k;
+      await hsetJson(ACTS(), nuevas);
+      // Lo que ya no está en el plan se quita, salvo que tenga compromisos calificados.
+      const plan = await hgetallJson(PLAN());
+      let quitadas = 0;
+      for (const a of Object.values(prev)) {
+        if (!a.takt || vistas.has(a.takt)) continue;
+        if (Object.values(plan).some((p) => p.actId === a.id && p.res)) continue;
+        await hdel(ACTS(), a.id);
+        for (const [k, p] of Object.entries(plan)) if (p.actId === a.id) await hdel(PLAN(), k);
+        quitadas++;
+      }
+      // Áreas takt y modo takt.
+      const c = await config();
+      if (Array.isArray(b.ubicaciones) && b.ubicaciones.length) {
+        c.ubicaciones = lista2(c.ubicaciones.concat(b.ubicaciones));
+        c.modo = "takt";
+        await setJson(CONFIG(), c);
+      }
+      // Hitos del plan (por nombre; no se tocan sus tarjetas).
+      const hs = await hgetallJson(HITOS());
+      const hNuevos = {};
+      for (const h of (Array.isArray(b.hitos) ? b.hitos : []).slice(0, 50)) {
+        const nombre = cleanText(h.nombre, 80, "El nombre del hito", { required: true });
+        const fecha = String(h.fecha || "");
+        if (!FECHA.test(fecha)) continue;
+        const ant = Object.values(hs).find((x) => x.nombre === nombre);
+        const x = ant ? { ...ant, fecha } : { id: id(), nombre, fecha, tarjetas: [], creado: firma(me) };
+        hNuevos[x.id] = x;
+      }
+      if (Object.keys(hNuevos).length) await hsetJson(HITOS(), hNuevos);
+      out.importadas = Object.keys(nuevas).length;
+      out.quitadas = quitadas;
+      out.hitos = Object.keys(hNuevos).length;
+      out.config = c;
+      break;
+    }
+
+    case "pull-desde-plan": {
+      pedirPlan(me);
+      const hito = await hgetJson(HITOS(), String(b.hitoId || ""));
+      if (!hito) throw new HttpError(404, "El hito ya no existe.");
+      const semHito = semanaDe(hito.fecha), hoy = semanaDe(deFecha(new Date()));
+      const acts = Object.values(await hgetallJson(ACTS()));
+      const yaTiene = new Set((hito.tarjetas || []).map((t) => t.deAct).filter(Boolean));
+      let creadas = 0;
+      for (const a of acts.sort((x, y) => (x.semanaIni < y.semanaIni ? -1 : 1))) {
+        if (yaTiene.has(a.id) || a.semanaFin > semHito || a.semanaFin < hoy) continue;
+        // Desde el lunes de su semana (o desde hoy si ya empezó), seis días hábiles por semana.
+        let inicio = lunesDe(a.semanaIni > hoy ? a.semanaIni : hoy);
+        if (a.semanaIni <= hoy) inicio = deFecha(new Date(Math.max(aFecha(inicio), aFecha(deFecha(new Date())))));
+        if (!habil(inicio)) inicio = diasHabiles(inicio, 2)[1] || inicio;
+        const dur = Math.max(1, semanasEntre(a.semanaIni > hoy ? a.semanaIni : hoy, a.semanaFin) * 6);
+        const dias = diasHabiles(inicio, Math.min(dur, 120));
+        (hito.tarjetas = hito.tarjetas || []).push({
+          id: id(), contratista: a.contratista || "", entregable: a.descripcion || a.partida, partida: a.partida || "",
+          ubicacion: a.ubicacion || "", entregaA: "", necesita: (a.restricciones || []).filter((r) => r.estado !== "liberada").map((r) => r.texto).join("; ").slice(0, 300),
+          inicio: dias[0], duracion: dias.length, dias, semana: semanaDe(dias[dias.length - 1]),
+          guids: a.guids || [], marcas: [], deAct: a.id, creada: firma(me),
+        });
+        creadas++;
+      }
+      await hsetJson(HITOS(), { [hito.id]: hito });
+      out.creadas = creadas;
       out.hito = hito;
       break;
     }

@@ -94,6 +94,10 @@ input::placeholder { color: var(--muted); }
 .lt-reparto .fila-rp { display: grid; grid-template-columns: 22px minmax(80px, 1fr) auto auto auto 52px; gap: 6px; align-items: center; padding: 2px 4px; border-radius: 6px; }
 .lt-reparto .fila-rp.man { background: rgba(34, 211, 238, .08); }
 .lt-reparto .fila-rp select { font-size: 12px; padding: 2px 4px; }
+.takt-import { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; display: grid; gap: 6px; }
+.takt-tabla { display: grid; grid-template-columns: minmax(120px, 1fr) 70px minmax(140px, 1fr); gap: 6px 10px; align-items: center; max-height: 45vh; overflow: auto; font-size: 13px; }
+.takt-tabla .h { font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: .04em; }
+.takt-tabla .n { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ln-rep-lista { display: grid; gap: 6px; max-height: 50vh; overflow: auto; }
 .ln-rep-lista .fila-rep { display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr); gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
 .ln-rep-lista select { width: 100%; }

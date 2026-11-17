@@ -189,3 +189,46 @@ test("una pieza puede ejecutarse en varios días de la tarea (ajuste manual)", a
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.deepEqual(r.json.tarjeta.reparto, { "0000000000000000000021": [1, 3], "0000000000000000000022": [2, 3] }); // recortado a 3 días; pieza ajena fuera
 });
+
+test("takt plan: se importa al look-ahead, se reimporta sin duplicar y sirve de base a la sesión pull", async () => {
+  const hoy = new Date();
+  const sem = (dias) => { const d = new Date(hoy.getTime() + dias * 86400000); const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); const dia = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - dia); const n = Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7); return t.getUTCFullYear() + "-W" + String(n).padStart(2, "0"); };
+  const fecha = (dias) => new Date(hoy.getTime() + dias * 86400000).toISOString().slice(0, 10);
+  const acts = [
+    { clave: "F5|45|EL1|1", partida: "Eléctrico", contratista: "copresa", ubicacion: "FRENTE 5", descripcion: "EL1 · Soportería", semanaIni: sem(7), semanaFin: sem(14) },
+    { clave: "F5|46|EL4|1", partida: "Eléctrico", contratista: "copresa", ubicacion: "FRENTE 5", descripcion: "EL4 · Soportería 220", semanaIni: sem(14), semanaFin: sem(21) },
+    { clave: "F1|18|S2|1", partida: "Obra Civil", contratista: "", ubicacion: "FRENTE 1", descripcion: "S2 · Muro de block", semanaIni: sem(70), semanaFin: sem(77) },
+  ];
+  assert.equal((await copresa("lean", { action: "takt-importar", acts })).status, 403);
+  let r = await pm("lean", { action: "takt-importar", acts, ubicaciones: ["FRENTE 1", "FRENTE 5"], hitos: [{ nombre: "Early Access A1", fecha: fecha(35) }] });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(r.json.importadas, 3);
+  assert.equal(r.json.config.modo, "takt");
+  let g = (await pm("lean")).json;
+  const deTakt = Object.values(g.acts || g.actividades || {}).filter((a) => a.takt);
+  assert.equal(deTakt.length, 3);
+  // Reimportar: actualiza por clave, quita lo que ya no está.
+  r = await pm("lean", { action: "takt-importar", acts: [{ ...acts[0], semanaFin: sem(21) }, acts[1]], hitos: [{ nombre: "Early Access A1", fecha: fecha(35) }] });
+  assert.equal(r.json.importadas, 2);
+  assert.equal(r.json.quitadas, 1);
+  g = (await pm("lean")).json;
+  const lista = Object.values(g.acts || g.actividades || {}).filter((a) => a.takt);
+  assert.equal(lista.length, 2);
+  assert.equal(lista.find((a) => a.takt === "F5|45|EL1|1").semanaFin, sem(21));
+  const hito = (g.hitos || []).find((h) => h.nombre === "Early Access A1");
+  assert.ok(hito, "se creó el hito del plan");
+  // Base para la sesión pull: tarjetas de lo que termina antes del hito.
+  r = await pm("lean", { action: "pull-desde-plan", hitoId: hito.id });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  const ids = new Set(lista.map((a) => a.id));
+  assert.equal(r.json.hito.tarjetas.filter((x) => ids.has(x.deAct)).length, 2); // (puede haber otras actividades de pruebas anteriores)
+  const t = r.json.hito.tarjetas.find((x) => x.entregable === "EL1 · Soportería");
+  assert.equal(t.contratista, "COPRESA");
+  assert.equal(t.duracion, 18); // tres semanas (se reimportó hasta sem(21)) de seis días hábiles
+  assert.equal((await pm("lean", { action: "pull-desde-plan", hitoId: hito.id })).json.creadas, 0); // no duplica
+  // Al pasar, la tarjeta actualiza su actividad (no crea otra).
+  r = await pm("lean", { action: "pasar", hitoId: hito.id });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  g = (await pm("lean")).json;
+  assert.equal(Object.values(g.acts || g.actividades || {}).filter((a) => a.takt).length, 2);
+});

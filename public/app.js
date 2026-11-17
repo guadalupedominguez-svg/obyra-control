@@ -2198,7 +2198,7 @@
   // Puente para el módulo Lean (public/lean.js).
   window.OBYRA = {
     S: S, api: api, el: el, $: $, qsa: qsa, toast: toast, fecha: fecha, f2: f2, nf0: nf0, pill: pill, COLOR: COLOR,
-    paintModel: paintModel, focusPieces: focusPieces, etiquetas3D: etiquetas3D, marcaDe: marcaDe, pedirMarcas: pedirMarcas, nombreModelo: nombreModelo, renderLegend: renderLegend,
+    paintModel: paintModel, focusPieces: focusPieces, etiquetas3D: etiquetas3D, loadExcel: loadExcel, marcaDe: marcaDe, pedirMarcas: pedirMarcas, nombreModelo: nombreModelo, renderLegend: renderLegend,
     alIniciar: [], // funciones que corren cuando la app ya cargó obra y piezas
     _onViewerSelect: onViewerSelect, // para pruebas
   };

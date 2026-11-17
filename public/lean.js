@@ -565,6 +565,23 @@
       if (b.getAttribute("data-c") !== "1") { b.setAttribute("data-c", "1"); b.textContent = "¿Borrar con sus tarjetas?"; setTimeout(function () { b.removeAttribute("data-c"); b.textContent = "Borrar hito"; }, 4000); return; }
       accion({ action: "hito-borrar", id: $("ln-hito").getAttribute("data-id") }, "Hito borrado.").then(function () { $("ln-hito").close(); });
     });
+    // Takt plan
+    $("lc-takt").addEventListener("change", function () { var f = $("lc-takt").files[0]; $("lc-takt").value = ""; if (f) importarTakt(f); });
+    $("lt2-cancelar").addEventListener("click", function () { $("ln-takt").close(); });
+    $("ln-takt-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var res = L.taktPrev; if (!res || !res.acts.length) return;
+      var map = {};
+      O.qsa("#lt2-oficios input").forEach(function (i) { map[i.getAttribute("data-oficio")] = i.value.trim(); });
+      try { localStorage.setItem("ctrl_takt_contr", JSON.stringify(map)); } catch (e) { /* nada */ }
+      var acts = res.acts.map(function (a) { return { clave: a.clave, partida: a.partida, contratista: map[a.oficio || "(sin oficio)"] || "", ubicacion: a.ubicacion, descripcion: a.descripcion, semanaIni: a.semanaIni, semanaFin: a.semanaFin }; });
+      $("lt2-ok").disabled = true;
+      api("/api/lean", { action: "takt-importar", acts: acts, ubicaciones: res.frentes, hitos: res.hitos }).then(function (r) {
+        toast(r.importadas + " actividades del takt plan en el look-ahead" + (r.quitadas ? " · " + r.quitadas + " quitadas" : "") + (r.hitos ? " · " + r.hitos + " hitos" : "") + ".");
+        $("ln-takt").close();
+        return cargar();
+      }).catch(function (e) { toast(e.message, true); }).finally(function () { $("lt2-ok").disabled = false; });
+    });
     // Ajustes
     $("lc-cancelar").addEventListener("click", function () { $("ln-cfg").close(); });
     $("ln-cfg-form").addEventListener("submit", function (ev) {
@@ -573,6 +590,156 @@
       accion({ action: "config", modo: $("lc-modo").value, ubicaciones: lineas("lc-ubic"), causas: lineas("lc-causas"), meta: Number($("lc-meta").value) }, "Ajustes guardados.")
         .then(function () { $("ln-cfg").close(); });
     });
+  }
+  // ---------- Importar el takt plan (Excel) ----------
+  // Formato: fila «Star Week» con el lunes de cada semana; leyenda de paquetes en columnas C (código) y D (nombre)
+  // agrupada por oficio; cuadros de texto «FRENTE …» que marcan dónde empieza cada frente; hitos con fecha dd.mm.aa.
+  var JSZIP = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
+  function cargarJSZip() {
+    if (window.JSZip) return Promise.resolve();
+    return new Promise(function (ok, ko) { var s = el("script", { src: JSZIP }); s.onload = ok; s.onerror = function () { ko(new Error("No se pudo cargar el lector de Excel. Revisa tu conexión.")); }; document.head.appendChild(s); });
+  }
+  function valor(v) {
+    if (v == null) return null;
+    if (v instanceof Date) return v;
+    if (typeof v === "object") { if (v.result !== undefined) return valor(v.result); if (v.richText) return v.richText.map(function (x) { return x.text; }).join(""); if (v.text) return v.text; return null; }
+    return v;
+  }
+  // Cuadros de texto de una hoja: [{fila, col, texto}] (1 = primera fila/columna).
+  function textosDeHoja(zip, nombreHoja) {
+    var parse = function (x) { return new DOMParser().parseFromString(x, "application/xml"); };
+    var leer = function (p) { var f = zip.file(p); return f ? f.async("string") : Promise.resolve(null); };
+    return Promise.all([leer("xl/workbook.xml"), leer("xl/_rels/workbook.xml.rels")]).then(function (r) {
+      var wb = parse(r[0]), rels = parse(r[1]);
+      var hoja = Array.from(wb.getElementsByTagName("sheet")).find(function (s) { return s.getAttribute("name") === nombreHoja; });
+      if (!hoja) return [];
+      var rid = hoja.getAttribute("r:id") || hoja.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+      var rel = Array.from(rels.getElementsByTagName("Relationship")).find(function (x) { return x.getAttribute("Id") === rid; });
+      if (!rel) return [];
+      var ruta = "xl/" + rel.getAttribute("Target").replace(/^\/?xl\//, "").replace(/^\//, "");
+      var relsHoja = ruta.replace(/worksheets\/(sheet\d+\.xml)$/, "worksheets/_rels/$1.rels");
+      return leer(relsHoja).then(function (x) {
+        if (!x) return [];
+        var d = Array.from(parse(x).getElementsByTagName("Relationship")).find(function (y) { return /drawing$/.test(y.getAttribute("Type")) && /drawings\//.test(y.getAttribute("Target")); });
+        if (!d) return [];
+        return leer("xl/drawings/" + d.getAttribute("Target").split("/").pop()).then(function (xml) {
+          if (!xml) return [];
+          var doc = parse(xml), out = [];
+          ["twoCellAnchor", "oneCellAnchor"].forEach(function (tag) {
+            Array.from(doc.getElementsByTagNameNS("*", tag)).forEach(function (a) {
+              var from = a.getElementsByTagNameNS("*", "from")[0]; if (!from) return;
+              var col = +from.getElementsByTagNameNS("*", "col")[0].textContent, fila = +from.getElementsByTagNameNS("*", "row")[0].textContent;
+              var t = Array.from(a.getElementsByTagNameNS("*", "t")).map(function (n) { return n.textContent; }).join(" ").replace(/\s+/g, " ").trim();
+              if (t) out.push({ fila: fila + 1, col: col + 1, texto: t });
+            });
+          });
+          return out;
+        });
+      });
+    });
+  }
+  function leerTakt(ws, textos) {
+    var maxR = ws.rowCount, maxC = ws.columnCount, cel = function (r, c) { return valor(ws.getCell(r, c).value); };
+    // Semanas: la fila «Star Week».
+    var filaSem = 0, colsSem = {};
+    for (var r = 1; r <= Math.min(30, maxR) && !filaSem; r++) for (var c = 1; c <= 40; c++) if (/^st(a)?r?t?\s*week$/i.test(String(cel(r, c) || "").trim())) { filaSem = r; break; }
+    if (!filaSem) throw new Error("No encontré la fila «Star Week» con las semanas del takt plan.");
+    for (var c2 = 1; c2 <= maxC; c2++) { var v = cel(filaSem, c2); if (v instanceof Date) colsSem[c2] = v; }
+    var cols = Object.keys(colsSem).map(Number).sort(function (a, b) { return a - b; });
+    if (!cols.length) throw new Error("La fila «Star Week» no trae fechas.");
+    // Leyenda: código (C) y nombre (D), agrupados por oficio (renglón con texto en C y D vacía).
+    var leyenda = {}, oficio = "";
+    for (var r2 = 1; r2 <= maxR; r2++) {
+      var a = cel(r2, 3), d = cel(r2, 4);
+      if (a == null || String(a).trim() === "") continue;
+      a = String(a).trim();
+      if ((d == null || String(d).trim() === "") && !/\d/.test(a)) { oficio = a; continue; }
+      if (!leyenda[a]) leyenda[a] = { nombre: d ? String(d).trim() : a, oficio: oficio };
+    }
+    // Frentes (cuadros de texto en la zona del calendario) e hitos (cuadros con fecha dd.mm.aa).
+    var c0 = cols[0];
+    var frentes = textos.filter(function (t) { return t.col + 1 >= c0 && /^(FRENTE|MEP|AREA|ÁREA|ZONA|NIVEL|TREN)\b/i.test(t.texto); })
+      .sort(function (a, b) { return a.fila - b.fila; });
+    if (!frentes.length) frentes = [{ fila: filaSem + 1, texto: "PLAN" }];
+    var hitos = [];
+    textos.forEach(function (t) {
+      var m = /(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})\s*$/.exec(t.texto); if (!m) return;
+      var y = +m[3] < 100 ? 2000 + +m[3] : +m[3];
+      var f = y + "-" + String(+m[2]).padStart(2, "0") + "-" + String(+m[1]).padStart(2, "0");
+      if (f < new Date().toISOString().slice(0, 10)) return; // los hitos que ya pasaron no se crean
+      hitos.push({ nombre: t.texto.replace(m[0], "").replace(/\s+/g, " ").trim().slice(0, 80), fecha: f });
+    });
+    // Columnas de asueto: todo lo que traen es «B».
+    var asueto = {};
+    var fila0 = frentes[0].fila;
+    cols.forEach(function (c) { var n = 0, b = 0; for (var r = fila0; r <= maxR; r++) { var v = cel(r, c); v = v == null ? "" : String(v).trim(); if (!leyenda[v] && v !== "B") continue; n++; if (v === "B") b++; } if (n >= 3 && b === n) asueto[c] = true; });
+    var activas = cols.filter(function (c) { return !asueto[c]; });
+    var acts = [], ultimaFila = 0;
+    for (var r3 = filaSem + 1; r3 <= maxR; r3++) for (var c3 = 0; c3 < activas.length; c3++) { var v3 = cel(r3, activas[c3]); if (v3 != null && leyenda[String(v3).trim()] && String(v3).trim() !== "B") ultimaFila = r3; }
+    frentes.forEach(function (fr, i) {
+      var desde = fr.fila, hasta = i + 1 < frentes.length ? frentes[i + 1].fila - 1 : ultimaFila;
+      var nombre = fr.texto.replace(/\s+/g, " ").trim().slice(0, 60);
+      for (var r = desde; r <= hasta; r++) {
+        var cuenta = {}, run = null;
+        var cerrar = function () {
+          if (!run) return;
+          var cod = run.cod, l = leyenda[cod]; cuenta[cod] = (cuenta[cod] || 0) + 1;
+          acts.push({ clave: nombre + "|" + r + "|" + cod + "|" + cuenta[cod], codigo: cod, oficio: l.oficio, partida: l.oficio,
+            ubicacion: nombre, descripcion: cod + " · " + l.nombre, semanaIni: isoSemana(colsSem[run.c1]), semanaFin: isoSemana(colsSem[run.c2]) });
+          run = null;
+        };
+        for (var k = 0; k < activas.length; k++) {
+          var c = activas[k], v = cel(r, c), cod = v == null ? "" : String(v).trim();
+          if (!leyenda[cod] || cod === "B") cod = "";
+          if (run && cod === run.cod && k === run.k + 1) { run.c2 = c; run.k = k; continue; }
+          cerrar();
+          if (cod) run = { cod: cod, c1: c, c2: c, k: k };
+        }
+        cerrar();
+      }
+    });
+    return { acts: acts, frentes: frentes.map(function (f) { return f.texto.replace(/\s+/g, " ").trim().slice(0, 60); }), hitos: hitos };
+  }
+  function importarTakt(file) {
+    toast("Leyendo el takt plan…");
+    var buf;
+    Promise.all([O.loadExcel(), cargarJSZip(), file.arrayBuffer()]).then(function (r) {
+      buf = r[2];
+      var wb = new window.ExcelJS.Workbook();
+      return Promise.all([wb.xlsx.load(buf), window.JSZip.loadAsync(buf)]).then(function (x) { return { wb: wb, zip: x[1] }; });
+    }).then(function (o) {
+      var hojas = o.wb.worksheets.map(function (w) { return w.name; });
+      var pref = hojas.filter(function (n) { return /takt/i.test(n); });
+      var sel = $("lt2-hoja");
+      sel.replaceChildren.apply(sel, hojas.map(function (n) { return el("option", { value: n, text: n }); }));
+      sel.value = pref.length ? pref[pref.length - 1] : hojas[0];
+      var previa = function () {
+        var ws = o.wb.getWorksheet(sel.value);
+        return textosDeHoja(o.zip, sel.value).then(function (tx) {
+          var res = leerTakt(ws, tx);
+          L.taktPrev = res;
+          var oficios = {};
+          res.acts.forEach(function (a) { oficios[a.oficio || "(sin oficio)"] = (oficios[a.oficio || "(sin oficio)"] || 0) + 1; });
+          var guard = {}; try { guard = JSON.parse(localStorage.getItem("ctrl_takt_contr") || "{}"); } catch (e) { /* nada */ }
+          var contrs = Array.from(new Set(Object.values(S.piezas || {}).map(function (p) { return p.contratista; }).concat(L.acts.map(function (a) { return a.contratista; })).filter(Boolean))).sort();
+          $("lt2-contratistas").replaceChildren.apply($("lt2-contratistas"), contrs.map(function (c) { return el("option", { value: c }); }));
+          var tabla = $("lt2-oficios");
+          tabla.replaceChildren.apply(tabla, [el("span", { class: "h", text: "Oficio" }), el("span", { class: "h n", text: "Activ." }), el("span", { class: "h", text: "Contratista" })]
+            .concat([].concat.apply([], Object.keys(oficios).sort().map(function (of) {
+              return [el("span", { text: of }), el("span", { class: "n", text: String(oficios[of]) }),
+                el("input", { type: "text", maxlength: "60", list: "lt2-contratistas", "data-oficio": of, value: guard[of] || "", placeholder: "Contratista", "aria-label": "Contratista de " + of })];
+            }))));
+          $("lt2-resumen").textContent = res.acts.length + " actividades en " + res.frentes.length + " frentes (" + res.frentes.join(" · ") + ")" +
+            (res.hitos.length ? " · hitos: " + res.hitos.map(function (h) { return h.nombre + " " + h.fecha.split("-").reverse().join("/"); }).join(" · ") : "") +
+            (res.acts.length ? " · de " + res.acts.reduce(function (m, a) { return a.semanaIni < m ? a.semanaIni : m; }, "9999") + " a " + res.acts.reduce(function (m, a) { return a.semanaFin > m ? a.semanaFin : m; }, "") : "");
+          $("lt2-ok").disabled = !res.acts.length;
+        }).catch(function (e) { $("lt2-resumen").textContent = e.message; $("lt2-ok").disabled = true; });
+      };
+      sel.onchange = previa;
+      $("ln-cfg").close();
+      $("ln-takt").showModal();
+      return previa();
+    }).catch(function (e) { toast(e.message || "No se pudo leer el Excel.", true); });
   }
   function abrirAjustes() {
     $("lc-modo").value = L.cfg.modo;
@@ -800,6 +967,8 @@
       if (hito) ctrl.push(el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Editar hito", onclick: function () { abrirHito(hito); } }));
     }
     if (hito && (P("planear") || esContratista())) ctrl.push(el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "+ Tarjeta", onclick: function () { abrirTarjeta(null, null, null); } }));
+    if (hito && P("planear")) ctrl.push(el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Traer del look-ahead", title: "Crea tarjetas con las actividades del look-ahead (takt plan) que terminan antes del hito y aún no acaban",
+      onclick: function () { accion({ action: "pull-desde-plan", hitoId: hito.id }).then(function (r) { toast(r.creadas ? r.creadas + " tarjetas traídas del look-ahead." : "No hay actividades nuevas del look-ahead para este hito."); }); } }));
     var tSel = hito && L.tarSel ? (hito.tarjetas || []).find(function (t) { return t.id === L.tarSel; }) : null;
     if (L.tarSel && !tSel) L.tarSel = null;
     if (tSel || L.diaSel) ctrl.splice(2, 0, el("span", { class: "ln-activo" }, [

@@ -449,9 +449,30 @@
         <label>Ubicaciones (una por renglón, en orden)<textarea id="lc-ubic" rows="6"></textarea></label>
         <label>Causas de no cumplimiento (una por renglón)<textarea id="lc-causas" rows="6"></textarea></label>
         <label>Meta de PPC (%)<input id="lc-meta" type="number" min="1" max="100"></label>
+        <div class="takt-import">
+          <b>Takt plan (Excel)</b>
+          <p class="hint">Carga las actividades del takt plan al look-ahead (frentes como áreas takt, una actividad por paquete y semanas) y sus hitos. Al volver a cargarlo se actualiza lo que cambió.</p>
+          <label class="btn btn-ghost btn-sm">Elegir el Excel del takt plan…<input id="lc-takt" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></label>
+        </div>
         <div class="row end">
           <button type="button" class="btn btn-ghost btn-sm" id="lc-cancelar">Cancelar</button>
           <button type="submit" class="btn btn-primary btn-sm">Guardar ajustes</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Lean: vista previa del takt plan -->
+    <dialog id="ln-takt" class="dialog" aria-labelledby="ln-takt-t">
+      <form class="dialog-body" id="ln-takt-form" novalidate>
+        <h3 id="ln-takt-t">Importar takt plan</h3>
+        <label>Pestaña<select id="lt2-hoja"></select></label>
+        <p class="hint" id="lt2-resumen"></p>
+        <div class="takt-tabla" id="lt2-oficios"></div>
+        <p class="hint">Escribe el contratista de cada oficio tal como está en el modelo y en su usuario (por ejemplo GP-ELE). Lo que dejes vacío queda sin contratista y lo puedes asignar después.</p>
+        <datalist id="lt2-contratistas"></datalist>
+        <div class="row end">
+          <button type="button" class="btn btn-ghost btn-sm" id="lt2-cancelar">Cancelar</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="lt2-ok">Importar al look-ahead</button>
         </div>
       </form>
     </dialog>
