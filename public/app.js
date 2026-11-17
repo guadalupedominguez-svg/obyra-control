@@ -2002,8 +2002,16 @@
       (r.properties || []).forEach(function (p) {
         if (/\(IFC TYPE\)/i.test(p.displayCategory || "")) return; // solo las del elemento, no las de su tipo
         var k = norm(p.displayName), val = String(p.displayValue == null ? "" : p.displayValue).trim(); if (!val) return;
-        Object.keys(FILSEL_PROPS).forEach(function (c) { if (!o[c] && FILSEL_PROPS[c].indexOf(k) >= 0) o[c] = val; });
+        Object.keys(FILSEL_PROPS).forEach(function (c) {
+          if (FILSEL_PROPS[c].indexOf(k) < 0) return;
+          // El «Name» de Identity Data (el de Revit) gana sobre el nombre genérico del IFC.
+          if (c === "nombre" && p.displayCategory === "Identity Data") o.nombreRevit = val;
+          else if (!o[c]) o[c] = val;
+        });
       });
+      if (o.nombreRevit) o.nombre = o.nombreRevit;
+      if (o.nombre) o.nombre = o.nombre.replace(/^Ifc\w+::/, "");
+      delete o.nombreRevit;
       return o;
     };
     var ids = falta.map(function (g) { return S.guid2db.get(g); });
