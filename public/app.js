@@ -364,7 +364,7 @@
   $("sel-all").addEventListener("change", function () {
     var list = filtradas();
     if ($("sel-all").checked) list.forEach(function (g) { S.sel.add(g); }); else S.sel.clear();
-    renderLista(); selectInViewer();
+    renderLista(); selectInViewer(); encuadrarSel(S.sel);
   });
   $("btn-ver-sel").addEventListener("click", function () {
     if (!S.sel.size) { toast("Selecciona piezas en la lista o en el modelo."); return; }
@@ -373,7 +373,13 @@
 
   function toggleSel(g, on) {
     if (on) S.sel.add(g); else S.sel["delete"](g);
-    renderLista(); selectInViewer();
+    renderLista(); selectInViewer(); encuadrarSel(S.sel);
+  }
+  // El modelo se acerca a lo que se marca en la lista (si no queda nada marcado, no se mueve).
+  function encuadrarSel(gs) {
+    if (!S.viewer || !S.model) return;
+    var ids = Array.from(gs).map(function (g) { return S.guid2db.get(g); }).filter(function (x) { return x != null; });
+    if (ids.length) S.viewer.fitToView(ids, S.model);
   }
   // Vista previa del avance: mientras el contratista elige el estatus, las piezas seleccionadas se ven
   // en el modelo con el color de ese estatus (el resaltado de selección toma ese color).
@@ -682,7 +688,8 @@
     }) : [el("p", { class: "muted", text: { porestimar: "No quedan piezas por estimar.", estimadas: "Todavía no hay piezas estimadas." }[$("g-vista").value] || "No hay piezas." })]);
     // En el panel solo marca, estatus y estimación; el detalle completo está en "Ver generador".
     // En "Sin estimar", quien estima puede marcar las piezas que van en una misma estimación.
-    var conCasillas = !!(S.permisos.estimar && $("g-vista").value === "porestimar");
+    // Casillas para elegir qué va en el generador: quien estima y el contratista que lo arma.
+    var conCasillas = !!((S.permisos.estimar || S.permisos.enviarEstimacion) && $("g-vista").value === "porestimar");
     var elegibles = filas.filter(estimable);
     S.gSel.forEach(function (g) { if (!conCasillas || elegibles.indexOf(g) < 0) S.gSel["delete"](g); });
     var todas = null;
@@ -690,7 +697,7 @@
       todas = el("input", { type: "checkbox", "aria-label": "Seleccionar todas las terminadas" });
       todas.checked = elegibles.length > 0 && elegibles.every(function (g) { return S.gSel.has(g); });
       todas.disabled = !elegibles.length;
-      todas.addEventListener("change", function () { elegibles.forEach(function (g) { if (todas.checked) S.gSel.add(g); else S.gSel["delete"](g); }); renderGenerador(); selectGenEnModelo(); });
+      todas.addEventListener("change", function () { elegibles.forEach(function (g) { if (todas.checked) S.gSel.add(g); else S.gSel["delete"](g); }); renderGenerador(); selectGenEnModelo(); encuadrarSel(S.gSel); });
     }
     var head = el("tr", null, (conCasillas ? [el("th", { class: "chk" }, [todas])] : []).concat(["Marca", "Estatus", "Estimación"].map(function (h) { return el("th", { text: h }); })));
     var rows = filas.map(function (g) {
@@ -700,7 +707,7 @@
         var ok = estimable(g);
         var cb = el("input", { type: "checkbox", "aria-label": "Incluir " + (p.marca || g) + " en la estimación", title: ok ? "" : "Solo se estiman piezas terminadas y aprobadas" });
         cb.checked = S.gSel.has(g); cb.disabled = !ok;
-        cb.addEventListener("click", function (ev) { ev.stopPropagation(); if (cb.checked) S.gSel.add(g); else S.gSel["delete"](g); renderGenerador(); selectGenEnModelo(); });
+        cb.addEventListener("click", function (ev) { ev.stopPropagation(); if (cb.checked) S.gSel.add(g); else S.gSel["delete"](g); renderGenerador(); selectGenEnModelo(); encuadrarSel(S.gSel); });
         celdas.push(el("td", { class: "chk" }, [cb]));
       }
       var tr = el("tr", { class: "click" + (S.gSel.has(g) ? " sel" : "") }, celdas.concat([
@@ -2308,8 +2315,13 @@
   // Validado: lo seleccionado pasa al generador ya marcado.
   if ($("r-gen")) $("r-gen").addEventListener("click", function () {
     var gs = Array.from(S.sel || []).filter(estimable);
+    // El generador abre en «sin estimar», con exactamente lo que venía seleccionado.
+    $("g-vista").value = "porestimar";
+    if ($("g-contratista") && gs.length && $("g-contratista").value && gs.some(function (g) { return S.piezas[g].contratista !== $("g-contratista").value; })) $("g-contratista").value = "";
     if (window.OBYRA.irA) window.OBYRA.irA("estimaciones"); else if (S.abrirTab) S.abrirTab("generador");
-    if (gs.length && S.gSel) { gs.forEach(function (g) { S.gSel.add(g); }); renderGenerador(); selectGenEnModelo(); }
+    S.gSel.clear(); gs.forEach(function (g) { S.gSel.add(g); });
+    renderGenerador(); selectGenEnModelo(); encuadrarSel(S.gSel);
+    toast(gs.length + (gs.length === 1 ? " elemento listo" : " elementos listos") + " en el generador. Revísalos y presiona «Enviar a estimar».");
   });
   if ($("ap-solo-chip")) $("ap-solo-chip").addEventListener("click", verTodaLaLista);
 
