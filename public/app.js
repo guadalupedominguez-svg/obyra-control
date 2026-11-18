@@ -453,9 +453,42 @@
   function colaActual() { return ($("ap-cola") && $("ap-cola").value) || "avance"; }
   function pendientes() { return enCola(colaActual()); }
   // Pendientes que se ven en la pestaña, según la cola y el filtro de contratista.
+  // Quién lo envió, qué estatus trae y en qué zona está (para los filtros de Aprobaciones).
+  function apQuien(g) { var r = rec(g); return (r.pend && (r.pend.por || "")) || (r.porValidar && r.porValidar.por) || ""; }
+  function apEstatus(g) { var r = rec(g); return r.pend ? (r.pend.estatus === "Estimado" ? "Por estimar" : r.pend.estatus) : (r.estatus || "Planeado"); }
+  function apTexto(g) {
+    var p = S.piezas[g], r = rec(g);
+    return [p.marca, p.clave, p.concepto, p.eje, r.pend && r.pend.comentario, r.pend && r.pend.estimacion, r.porValidar && r.porValidar.comentario].join(" ").toLowerCase();
+  }
   function pendientesVista() {
-    var c = $("ap-contratista") ? $("ap-contratista").value : "";
-    return pendientes().filter(function (g) { return !c || S.piezas[g].contratista === c; });
+    var v = function (id) { return $(id) ? $(id).value : ""; };
+    var c = v("ap-contratista"), u = v("ap-usuario"), e = v("ap-estatus"), z = v("ap-zona"), q = v("ap-buscar").trim().toLowerCase();
+    return pendientes().filter(function (g) {
+      if (c && S.piezas[g].contratista !== c) return false;
+      if (u && apQuien(g) !== u) return false;
+      if (e && apEstatus(g) !== e) return false;
+      if (z && zonaDe(S.piezas[g]) !== z) return false;
+      if (q && apTexto(g).indexOf(q) < 0) return false;
+      return true;
+    });
+  }
+  // Opciones de los filtros con lo que hay en la lista actual (y cuántos de cada uno).
+  function pintarFiltrosAp() {
+    if (!$("ap-usuario")) return;
+    var gs = pendientes();
+    var llenar = function (id, todos, fn) {
+      var sel = $(id), prev = sel.value, cuenta = {};
+      gs.forEach(function (g) { var k = fn(g); if (k) cuenta[k] = (cuenta[k] || 0) + 1; });
+      var ks = Object.keys(cuenta).sort(function (a, b) { return a.localeCompare(b, "es", { numeric: true }); });
+      fillSelect(sel, [["", todos]].concat(ks.map(function (k) { return [k, k + " (" + cuenta[k] + ")"]; })));
+      sel.value = ks.indexOf(prev) >= 0 ? prev : "";
+    };
+    llenar("ap-usuario", "Todos los usuarios", apQuien);
+    llenar("ap-estatus", "Todos los estatus", apEstatus);
+    llenar("ap-zona", "Todas las zonas", function (g) { return zonaDe(S.piezas[g]); });
+    var act = ["ap-contratista", "ap-usuario", "ap-estatus", "ap-zona"].filter(function (id) { return $(id) && $(id).isConnected && $(id).value; }).length;
+    $("desp-ap-res").textContent = act ? act + (act === 1 ? " activo" : " activos") : "Ninguno";
+    $("ap-limpiar").hidden = !act;
   }
   // Las colas que le tocan a cada quien primero; quien solo consulta ve todas.
   function colasMias() { return ["estimacion", "avance", "generador"].filter(function (k) { return S.permisos[COLAS[k].puede]; }); }
@@ -478,6 +511,7 @@
   function renderAprobar() {
     if (!$("lista-ap")) return;
     pintarColas();
+    pintarFiltrosAp();
     var cola = COLAS[colaActual()], actua = !!S.permisos[cola.puede];
     $("ap-acciones").hidden = !actua;
     if ($("ap-all")) $("ap-all").hidden = !actua;
@@ -516,7 +550,14 @@
       return li;
     }));
   }
-  if ($("ap-contratista")) $("ap-contratista").addEventListener("change", function () { S.apSel.clear(); renderAprobar(); });
+  ["ap-contratista", "ap-usuario", "ap-estatus", "ap-zona"].forEach(function (id) {
+    if ($(id)) $(id).addEventListener("change", function () { S.apSel.clear(); renderAprobar(); });
+  });
+  if ($("ap-buscar")) $("ap-buscar").addEventListener("input", function () { clearTimeout(S.tApBus); S.tApBus = setTimeout(function () { S.apSel.clear(); renderAprobar(); }, 200); });
+  if ($("ap-limpiar")) $("ap-limpiar").addEventListener("click", function () {
+    ["ap-contratista", "ap-usuario", "ap-estatus", "ap-zona"].forEach(function (id) { if ($(id)) $(id).value = ""; });
+    S.apSel.clear(); renderAprobar();
+  });
   if ($("ap-cola")) $("ap-cola").addEventListener("change", function () { S.apSel.clear(); renderAprobar(); });
   // Administrador: descarta las propuestas pendientes de la lista (con un segundo clic para confirmar).
   if ($("ap-descartar")) $("ap-descartar").addEventListener("click", function () {

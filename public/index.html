@@ -180,7 +180,19 @@
         <section class="tabpane" data-pane="aprobar" hidden>
           <p class="pane-intro" id="ap-intro"></p>
           <select id="ap-cola" aria-label="Qué revisar"></select>
-          <select id="ap-contratista" aria-label="Contratista" data-perm="verTodo"></select>
+          <div class="filtros-wrap">
+            <input id="ap-buscar" type="search" placeholder="Buscar marca, clave o comentario" aria-label="Buscar en aprobaciones">
+            <details class="desp" id="desp-ap-filtros">
+              <summary><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg><span class="desp-t">Filtros</span><span class="desp-res" id="desp-ap-res"></span></summary>
+              <div class="filters desp-body">
+                <select id="ap-contratista" aria-label="Contratista" data-perm="verTodo"></select>
+                <select id="ap-usuario" aria-label="Usuario que lo envió"></select>
+                <select id="ap-estatus" aria-label="Estatus"></select>
+                <select id="ap-zona" aria-label="Zona"></select>
+                <button type="button" class="linklike full" id="ap-limpiar">Quitar filtros</button>
+              </div>
+            </details>
+          </div>
           <div class="list-head">
             <label class="check"><input type="checkbox" id="ap-all" data-perm="aprobar"> <span id="ap-count">0 pendientes</span></label>
           </div>
