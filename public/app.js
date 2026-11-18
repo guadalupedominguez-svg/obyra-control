@@ -1985,7 +1985,7 @@
   function pintarMulti() {
     var n = S.sel ? S.sel.size : 0;
     $("multi-btn").setAttribute("aria-pressed", String(!!S.multi));
-    $("multi-btn").textContent = S.multi ? "Selección múltiple: activa" : "Selección múltiple";
+    $("multi-btn").textContent = "Selección múltiple";
     $("multi-n").hidden = !n; $("multi-n").textContent = n + (n === 1 ? " pieza seleccionada" : " piezas seleccionadas");
     $("multi-clear").hidden = !n;
     $("filsel-btn").hidden = !S.multi;
