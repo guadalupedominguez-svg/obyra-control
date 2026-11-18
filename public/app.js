@@ -472,6 +472,10 @@
       return true;
     });
   }
+  // ¿Hay algún filtro o búsqueda en Aprobaciones? Entonces el modelo muestra solo esos pendientes.
+  function filtrosApActivos() {
+    return ["ap-contratista", "ap-usuario", "ap-estatus", "ap-zona", "ap-buscar"].some(function (id) { return $(id) && $(id).isConnected && $(id).value.trim(); });
+  }
   // Opciones de los filtros con lo que hay en la lista actual (y cuántos de cada uno).
   function pintarFiltrosAp() {
     if (!$("ap-usuario")) return;
@@ -551,14 +555,14 @@
     }));
   }
   ["ap-contratista", "ap-usuario", "ap-estatus", "ap-zona"].forEach(function (id) {
-    if ($(id)) $(id).addEventListener("change", function () { S.apSel.clear(); renderAprobar(); });
+    if ($(id)) $(id).addEventListener("change", function () { S.apSel.clear(); renderAprobar(); paintModel(true); });
   });
-  if ($("ap-buscar")) $("ap-buscar").addEventListener("input", function () { clearTimeout(S.tApBus); S.tApBus = setTimeout(function () { S.apSel.clear(); renderAprobar(); }, 200); });
+  if ($("ap-buscar")) $("ap-buscar").addEventListener("input", function () { clearTimeout(S.tApBus); S.tApBus = setTimeout(function () { S.apSel.clear(); renderAprobar(); paintModel(true); }, 300); });
   if ($("ap-limpiar")) $("ap-limpiar").addEventListener("click", function () {
     ["ap-contratista", "ap-usuario", "ap-estatus", "ap-zona"].forEach(function (id) { if ($(id)) $(id).value = ""; });
-    S.apSel.clear(); renderAprobar();
+    S.apSel.clear(); renderAprobar(); paintModel(true);
   });
-  if ($("ap-cola")) $("ap-cola").addEventListener("change", function () { S.apSel.clear(); renderAprobar(); });
+  if ($("ap-cola")) $("ap-cola").addEventListener("change", function () { S.apSel.clear(); renderAprobar(); if (filtrosApActivos()) paintModel(true); });
   // Administrador: descarta las propuestas pendientes de la lista (con un segundo clic para confirmar).
   if ($("ap-descartar")) $("ap-descartar").addEventListener("click", function () {
     var b = $("ap-descartar"), guids = pendientesVista();
@@ -2062,7 +2066,8 @@
       return;
     }
     var ids = [];
-    var visibles = soloEstas || (S.tab === "generador" ? genFilas() : S.tab === "piezas" ? filtradas() : Object.keys(S.piezas));
+    var visibles = soloEstas || (S.tab === "generador" ? genFilas() : S.tab === "piezas" ? filtradas()
+      : S.tab === "aprobar" && filtrosApActivos() ? pendientesVista() : Object.keys(S.piezas));
     visibles.forEach(function (g) {
       var id = S.guid2db.get(g);
       if (id == null) return;
