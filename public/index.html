@@ -89,24 +89,24 @@
                 <button type="button" class="btn btn-ghost btn-sm" id="multi-clear" hidden>Limpiar</button>
               </div>
           <div class="filsel" id="filsel" hidden>
-            <div class="filsel-fila">
-              <label>Por <select id="filsel-campo">
-                <option value="workset">Workset</option>
-                <option value="nombre">Nombre</option>
-                <option value="marca">Marca</option>
-                <option value="categoria">Categoría</option>
-                <option value="familia">Familia</option>
-                <option value="tipo">Tipo</option>
-              </select></label>
-              <input type="search" id="filsel-texto" placeholder="Contiene… (o elige un valor abajo)" autocomplete="off">
-              <span class="filsel-n" id="filsel-n"></span>
+            <div class="fs-campos" role="group" aria-label="Buscar por" id="filsel-campos">
+              <button type="button" class="fs-campo" data-campo="workset" aria-pressed="true">Workset</button>
+              <button type="button" class="fs-campo" data-campo="nombre" aria-pressed="false">Nombre</button>
+              <button type="button" class="fs-campo" data-campo="marca" aria-pressed="false">Marca</button>
+              <button type="button" class="fs-campo" data-campo="categoria" aria-pressed="false">Categoría</button>
+              <button type="button" class="fs-campo" data-campo="familia" aria-pressed="false">Familia</button>
+              <button type="button" class="fs-campo" data-campo="tipo" aria-pressed="false">Tipo</button>
             </div>
-            <div class="filsel-valores" id="filsel-valores"></div>
-            <div class="filsel-fila">
-              <button type="button" class="btn btn-sm btn-primary" id="filsel-agregar">Agregar a la selección</button>
-              <button type="button" class="btn btn-sm" id="filsel-solo">Seleccionar solo estos</button>
-              <button type="button" class="btn btn-sm btn-ghost" id="filsel-quitar">Quitar de la selección</button>
-              <span class="muted filsel-nota">Busca solo entre lo que se ve en el modelo.</span>
+            <input type="search" id="filsel-texto" placeholder="Buscar workset…" autocomplete="off" aria-label="Buscar en la lista">
+            <ul class="fs-lista" id="filsel-valores" aria-label="Valores"></ul>
+            <div class="fs-pie">
+              <p class="fs-n" id="filsel-n"><i class="fs-mues" aria-hidden="true"></i><span></span></p>
+              <button type="button" class="btn btn-primary btn-sm" id="filsel-agregar">Agregar a la selección</button>
+              <div class="fs-links">
+                <button type="button" class="linklike" id="filsel-solo">Seleccionar solo estos</button>
+                <button type="button" class="linklike" id="filsel-quitar">Quitarlos de la selección</button>
+                <button type="button" class="linklike" id="filsel-limpiar">Desmarcar</button>
+              </div>
             </div>
           </div>
             </div>

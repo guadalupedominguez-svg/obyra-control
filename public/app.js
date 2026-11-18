@@ -1932,6 +1932,16 @@
     return true;
   }
   function paintModel(encuadrar, soloEstas) {
+    paintModelBase(encuadrar, soloEstas);
+    // Lo que el filtro de selección encontró se pinta encima, en verde lima, y se encuadra al elegirlo.
+    var v = S.viewer, m = S.model, gs = S.resalte || [];
+    if (!v || !m || !gs.length) return;
+    var ids = [];
+    gs.forEach(function (g) { var id = S.guid2db.get(g); if (id != null) { ids.push(id); v.setThemingColor(id, hexToVec(RESALTE), m, true); } });
+    if (S.resalteEncuadrar && ids.length) { v.fitToView(ids, m); S.resalteEncuadrar = false; }
+    if (v.impl && v.impl.invalidate) v.impl.invalidate(true, true, true);
+  }
+  function paintModelBase(encuadrar, soloEstas) {
     var v = S.viewer, m = S.model;
     if (!v || !m || !S.guid2db.size) return;
     v.clearThemingColors(m);
@@ -2070,35 +2080,49 @@
       return todos.length ? leer(Array.from(new Set(todos))).then(fin, function () { fin([]); }) : fin([]);
     });
   }
+  // Valores elegidos en la lista (uno o varios); lo que coincide se resalta en el modelo antes de seleccionarlo.
+  var RESALTE = "#B6FF00"; // verde lima: no se confunde con ningún estatus
+  var CAMPO_TXT = { workset: "workset", nombre: "nombre", marca: "marca", categoria: "categoría", familia: "familia", tipo: "tipo" };
+  S.filselCampo = "workset"; S.filselVals = new Set();
   function filselCoinciden() {
-    var campo = $("filsel-campo").value, t = norm($("filsel-texto").value), exacto = S.filselExacto;
-    return filselCandidatos().filter(function (g) {
-      var val = ((S.filselProps && S.filselProps.get(g)) || {})[campo] || "";
-      if (!t) return false;
-      return exacto ? val === $("filsel-texto").value : norm(val).indexOf(t) >= 0;
-    });
+    var campo = S.filselCampo;
+    if (!S.filselVals.size) return [];
+    return filselCandidatos().filter(function (g) { return S.filselVals.has(((S.filselProps && S.filselProps.get(g)) || {})[campo] || ""); });
+  }
+  function filselResaltar(encuadrar) {
+    var gs = S.filselAbierto ? filselCoinciden() : [];
+    S.resalte = gs; S.resalteEncuadrar = !!encuadrar && gs.length > 0;
+    paintModel(false);
+    var n = gs.length, t = $("filsel-n");
+    t.lastChild.textContent = n ? nf0.format(n) + (n === 1 ? " elemento resaltado en el modelo" : " elementos resaltados en el modelo") : "Elige uno o varios valores para verlos en el modelo.";
+    t.classList.toggle("activo", !!n);
+    ["filsel-agregar", "filsel-solo", "filsel-quitar", "filsel-limpiar"].forEach(function (id) { $(id).disabled = !n; });
+    $("filsel-agregar").textContent = n ? "Agregar " + nf0.format(n) + " a la selección" : "Agregar a la selección";
   }
   function filselContar() {
-    var campo = $("filsel-campo").value, cands = filselCandidatos();
-    $("filsel-n").textContent = "Leyendo propiedades…";
+    var campo = S.filselCampo, cands = filselCandidatos(), box = $("filsel-valores");
+    box.replaceChildren(el("li", { class: "fs-vacio", text: "Leyendo propiedades…" }));
     filselLeer(cands).then(function () {
-      // Valores del campo entre lo visible, con cuántos elementos tiene cada uno.
       var cuenta = {};
       cands.forEach(function (g) { var val = ((S.filselProps.get(g)) || {})[campo]; if (val) cuenta[val] = (cuenta[val] || 0) + 1; });
+      Array.from(S.filselVals).forEach(function (v) { if (!cuenta[v]) S.filselVals.delete(v); });
       var t = norm($("filsel-texto").value);
-      var vals = Object.keys(cuenta).filter(function (k) { return !t || S.filselExacto || norm(k).indexOf(t) >= 0; })
+      var vals = Object.keys(cuenta).filter(function (k) { return !t || norm(k).indexOf(t) >= 0 || S.filselVals.has(k); })
         .sort(function (a, b) { return a.localeCompare(b, "es", { numeric: true }); });
-      var box = $("filsel-valores");
-      box.replaceChildren.apply(box, vals.slice(0, 200).map(function (k) {
-        var b = el("button", { type: "button", title: k, class: S.filselExacto && $("filsel-texto").value === k ? "activo" : "" }, [k, el("small", { text: String(cuenta[k]) })]);
-        b.addEventListener("click", function () { $("filsel-texto").value = k; S.filselExacto = true; filselContar(); });
-        return b;
-      }));
-      if (!vals.length) box.replaceChildren(el("span", { class: "muted", text: Object.keys(cuenta).length ? "Ningún valor coincide." : "Los elementos visibles no traen esta propiedad." }));
-      var n = filselCoinciden().length;
-      $("filsel-n").textContent = $("filsel-texto").value ? n + " de " + cands.length + " visibles" : cands.length + " visibles";
-      ["filsel-agregar", "filsel-solo", "filsel-quitar"].forEach(function (id) { $(id).disabled = !n; });
-    }).catch(function () { $("filsel-n").textContent = "No se pudieron leer las propiedades."; });
+      box.replaceChildren.apply(box, vals.length ? vals.slice(0, 300).map(function (k) {
+        var on = S.filselVals.has(k);
+        var b = el("button", { type: "button", class: "fs-item", "aria-pressed": String(on), title: k }, [
+          el("i", { class: "fs-check", "aria-hidden": "true" }), el("span", { class: "fs-nom", text: k }), el("span", { class: "fs-cnt", text: nf0.format(cuenta[k]) }),
+        ]);
+        b.addEventListener("click", function () {
+          if (S.filselVals.has(k)) S.filselVals.delete(k); else S.filselVals.add(k);
+          b.setAttribute("aria-pressed", String(S.filselVals.has(k)));
+          filselResaltar(true);
+        });
+        return el("li", null, [b]);
+      }) : [el("li", { class: "fs-vacio", text: Object.keys(cuenta).length ? "Nada coincide con «" + $("filsel-texto").value + "»." : "Los elementos visibles no traen " + CAMPO_TXT[campo] + "." })]);
+      filselResaltar(false);
+    }).catch(function () { box.replaceChildren(el("li", { class: "fs-vacio", text: "No se pudieron leer las propiedades." })); });
   }
   function filselAplicar(modo) {
     var gs = filselCoinciden(); if (!gs.length) return;
@@ -2106,23 +2130,31 @@
     if (modo === "solo") S.sel = new Set(gs);
     else if (modo === "quitar") S.sel = new Set(antes.filter(function (g) { return gs.indexOf(g) < 0; }));
     else S.sel = new Set(antes.concat(gs.filter(function (g) { return antes.indexOf(g) < 0; })));
+    S.filselVals.clear(); // ya quedaron en la selección: se apaga el resaltado
     selectInViewer(); pintarMulti(); etiquetas3D();
     if (S.modulo !== "lean") renderLista();
+    filselContar();
     toast((modo === "quitar" ? "Quitados " : "Seleccionados ") + gs.length + " elementos · " + S.sel.size + " en la selección.");
   }
   function filselAbrir(on) {
     S.filselAbierto = on;
     $("filsel").hidden = !on; $("filsel-btn").setAttribute("aria-pressed", String(on));
-    if (on) filselContar();
+    if (on) filselContar(); else { S.filselVals.clear(); filselResaltar(false); }
   }
   $("filsel-btn").addEventListener("click", function () { filselAbrir(!S.filselAbierto); });
-  $("filsel-campo").addEventListener("change", function () { $("filsel-texto").value = ""; S.filselExacto = false; filselContar(); });
-  $("filsel-texto").addEventListener("input", function () {
-    S.filselExacto = false; clearTimeout(S.filselT); S.filselT = setTimeout(filselContar, 200);
+  qsa("#filsel-campos .fs-campo").forEach(function (b) {
+    b.addEventListener("click", function () {
+      S.filselCampo = b.getAttribute("data-campo"); S.filselVals.clear(); $("filsel-texto").value = "";
+      qsa("#filsel-campos .fs-campo").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+      $("filsel-texto").placeholder = "Buscar " + CAMPO_TXT[S.filselCampo] + "…";
+      filselContar();
+    });
   });
+  $("filsel-texto").addEventListener("input", function () { clearTimeout(S.filselT); S.filselT = setTimeout(filselContar, 200); });
   $("filsel-agregar").addEventListener("click", function () { filselAplicar("agregar"); });
   $("filsel-solo").addEventListener("click", function () { filselAplicar("solo"); });
   $("filsel-quitar").addEventListener("click", function () { filselAplicar("quitar"); });
+  $("filsel-limpiar").addEventListener("click", function () { S.filselVals.clear(); filselContar(); });
 
   function onViewerSelect(ev) {
     if (S.syncing) return;
