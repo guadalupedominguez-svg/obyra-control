@@ -471,6 +471,9 @@
       es: function (r) { return etapaGen(r) === "residente"; }, vacio: "No hay generadores por validar." },
     estimacion: { nombre: "Estimaciones por aprobar", puede: "autorizar", ok: "Aprobar (Estimado)", no: "Regresar a Terminado", acc: ["aprobar", "regresar"],
       es: function (r) { return etapaGen(r) === "superintendente"; }, vacio: "No hay estimaciones por aprobar." },
+    // El contratista consulta lo que mandó a estimar, en cualquier etapa (no valida nada).
+    enviados: { nombre: "Mis envíos por aprobar", puede: "enviarEstimacion", soloVer: true, ok: "", no: "", acc: [],
+      es: function (r) { return !!etapaGen(r); }, vacio: "No tienes generadores esperando aprobación." },
   };
   function enCola(k) { return Object.keys(S.piezas).filter(function (g) { return COLAS[k].es(rec(g)); }); }
   function colaActual() { return ($("ap-cola") && $("ap-cola").value) || "avance"; }
@@ -527,9 +530,15 @@
   }
   // Las colas que le tocan a cada quien primero; quien solo consulta ve todas.
   function colasMias() { return ["estimacion", "avance", "generador"].filter(function (k) { return S.permisos[COLAS[k].puede]; }); }
+  // Colas visibles: el contratista ve primero sus envíos; los demás no ven esa cola.
+  function colasVisibles() {
+    var base = ["estimacion", "avance", "generador"];
+    return S.permisos.enviarEstimacion ? ["enviados"].concat(base) : base;
+  }
   function pintarColas() {
     var sel = $("ap-cola"); if (!sel) return;
-    var mias = colasMias(), orden = mias.concat(Object.keys(COLAS).filter(function (k) { return mias.indexOf(k) < 0; }));
+    var mias = colasMias(), vis = colasVisibles();
+    var orden = (S.permisos.enviarEstimacion ? ["enviados"] : []).concat(mias, vis.filter(function (k) { return mias.indexOf(k) < 0 && k !== "enviados"; }));
     var prev = sel.value;
     fillSelect(sel, orden.map(function (k) { return [k, COLAS[k].nombre + " (" + enCola(k).length + ")"]; }));
     if (prev && orden.indexOf(prev) >= 0) sel.value = prev;
@@ -547,7 +556,7 @@
     if (!$("lista-ap")) return;
     pintarColas();
     pintarFiltrosAp();
-    var cola = COLAS[colaActual()], actua = !!S.permisos[cola.puede];
+    var cola = COLAS[colaActual()], actua = !cola.soloVer && !!S.permisos[cola.puede];
     $("ap-acciones").hidden = !actua;
     if ($("ap-all")) $("ap-all").hidden = !actua;
     $("ap-ok").textContent = cola.ok; $("ap-no").textContent = cola.no;
@@ -574,7 +583,8 @@
       if (r.pend && r.pend.estatus === "Estimado") {
         cuerpo = [pill("Por aprobar", "Estimación " + r.pend.estimacion),
           el("span", { class: "s", text: [p.clave, p.takt && "Takt " + p.takt, p.eje && "Eje " + p.eje, (p.largo ? f2(p.largo) + " m" : "")].filter(Boolean).join(" · ") }),
-          el("span", { class: "note", text: "Enviado por " + r.pend.por + " · " + fecha(r.pend.at) + (r.pend.validadoPor ? " · validado por " + r.pend.validadoPor : "") + (r.pend.comentario ? " · " + r.pend.comentario : "") })];
+          el("span", { class: "note", text: "Enviado por " + r.pend.por + " · " + fecha(r.pend.at) + (r.pend.validadoPor ? " · validado por " + r.pend.validadoPor : "") + (r.pend.comentario ? " · " + r.pend.comentario : "") }),
+          el("span", { class: "note warn", text: etapaGen(r) === "residente" ? "Espera validación del residente" : "Espera aprobación del superintendente" })];
       } else if (r.pend) { // reporte del flujo anterior
         cuerpo = [pill(r.pend.estatus, r.pend.estatus + (r.pend.estatus !== "Terminado" && r.pend.pct ? " " + r.pend.pct + " %" : "")),
           el("span", { class: "s", text: [p.clave, p.zona, p.eje && "Eje " + p.eje, "de " + (r.estatus || "Planeado")].filter(Boolean).join(" · ") }),
