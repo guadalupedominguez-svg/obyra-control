@@ -524,3 +524,33 @@ input::placeholder { color: var(--muted); }
 .reset-pw-caja code { flex: 1; font: 700 22px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: .06em; color: var(--accent); user-select: all; }
 td.u-acc { white-space: nowrap; }
 td.u-acc .btn + .btn { margin-left: 6px; }
+
+/* ---------- Controles del modelo y filtros en desplegables (dentro del panel) ---------- */
+.panel { display: flex; flex-direction: column; }
+.panel > nav.tabs, .panel > .vista-ctrl { flex: none; }
+.panel > .tabpane, .panel > .ln-body { flex: 1 1 0; }
+.vista-ctrl { display: flex; flex-direction: column; border-bottom: 1px solid var(--line); }
+.vista-ctrl[hidden] { display: none; }
+.desp > summary { display: flex; align-items: center; gap: 10px; padding: 9px 14px; cursor: pointer; list-style: none; font-size: 13px; font-weight: 600; user-select: none; }
+.desp > summary::-webkit-details-marker { display: none; }
+.desp > summary::after { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); margin-left: 4px; transition: transform .15s ease; flex-shrink: 0; }
+.desp[open] > summary::after { transform: rotate(-135deg); }
+.desp > summary svg { color: var(--accent); flex-shrink: 0; }
+.desp > summary:hover { background: var(--surface-2); }
+.desp-t { white-space: nowrap; }
+.desp-res { flex: 1; text-align: right; color: var(--muted); font-weight: 400; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.vista-ctrl .desp + .desp { border-top: 1px solid rgba(255, 255, 255, .05); }
+.vista-ctrl .desp-body { display: flex; flex-direction: column; gap: 8px; padding: 2px 14px 12px; }
+.desp-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.vista-ctrl #vertodo-btn[aria-pressed="true"], .vista-ctrl #multi-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.vista-ctrl #etiq-btn[aria-pressed="true"], .vista-ctrl #zonas-btn[aria-pressed="true"], .vista-ctrl #filsel-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.vista-ctrl .zona-chip { border-color: var(--accent); color: var(--accent); align-self: flex-start; }
+.vista-ctrl .zona-chip[hidden] { display: none; }
+.vista-ctrl .zonas-lista { position: static; max-height: 240px; min-width: 0; background: rgba(255, 255, 255, .03); }
+.vista-ctrl .filsel { border-top: 0; padding: 0; margin: 0; }
+/* Avance: la búsqueda a la vista, los demás filtros en un desplegable. */
+.filtros-wrap { display: flex; flex-direction: column; gap: 6px; }
+.filtros-wrap > input[type="search"] { width: 100%; box-sizing: border-box; }
+.filtros-wrap .desp { border: 1px solid var(--line); border-radius: 8px; }
+.filtros-wrap .desp > summary { padding: 7px 10px; border-radius: 8px; }
+.filtros-wrap .desp-body { padding: 4px 10px 10px; }

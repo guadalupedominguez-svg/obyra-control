@@ -60,8 +60,39 @@
       if (S.abrirTab) S.abrirTab(cfg.tab);
       $("panel-titulo").textContent = cfg.titulo;
     }
+    moverControles(cfg.mod === "lean" ? "lean-panel" : "control-panel");
     if (S.viewer) setTimeout(function () { try { S.viewer.resize(); } catch (e) { /* nada */ } }, 60);
   }
+
+  // ---------- Controles del modelo en el panel, en desplegables ----------
+  function moverControles(panelId) {
+    var c = $("multi"), panel = $(panelId), nav = panel && panel.querySelector("nav.tabs");
+    if (c && nav && nav.nextSibling !== c) panel.insertBefore(c, nav.nextSibling);
+  }
+  function resumenes() {
+    var on = function (id) { var b = $(id); return b && b.getAttribute("aria-pressed") === "true"; };
+    var m = [on("vertodo-btn") ? "Todo el modelo" : "Solo lo filtrado"];
+    if (on("etiq-btn")) m.push("etiquetas");
+    if (on("zonas-btn")) m.push("zonas");
+    if (S.zonaAislada) m.push("aislada: " + S.zonaAislada);
+    $("desp-modelo-res").textContent = m.join(" · ");
+    var n = S.sel ? S.sel.size : 0;
+    $("desp-sel-res").textContent = (on("multi-btn") ? "Múltiple" : "Una a la vez") + (n ? " · " + n + " seleccionada" + (n === 1 ? "" : "s") : "");
+    var act = O.qsa("#desp-filtros select").filter(function (x) { return !x.hidden && x.isConnected && x.value; }).length;
+    var rf = $("desp-filtros-res"); if (rf) rf.textContent = act ? act + (act === 1 ? " activo" : " activos") : "Ninguno";
+  }
+  var tRes = null;
+  function resumirLuego() { clearTimeout(tRes); tRes = setTimeout(resumenes, 30); }
+  ["multi", "desp-filtros"].forEach(function (id) {
+    var n = $(id); if (!n) return;
+    n.addEventListener("click", resumirLuego); n.addEventListener("change", resumirLuego);
+  });
+  if ($("viewer")) $("viewer").addEventListener("click", resumirLuego);
+  // Cada desplegable recuerda si lo dejaste abierto; de inicio, todos cerrados.
+  O.qsa("details.desp").forEach(function (d) {
+    try { if (localStorage.getItem("ctrl_desp_" + d.id) === "1") d.open = true; } catch (e) { /* nada */ }
+    d.addEventListener("toggle", function () { try { localStorage.setItem("ctrl_desp_" + d.id, d.open ? "1" : "0"); } catch (e) { /* nada */ } });
+  });
 
   // ---------- Inicio ----------
   var leanCache = null;
@@ -181,6 +212,7 @@
     var reg = S.permisos && S.permisos.reportar ? Object.keys(S.piezas || {}).filter(function (g) { var r = O.rec(g); return r.rechazo && !r.porValidar; }).length : 0;
     var bi = $("nav-badge-inicio"); if (bi) { bi.textContent = n + reg; bi.hidden = !(n + reg); }
     if (actual === "inicio") { clearTimeout(tPend); tPend = setTimeout(renderInicio, 150); }
+    resumirLuego();
   };
 
   O.qsa("#nav-lat .nav-item[data-sec]").forEach(function (b) { b.addEventListener("click", function () { irA(b.getAttribute("data-sec")); }); });
@@ -200,5 +232,6 @@
     var s = null; try { s = localStorage.getItem("ctrl_sec"); } catch (e) { /* nada */ }
     irA(s || "inicio");
     O.alCambiarAvance();
+    resumenes();
   });
 })();

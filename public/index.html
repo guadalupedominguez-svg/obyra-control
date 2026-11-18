@@ -63,18 +63,31 @@
         <div id="viewer-msg" class="viewer-msg" hidden></div>
         <div id="aviso-version" class="aviso-version" role="status" hidden></div>
         <div class="legend" id="legend" aria-label="Colores por estatus"></div>
-        <div class="zonas-lista" id="zonas-lista" hidden></div>
         <div class="zona-tip" id="zona-tip" role="status" hidden></div>
-        <div class="multi" id="multi" hidden>
-          <button type="button" class="btn btn-sm" id="vertodo-btn" aria-pressed="false" title="Muestra todo el edificio, con los colores encima">Ver modelo completo</button>
-          <button type="button" class="btn btn-sm" id="multi-btn" aria-pressed="false">Selección múltiple</button>
-          <button type="button" class="btn btn-sm" id="etiq-btn" aria-pressed="true" title="Muestra la marca de las piezas en foco, como en el generador">Etiquetas: sí</button>
-          <button type="button" class="btn btn-sm" id="zonas-btn" aria-pressed="false" title="Volúmenes de color por zona (tren takt) con su % de avance">Zonas: no</button>
-          <span id="etiq-n" class="multi-n" hidden></span>
-          <span id="multi-n" class="multi-n" hidden></span>
-          <button type="button" class="btn btn-ghost btn-sm" id="multi-clear" hidden>Limpiar</button>
-          <button type="button" class="btn btn-sm" id="filsel-btn" aria-pressed="false" hidden title="Selecciona de un jalón por workset, nombre, marca, categoría, familia o tipo">Filtrar selección</button>
-          <button type="button" class="btn btn-sm zona-chip" id="zona-chip" hidden title="Quitar el aislamiento de la zona"></button>
+        <!-- Controles del modelo: se muestran en el panel de la sección activa (nav.js los mueve), en desplegables. -->
+        <div class="vista-ctrl" id="multi" hidden>
+          <details class="desp" id="desp-modelo">
+            <summary><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><span class="desp-t">Vista del modelo</span><span class="desp-res" id="desp-modelo-res"></span></summary>
+            <div class="desp-body">
+              <div class="desp-fila">
+                <button type="button" class="btn btn-sm" id="vertodo-btn" aria-pressed="false" title="Muestra todo el edificio, con los colores encima">Ver modelo completo</button>
+                <button type="button" class="btn btn-sm" id="etiq-btn" aria-pressed="true" title="Muestra la marca de las piezas en foco, como en el generador">Etiquetas: sí</button>
+                <button type="button" class="btn btn-sm" id="zonas-btn" aria-pressed="false" title="Volúmenes de color por zona (tren takt) con su % de avance">Zonas: no</button>
+                <span id="etiq-n" class="multi-n" hidden></span>
+              </div>
+              <button type="button" class="btn btn-sm zona-chip" id="zona-chip" hidden title="Quitar el aislamiento de la zona"></button>
+              <div class="zonas-lista" id="zonas-lista" hidden></div>
+            </div>
+          </details>
+          <details class="desp" id="desp-sel">
+            <summary><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3l14 7-6 2-2 6z"/><path d="M13 13l6 6"/></svg><span class="desp-t">Selección</span><span class="desp-res" id="desp-sel-res"></span></summary>
+            <div class="desp-body">
+              <div class="desp-fila">
+                <button type="button" class="btn btn-sm" id="multi-btn" aria-pressed="false">Selección múltiple</button>
+                <button type="button" class="btn btn-sm" id="filsel-btn" aria-pressed="false" hidden title="Selecciona de un jalón por workset, nombre, marca, categoría, familia o tipo">Filtrar selección</button>
+                <span id="multi-n" class="multi-n" hidden></span>
+                <button type="button" class="btn btn-ghost btn-sm" id="multi-clear" hidden>Limpiar</button>
+              </div>
           <div class="filsel" id="filsel" hidden>
             <div class="filsel-fila">
               <label>Por <select id="filsel-campo">
@@ -96,6 +109,8 @@
               <span class="muted filsel-nota">Busca solo entre lo que se ve en el modelo.</span>
             </div>
           </div>
+            </div>
+          </details>
         </div>
       </section>
 
@@ -132,12 +147,17 @@
 
         <!-- Piezas -->
         <section class="tabpane" data-pane="piezas">
-          <div class="filters">
-            <select id="f-contratista" aria-label="Contratista" data-perm="verTodo"></select>
-            <select id="f-estatus" aria-label="Estatus"></select>
-            <select id="f-estnum" aria-label="Estimación" class="full" hidden></select>
-            <select id="f-takt" aria-label="Área takt" class="full" hidden></select>
+          <div class="filtros-wrap">
             <input id="f-buscar" type="search" placeholder="Buscar marca, clave, zona, takt o eje" aria-label="Buscar">
+            <details class="desp" id="desp-filtros">
+              <summary><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg><span class="desp-t">Filtros</span><span class="desp-res" id="desp-filtros-res"></span></summary>
+              <div class="filters desp-body">
+                <select id="f-contratista" aria-label="Contratista" data-perm="verTodo"></select>
+                <select id="f-estatus" aria-label="Estatus"></select>
+                <select id="f-estnum" aria-label="Estimación" class="full" hidden></select>
+                <select id="f-takt" aria-label="Área takt" class="full" hidden></select>
+              </div>
+            </details>
           </div>
           <div class="list-head">
             <label class="check"><input type="checkbox" id="sel-all"> <span id="list-count">0 piezas</span></label>
