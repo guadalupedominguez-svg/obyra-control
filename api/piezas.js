@@ -117,7 +117,7 @@ export default route(["GET", "POST"], async (req, res) => {
       if (rec.pend && rec.pend.estatus !== "Estimado") {
         if (body.action === "validar") Object.assign(rec, { estatus: rec.pend.estatus, pct: rec.pend.pct });
         else if (!comentario) throw new HttpError(400, "Escribe el motivo para que el contratista sepa qué corregir.");
-        else rec.rechazo = { motivo: comentario, por: me.nombre, at: ahora(), estatus: rec.pend.estatus };
+        else { rec.rechazo = { motivo: comentario, por: me.nombre, at: ahora(), estatus: rec.pend.estatus }; rec.estatus = "En ejecución"; }
         push(rec, evento(me, body.action === "validar" ? "valida" : "rechaza", { estatus: rec.pend.estatus, pct: rec.pend.pct, comentario }));
         delete rec.pend;
         if (body.action === "validar") rec.validado = { por: me.nombre, at: ahora() };
@@ -130,7 +130,9 @@ export default route(["GET", "POST"], async (req, res) => {
       } else {
         if (!comentario) throw new HttpError(400, "Escribe el motivo para que el contratista sepa qué corregir.");
         const propuesto = { estatus: rec.estatus, pct: rec.pct };
-        Object.assign(rec, rec.antes || { estatus: "Planeado", pct: 0 });
+        // Lo rechazado queda En ejecución (con el % que tenía, si ya estaba en ejecución) hasta que se corrija.
+        const antes = rec.antes || { estatus: "Planeado", pct: 0 };
+        Object.assign(rec, { estatus: "En ejecución", pct: antes.estatus === "En ejecución" ? antes.pct || 0 : 0 });
         rec.rechazo = { motivo: comentario, por: me.nombre, at: ahora(), estatus: propuesto.estatus, pct: propuesto.pct };
         push(rec, evento(me, "rechaza", { estatus: propuesto.estatus, pct: propuesto.pct, comentario }));
       }

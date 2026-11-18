@@ -266,7 +266,8 @@
     });
   }
 
-  var VALIDADOS = "__validados";
+  var VALIDADOS = "__validados", RECHAZADOS = "__rechazados";
+  function rechazado(g) { var r = rec(g); return !!r.rechazo && !r.porValidar && !r.pend; }
   function filtradas() {
     var c = $("f-contratista") ? $("f-contratista").value : "";
     // La zona aislada (doble clic en «Zonas · avance») también filtra la lista.
@@ -494,11 +495,11 @@
     var v = function (id) { return $(id) ? $(id).value : ""; };
     var c = v("ap-contratista"), u = v("ap-usuario"), e = v("ap-estatus"), z = v("ap-zona"), q = v("ap-buscar").trim().toLowerCase();
     // «Validados»: lo que el residente ya validó y el contratista puede estimar (no es un pendiente de revisión).
-    var base = e === VALIDADOS ? Object.keys(S.piezas).filter(estimable) : pendientes();
+    var base = e === VALIDADOS ? Object.keys(S.piezas).filter(estimable) : e === RECHAZADOS ? Object.keys(S.piezas).filter(rechazado) : pendientes();
     return base.filter(function (g) {
       if (c && S.piezas[g].contratista !== c) return false;
       if (u && apQuien(g) !== u) return false;
-      if (e && e !== VALIDADOS && apEstatus(g) !== e) return false;
+      if (e && e !== VALIDADOS && e !== RECHAZADOS && apEstatus(g) !== e) return false;
       if (z && zonaDe(S.piezas[g]) !== z) return false;
       if (q && apTexto(g).indexOf(q) < 0) return false;
       return true;
@@ -526,6 +527,12 @@
       var nVal = Object.keys(S.piezas).filter(estimable).length, selE = $("ap-estatus");
       selE.appendChild(el("option", { value: VALIDADOS, text: "Validado (" + nVal + ")" }));
       if (prevE === VALIDADOS) selE.value = VALIDADOS;
+    }
+    // Rechazado: lo que el residente regresó con su motivo (lo ven el residente y el contratista).
+    if (S.permisos.aprobar || S.permisos.reportar) {
+      var nRech = Object.keys(S.piezas).filter(rechazado).length;
+      $("ap-estatus").appendChild(el("option", { value: RECHAZADOS, text: "Rechazado (" + nRech + ")" }));
+      if (prevE === RECHAZADOS) $("ap-estatus").value = RECHAZADOS;
     }
     llenar("ap-zona", "Todas las zonas", function (g) { return zonaDe(S.piezas[g]); });
     var act = ["ap-contratista", "ap-usuario", "ap-estatus", "ap-zona"].filter(function (id) { return $(id) && $(id).isConnected && $(id).value; }).length;
@@ -573,13 +580,14 @@
     if (soloSel) { var n0 = S.sel.size; list = list.filter(function (g) { return S.sel.has(g); }); fuera = n0 - list.length; }
     pintarChipSel("ap-solo-chip", soloSel);
     S.apSel.forEach(function (g) { if (list.indexOf(g) < 0) S.apSel["delete"](g); });
-    var esVal = $("ap-estatus") && $("ap-estatus").value === VALIDADOS;
-    $("ap-count").textContent = nf0.format(list.length) + (esVal ? (list.length === 1 ? " validado" : " validados") : list.length === 1 ? " pendiente" : " pendientes") +
+    var esVal = $("ap-estatus") && $("ap-estatus").value === VALIDADOS, esRech = $("ap-estatus") && $("ap-estatus").value === RECHAZADOS;
+    if (esRech) { $("ap-acciones").hidden = true; if ($("ap-all")) $("ap-all").hidden = true; }
+    $("ap-count").textContent = nf0.format(list.length) + (esRech ? (list.length === 1 ? " rechazado" : " rechazados") : esVal ? (list.length === 1 ? " validado" : " validados") : list.length === 1 ? " pendiente" : " pendientes") +
       (soloSel ? " de lo seleccionado en el modelo" + (fuera > 0 ? " (" + fuera + " sin pendientes aquí)" : "") : "");
     if ($("ap-all")) $("ap-all").checked = list.length > 0 && list.every(function (g) { return S.apSel.has(g); });
     if (rev) { var nRev = S.apSel.size || list.length; $("ap-ok").textContent = "Revisar generador" + (nRev ? " (" + nRev + (nRev === 1 ? " pieza)" : " piezas)") : ""); $("ap-ok").disabled = !list.length; }
     else $("ap-ok").disabled = false;
-    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: soloSel ? "Lo que seleccionaste en el modelo no tiene pendientes en esta lista." : esVal ? "Aún no hay elementos validados." : cola.vacio })); return; }
+    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: soloSel ? "Lo que seleccionaste en el modelo no tiene pendientes en esta lista." : esRech ? "No hay elementos rechazados." : esVal ? "Aún no hay elementos validados." : cola.vacio })); return; }
     $("lista-ap").replaceChildren.apply($("lista-ap"), list.map(function (g) {
       var p = S.piezas[g], r = rec(g);
       var cb = el("span"); // sin casilla para quien solo consulta
@@ -601,8 +609,9 @@
       } else {
         var antes = r.antes ? r.antes.estatus + (r.antes.estatus === "En ejecución" && r.antes.pct ? " " + r.antes.pct + " %" : "") : "Planeado";
         cuerpo = [pill(r.estatus, r.estatus + (r.estatus === "En ejecución" && r.pct ? " " + r.pct + " %" : "")),
-          el("span", { class: "s", text: [p.clave, p.takt && "Takt " + p.takt, p.eje && "Eje " + p.eje, "antes: " + antes].filter(Boolean).join(" · ") }),
+          el("span", { class: "s", text: [p.clave, p.takt && "Takt " + p.takt, p.eje && "Eje " + p.eje, r.rechazo && !r.porValidar ? "propuso: " + r.rechazo.estatus : "antes: " + antes].filter(Boolean).join(" · ") }),
           r.porValidar ? el("span", { class: "note", text: r.porValidar.por + " · " + fecha(r.porValidar.at) + (r.porValidar.comentario ? " · " + r.porValidar.comentario : "") })
+            : r.rechazo ? el("span", { class: "note bad", text: "Rechazado por " + r.rechazo.por + " · " + fecha(r.rechazo.at) + (r.rechazo.motivo ? " · " + r.rechazo.motivo : "") })
             : el("span", { class: "note ok", text: r.validado ? "Validado por " + r.validado.por + " · " + fecha(r.validado.at) : "Validado" })];
       }
       var li = el("li", { class: S.apSel.has(g) ? "sel" : "" }, [cb, el("span", { class: "m", text: (p.marca || "(sin marca)") + " · " + p.contratista })].concat(cuerpo));

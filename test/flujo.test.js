@@ -130,11 +130,12 @@ test("el contratista actualiza su avance: se aplica de inmediato y queda sin val
   assert.equal((await copresa("piezas", { action: "validar", guids: [G(1)] })).status, 403);
 });
 
-test("el residente valida el avance o lo rechaza (regresa a como estaba)", async () => {
+test("el residente valida el avance o lo rechaza (queda En ejecución)", async () => {
   assert.equal((await resi("piezas", { action: "rechazar", guids: [G(2)] })).status, 400);
   let r = await resi("piezas", { action: "rechazar", guids: [G(2)], comentario: "Falta aplanado" });
   assert.equal(r.json.avance[G(2)].rechazo.motivo, "Falta aplanado");
-  assert.equal(r.json.avance[G(2)].estatus, "Planeado"); // regresa a como estaba antes del reporte
+  assert.equal(r.json.avance[G(2)].estatus, "En ejecución"); // lo rechazado queda En ejecución
+  assert.equal(r.json.avance[G(2)].pct, 0);
   assert.equal(r.json.avance[G(2)].porValidar, undefined);
   r = await resi("piezas", { action: "validar", guids: [G(1)] });
   assert.equal(r.json.avance[G(1)].estatus, "Terminado");
