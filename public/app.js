@@ -1245,6 +1245,14 @@
         R.hidden = !rev; $("gp-coment").value = "";
         if (rev) { var cola = COLAS[rev.cola]; $("gp-validar").textContent = cola.okRev || cola.ok; $("gp-regresar").textContent = cola.noRev || cola.no; }
       }
+      // El contratista envía desde aquí lo que está viendo (solo lo Terminado y validado).
+      var E = $("gp-enviar");
+      if (E) {
+        var nEnv = filas.filter(estimable).length;
+        E.hidden = !!rev || !S.permisos.enviarEstimacion || !nEnv;
+        $("gp-est").value = $("g-est") ? $("g-est").value : "";
+        $("gp-enviar-btn").textContent = "Enviar " + nEnv + (nEnv === 1 ? " pieza" : " piezas") + " a validar";
+      }
       $("gen-prev").showModal();
     }).finally(function () { btn.disabled = false; btn.textContent = texto; if (!rev) actualizarMarcar(); });
   }
@@ -1267,6 +1275,21 @@
       updateBadge(); renderAprobar(); renderLista(); paintModel();
     }).catch(function (e) { toast(e.message, true); }).finally(function () { b.disabled = false; });
   }
+  if ($("gp-enviar-btn")) $("gp-enviar-btn").addEventListener("click", function () {
+    if (!GP) return;
+    var est = $("gp-est").value.trim();
+    if (!est) { toast("Escribe el número de estimación (ej. AD-003).", true); $("gp-est").focus(); return; }
+    var guids = GP.filas.filter(estimable);
+    if (!guids.length) { toast("No hay piezas Terminadas y validadas para enviar.", true); return; }
+    var b = $("gp-enviar-btn"); b.disabled = true;
+    api("/api/piezas", { action: "enviar", guids: guids, estimacion: est }).then(function (r) {
+      Object.assign(S.avance, r.avance);
+      $("gen-prev").close();
+      toast(nf0.format(r.actualizadas) + " piezas enviadas en la estimación " + est.toUpperCase() + ": ahora las valida el residente.");
+      S.gSel.clear(); if ($("g-est")) $("g-est").value = "";
+      updateBadge(); renderGenerador(); renderLista(); paintModel();
+    }).catch(function (e) { toast(e.message, true); }).finally(function () { b.disabled = false; });
+  });
   if ($("gp-validar")) $("gp-validar").addEventListener("click", function () { decidirRevision("ok"); });
   if ($("gp-regresar")) $("gp-regresar").addEventListener("click", function () { decidirRevision("no"); });
   $("gp-cerrar").addEventListener("click", function () { $("gen-prev").close(); });

@@ -333,6 +333,11 @@
             <button id="gp-excel" class="btn btn-primary btn-sm" type="button">Descargar Excel</button>
             <button id="gp-cerrar" class="btn btn-ghost btn-sm" type="button">Cerrar</button>
           </div>
+          <!-- Contratista: envía este generador a validar (residente) antes de estimar -->
+          <div class="gp-revision" id="gp-enviar" hidden>
+            <input id="gp-est" type="text" maxlength="30" placeholder="Estimación (ej. AD-003)" aria-label="Número de estimación">
+            <button id="gp-enviar-btn" class="btn btn-primary btn-sm" type="button">Enviar a validar</button>
+          </div>
           <!-- Revisión desde Aprobaciones: validar o regresar viendo el generador -->
           <div class="gp-revision" id="gp-revision" hidden>
             <input id="gp-coment" type="text" maxlength="500" placeholder="Comentario (obligatorio si lo regresas)" aria-label="Comentario de la revisión">
