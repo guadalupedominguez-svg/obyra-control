@@ -647,6 +647,10 @@
       var p = S.piezas[g], r = rec(g);
       if (c && p.contratista !== c) return false;
       if (vista === "porestimar") return !r.estimacion; // cualquier estatus: lo que resta por estimar
+      if (vista === "poraprobar") { // enviadas a estimar, esperando al residente o al superintendente
+        var na = $("g-estnum").value;
+        return !!(r.pend && r.pend.estatus === "Estimado") && (!na || r.pend.estimacion === na);
+      }
       if (vista === "estimadas") {
         var n = $("g-estnum").value;
         return !!r.estimacion && (!n || r.estimacion === n);
@@ -660,13 +664,14 @@
   // Lista de estimaciones (de las piezas del contratista elegido) para la vista "Estimadas".
   function syncEstimaciones() {
     var sel = $("g-estnum"), vista = $("g-vista").value, c = $("g-contratista").value;
-    sel.hidden = vista !== "estimadas";
+    sel.hidden = vista !== "estimadas" && vista !== "poraprobar";
     var marcar = $("g-marcar"); if (marcar) marcar.parentNode.hidden = vista !== "porestimar";
     $("g-hint").hidden = vista !== "porestimar";
-    if (vista !== "estimadas") return;
+    if (vista !== "estimadas" && vista !== "poraprobar") return;
     var prev = sel.value;
+    var numDe = vista === "poraprobar" ? function (r) { return r.pend && r.pend.estatus === "Estimado" ? r.pend.estimacion : ""; } : function (r) { return r.estimacion; };
     var nums = Array.from(new Set(Object.keys(S.piezas).filter(function (g) { return !c || S.piezas[g].contratista === c; })
-      .map(function (g) { return rec(g).estimacion; }).filter(Boolean))).sort(function (a, b) { return a.localeCompare(b, "es", { numeric: true }); });
+      .map(function (g) { return numDe(rec(g)); }).filter(Boolean))).sort(function (a, b) { return a.localeCompare(b, "es", { numeric: true }); });
     fillSelect(sel, [["", "Todas las estimaciones"]].concat(nums.map(function (n) { return [n, "Estimación " + n]; })));
     sel.value = nums.indexOf(prev) >= 0 ? prev : "";
   }
@@ -685,7 +690,7 @@
         el("b", { text: x.clave + (x.partida ? " · " + x.partida : "") }), el("b", { text: f2(x.area) + " m²" }),
         el("span", { class: "s", text: x.contratista + " · " + x.piezas + (x.piezas === 1 ? " pieza" : " piezas") }), el("span", { class: "s", text: f2(x.volumen) + " m³" }),
       ]);
-    }) : [el("p", { class: "muted", text: { porestimar: "No quedan piezas por estimar.", estimadas: "Todavía no hay piezas estimadas." }[$("g-vista").value] || "No hay piezas." })]);
+    }) : [el("p", { class: "muted", text: { porestimar: "No quedan piezas por estimar.", poraprobar: "No hay piezas esperando aprobación.", estimadas: "Todavía no hay piezas estimadas." }[$("g-vista").value] || "No hay piezas." })]);
     // En el panel solo marca, estatus y estimación; el detalle completo está en "Ver generador".
     // En "Sin estimar", quien estima puede marcar las piezas que van en una misma estimación.
     // Casillas para elegir qué va en el generador: quien estima y el contratista que lo arma.
@@ -713,7 +718,7 @@
       var tr = el("tr", { class: "click" + (S.gSel.has(g) ? " sel" : "") }, celdas.concat([
         el("td", { text: p.marca || "—" }),
         el("td", null, [pill(est, est + (est === "En ejecución" && r.pct ? " " + r.pct + " %" : ""))]),
-        el("td", { text: r.estimacion || "—" }),
+        el("td", { text: r.estimacion || (r.pend && r.pend.estatus === "Estimado" ? r.pend.estimacion + " · por aprobar" : "—") }),
       ]));
       tr.addEventListener("click", function () { focusPieces([g]); });
       return tr;
