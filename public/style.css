@@ -581,3 +581,16 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .fs-pie .btn-primary { width: 100%; }
 .fs-links { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; }
 .fs-links .linklike:disabled { color: var(--muted); opacity: .5; cursor: default; text-decoration: none; }
+/* Usuarios: tarjetas en lugar de tabla (sin desplazamiento lateral) */
+.u-lista { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.u-item { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; font-size: 13px; }
+.u-item:hover, .u-item:focus-visible { border-color: var(--accent); outline: none; }
+.u-item.inactivo { border-style: dashed; }
+.u-item.inactivo .u-cab b, .u-item.inactivo .u-correo { opacity: .65; }
+.u-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.u-cab b { font-size: 14px; }
+.u-estado { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.u-estado.ok { background: rgba(43, 212, 131, .14); color: var(--ok); }
+.u-estado.off { background: rgba(242, 97, 106, .16); color: var(--bad); }
+.u-correo { overflow-wrap: anywhere; }
+.u-acc { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }

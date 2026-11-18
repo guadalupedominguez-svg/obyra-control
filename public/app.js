@@ -1769,41 +1769,63 @@
       if (!$("u-rol").options.length) { fillSelect($("u-rol"), Object.keys(r.roles).map(function (k) { return [k, r.roles[k]]; })); $("u-rol").value = "residente"; $("u-contratista").hidden = true; pintarUProyectos([S.proyecto]); }
       var nombreP = {}; S.proyectos.forEach(function (p) { nombreP[p.id] = p.nombre; });
       var varios = S.proyectos.length > 1;
-      var head = el("tr", null, ["Nombre", "Correo", "Rol", "Contratista"].concat(varios ? ["Proyectos"] : []).concat(["Contraseña", ""]).map(function (h) { return el("th", { text: h }); }));
       var fechaCorta = function (iso) { return iso ? new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : ""; };
-      var rows = r.users.map(function (u) {
-        var del = u.email === S.me.email ? el("span") : el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Eliminar", onclick: function (ev) {
+      // Confirmación con segundo clic (sin ventanas del navegador).
+      var conConfirmar = function (texto, pregunta, fn) {
+        var b = el("button", { class: "btn btn-ghost btn-sm", type: "button", text: texto });
+        b.addEventListener("click", function (ev) {
           ev.stopPropagation();
-          if (del.getAttribute("data-c") !== "1") { del.setAttribute("data-c", "1"); del.textContent = "¿Seguro?"; setTimeout(function () { del.removeAttribute("data-c"); del.textContent = "Eliminar"; }, 4000); return; }
-          api("/api/users", { action: "delete", email: u.email }).then(function () { toast("Usuario eliminado."); loadUsers(); }).catch(function (e) { toast(e.message, true); });
-        } });
-        var tr = el("tr", { class: "click" }, [
-          el("td", { text: u.nombre + (u.activo ? "" : " (inactivo)") }), el("td", { text: u.email }), el("td", { text: r.roles[u.rol] || u.rol }), el("td", { text: u.contratista || "—" }),
-        ].concat(varios ? [el("td", { text: u.rol === "admin" ? "Todos" : (u.proyectos || []).map(function (p) { return nombreP[p] || p; }).join(", ") })] : []).concat([
-          el("td", null, [
-            el("span", { class: u.pw && u.pw.temporal ? "ln-warn" : "", text: u.pw && u.pw.temporal ? "Temporal · falta que la cambie" : (u.pw && u.pw.at ? "Propia" : "—") }),
-            u.pw && u.pw.at ? el("small", { class: "muted", style: "display:block", text: (u.pw.temporal ? "Dada por " : "Cambiada por ") + (u.pw.por || "—") + " · " + fechaCorta(u.pw.at) }) : null,
-          ]),
-          el("td", { class: "u-acc" }, [u.email === S.me.email ? null : el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Restablecer contraseña", onclick: function (ev) {
+          if (b.getAttribute("data-c") !== "1") { b.setAttribute("data-c", "1"); b.textContent = pregunta; setTimeout(function () { b.removeAttribute("data-c"); b.textContent = texto; }, 4000); return; }
+          fn();
+        });
+        return b;
+      };
+      var rows = r.users.map(function (u) {
+        var yo = u.email === S.me.email;
+        var pw = u.pw && u.pw.temporal ? el("span", { class: "ln-warn", text: "Contraseña temporal · falta que la cambie" })
+          : el("span", { class: "muted", text: u.pw && u.pw.at ? "Contraseña propia" : "Contraseña asignada" });
+        var acciones = [];
+        if (!yo) {
+          var act = el("button", { class: "btn btn-sm " + (u.activo ? "btn-ghost" : "btn-primary"), type: "button", text: u.activo ? "Desactivar" : "Activar" });
+          act.addEventListener("click", function (ev) {
             ev.stopPropagation();
-            var b = ev.currentTarget;
-            if (b.getAttribute("data-c") !== "1") { b.setAttribute("data-c", "1"); b.textContent = "¿Restablecer a " + u.nombre.split(" ")[0] + "?"; setTimeout(function () { b.removeAttribute("data-c"); b.textContent = "Restablecer contraseña"; }, 4000); return; }
+            api("/api/users", { action: "activo", email: u.email, activo: !u.activo }).then(function () {
+              toast(u.nombre + (u.activo ? " ya no puede entrar." : " ya puede entrar."), false); loadUsers();
+            }).catch(function (e) { toast(e.message, true); });
+          });
+          acciones.push(act);
+          acciones.push(conConfirmar("Restablecer contraseña", "¿Restablecer a " + u.nombre.split(" ")[0] + "?", function () {
             api("/api/users", { action: "reset", email: u.email }).then(function (r2) {
               $("reset-pw-quien").textContent = "Nueva contraseña temporal de " + u.nombre + " (" + u.email + "). Su contraseña anterior ya no funciona y se cerraron sus sesiones.";
               $("reset-pw-valor").textContent = r2.temporal;
               $("reset-pw").showModal(); loadUsers();
             }).catch(function (e) { toast(e.message, true); });
-          } }), del]),
-        ]));
-        tr.addEventListener("click", function () {
+          }));
+          acciones.push(conConfirmar("Eliminar", "¿Seguro?", function () {
+            api("/api/users", { action: "delete", email: u.email }).then(function () { toast("Usuario eliminado."); loadUsers(); }).catch(function (e) { toast(e.message, true); });
+          }));
+        }
+        var detalle = [r.roles[u.rol] || u.rol, u.contratista].filter(Boolean).join(" · ") +
+          (varios ? " · " + (u.rol === "admin" ? "Todos los proyectos" : (u.proyectos || []).map(function (p) { return nombreP[p] || p; }).join(", ")) : "");
+        var li = el("li", { class: "u-item" + (u.activo ? "" : " inactivo"), tabindex: "0", title: "Clic para editar" }, [
+          el("div", { class: "u-cab" }, [el("b", { text: u.nombre + (yo ? " (tú)" : "") }), el("span", { class: "u-estado " + (u.activo ? "ok" : "off"), text: u.activo ? "Activo" : "Inactivo · no puede entrar" })]),
+          el("span", { class: "u-correo", text: u.email }),
+          el("span", { class: "muted u-det", text: detalle }),
+          el("span", { class: "u-pw" }, [pw, u.pw && u.pw.at ? el("small", { class: "muted", text: " · " + (u.pw.temporal ? "dada por " : "cambiada por ") + (u.pw.por || "—") + " el " + fechaCorta(u.pw.at) }) : null]),
+          acciones.length ? el("div", { class: "u-acc" }, acciones) : null,
+        ]);
+        var editar = function () {
           $("u-email").value = u.email; $("u-email").readOnly = true; $("u-nombre").value = u.nombre; $("u-rol").value = u.rol;
           $("u-contratista").value = u.contratista; $("u-contratista").hidden = u.rol !== "contratista"; $("u-activo").checked = u.activo; $("u-pass").value = "";
           $("u-form-title").textContent = "Editar " + u.nombre + " (deja la contraseña vacía para no cambiarla)";
           pintarUProyectos(u.proyectos || []);
-        });
-        return tr;
+          $("u-form").scrollIntoView({ behavior: "smooth", block: "start" });
+        };
+        li.addEventListener("click", editar);
+        li.addEventListener("keydown", function (ev) { if (ev.key === "Enter" && ev.target === li) editar(); });
+        return li;
       });
-      $("u-tabla").replaceChildren(el("thead", null, [head]), el("tbody", null, rows));
+      $("u-tabla").replaceChildren.apply($("u-tabla"), rows);
     }).catch(function (e) { toast(e.message, true); });
   }
 

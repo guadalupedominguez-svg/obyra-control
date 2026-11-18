@@ -2,6 +2,7 @@
 //   GET  /api/users                         lista
 //   POST /api/users {action:"save", email, nombre, rol, contratista, activo, password?, proyectos?[]}
 //   POST /api/users {action:"delete", email}
+//   POST /api/users {action:"activo", email, activo}   activa o desactiva (inactivo no puede entrar)
 //   POST /api/users {action:"reset", email}   restablece: devuelve una contraseña temporal (se muestra una sola vez)
 //                                             que el usuario debe cambiar al entrar
 import { route, readJson, HttpError, cleanText } from "../lib/http.js";
@@ -34,6 +35,16 @@ export default route(["GET", "POST"], async (req, res) => {
     u.pwTemp = true; u.pwAt = new Date().toISOString(); u.pwPor = me.nombre;
     await saveUser(email, u);
     res.status(200).json({ ok: true, temporal, user: publicUser(email, u) });
+    return;
+  }
+
+  if (body.action === "activo") {
+    const u = await getUser(email);
+    if (!u) throw new HttpError(404, "Ese usuario no existe.");
+    if (email === me.email) throw new HttpError(400, "No puedes desactivarte a ti mismo.");
+    u.activo = body.activo !== false;
+    await saveUser(email, u);
+    res.status(200).json({ ok: true, user: publicUser(email, u) });
     return;
   }
 

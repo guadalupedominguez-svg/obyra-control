@@ -309,3 +309,14 @@ test("contraseña olvidada: el admin la restablece, se ve solo una vez y el usua
   assert.equal(u.pw.temporal, false); assert.equal(u.pw.por, "Olvido Pérez");
   assert.equal((await admin("users", { action: "reset", email: "admin@obra.mx" })).status, 400); // la propia, no
 });
+
+test("usuario inactivo: no entra hasta que el admin lo activa", async () => {
+  const yo = client();
+  await admin("users", { action: "save", email: "inact@obra.mx", nombre: "Lalo", rol: "residente", activo: false, password: "Inactivo-1234" });
+  assert.equal((await yo("session", { action: "login", email: "inact@obra.mx", password: "Inactivo-1234" })).status, 401);
+  assert.equal((await resi("users", { action: "activo", email: "inact@obra.mx", activo: true })).status, 403);
+  const r = await admin("users", { action: "activo", email: "inact@obra.mx", activo: true });
+  assert.equal(r.status, 200); assert.equal(r.json.user.activo, true);
+  assert.equal((await yo("session", { action: "login", email: "inact@obra.mx", password: "Inactivo-1234" })).status, 200);
+  assert.equal((await admin("users", { action: "activo", email: "admin@obra.mx", activo: false })).status, 400);
+});
