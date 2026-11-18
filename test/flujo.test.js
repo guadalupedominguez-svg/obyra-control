@@ -283,3 +283,29 @@ test("al abrir, el administrador ve si hay una versión más nueva del IFC en Fo
   r = await admin("obra", undefined, { revisar: "1" });
   assert.equal(r.json.nueva, undefined); // ya está en la última
 });
+
+test("contraseña olvidada: el admin la restablece, se ve solo una vez y el usuario debe cambiarla", async () => {
+  const yo = client();
+  await admin("users", { action: "save", email: "olvido@obra.mx", nombre: "Olvido Pérez", rol: "residente", activo: true, password: "Inicial-12345" });
+  let lista = (await admin("users")).json.users;
+  let u = lista.find((x) => x.email === "olvido@obra.mx");
+  assert.equal(u.pw.temporal, true); // la que pone el admin es temporal
+  assert.ok(!JSON.stringify(lista).includes("Inicial-12345")); // nunca se devuelve la contraseña
+  assert.equal((await yo("session", { action: "login", email: "olvido@obra.mx", password: "Inicial-12345" })).status, 200);
+  assert.equal((await yo("session")).json.user.cambiarPw, true);
+  // Solo el admin restablece.
+  assert.equal((await resi("users", { action: "reset", email: "olvido@obra.mx" })).status, 403);
+  const r = await admin("users", { action: "reset", email: "olvido@obra.mx" });
+  assert.equal(r.status, 200);
+  assert.match(r.json.temporal, /^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
+  // La sesión anterior se cerró y la contraseña vieja ya no sirve.
+  assert.equal((await yo("session")).json.loggedIn, false);
+  assert.equal((await yo("session", { action: "login", email: "olvido@obra.mx", password: "Inicial-12345" })).status, 401);
+  assert.equal((await yo("session", { action: "login", email: "olvido@obra.mx", password: r.json.temporal })).status, 200);
+  assert.equal((await yo("session", { action: "password", actual: r.json.temporal, nueva: r.json.temporal })).status, 400);
+  assert.equal((await yo("session", { action: "password", actual: r.json.temporal, nueva: "Mi-propia-2026" })).status, 200);
+  assert.equal((await yo("session")).json.user.cambiarPw, false);
+  u = (await admin("users")).json.users.find((x) => x.email === "olvido@obra.mx");
+  assert.equal(u.pw.temporal, false); assert.equal(u.pw.por, "Olvido Pérez");
+  assert.equal((await admin("users", { action: "reset", email: "admin@obra.mx" })).status, 400); // la propia, no
+});

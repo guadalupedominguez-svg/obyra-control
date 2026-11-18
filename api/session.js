@@ -72,8 +72,10 @@ export default route(["GET", "POST"], async (req, res) => {
     if (!me) throw new HttpError(401, "Inicia sesión para continuar.");
     const u = await getUser(me.email);
     if (!(await verifyPassword(String(body.actual || ""), u.pw))) throw new HttpError(400, "La contraseña actual no es correcta.");
+    if (String(body.nueva || "") === String(body.actual || "")) throw new HttpError(400, "La nueva contraseña debe ser distinta de la actual.");
     u.pw = await hashPassword(checkPassword(body.nueva));
     u.pwv = (u.pwv || 0) + 1;
+    delete u.pwTemp; u.pwAt = new Date().toISOString(); u.pwPor = u.nombre;
     await saveUser(me.email, u);
     saveSession(res, { email: me.email, pwv: u.pwv, exp: Date.now() + 12 * 3600 * 1000 });
     res.status(200).json({ ok: true });

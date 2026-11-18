@@ -2,11 +2,13 @@
 //   GET  /api/users                         lista
 //   POST /api/users {action:"save", email, nombre, rol, contratista, activo, password?, proyectos?[]}
 //   POST /api/users {action:"delete", email}
+//   POST /api/users {action:"reset", email}   restablece: devuelve una contraseña temporal (se muestra una sola vez)
+//                                             que el usuario debe cambiar al entrar
 import { route, readJson, HttpError, cleanText } from "../lib/http.js";
 import { listaProyectos } from "./proyectos.js";
 import { PRINCIPAL } from "../lib/proyecto.js";
 import {
-  ROLES, requireUser, allUsers, getUser, saveUser, deleteUser, publicUser, normEmail, checkPassword, hashPassword,
+  ROLES, requireUser, allUsers, getUser, saveUser, deleteUser, publicUser, normEmail, checkPassword, hashPassword, contrasenaTemporal,
 } from "../lib/users.js";
 
 export default route(["GET", "POST"], async (req, res) => {
@@ -21,6 +23,19 @@ export default route(["GET", "POST"], async (req, res) => {
 
   const body = await readJson(req);
   const email = normEmail(body.email);
+
+  if (body.action === "reset") {
+    const u = await getUser(email);
+    if (!u) throw new HttpError(404, "Ese usuario no existe.");
+    if (email === me.email) throw new HttpError(400, "Para tu propia contraseña usa «Contraseña» arriba a la derecha.");
+    const temporal = contrasenaTemporal();
+    u.pw = await hashPassword(temporal);
+    u.pwv = (u.pwv || 0) + 1; // cierra sus sesiones abiertas
+    u.pwTemp = true; u.pwAt = new Date().toISOString(); u.pwPor = me.nombre;
+    await saveUser(email, u);
+    res.status(200).json({ ok: true, temporal, user: publicUser(email, u) });
+    return;
+  }
 
   if (body.action === "delete") {
     if (email === me.email) throw new HttpError(400, "No puedes eliminar tu propio usuario.");
@@ -51,6 +66,8 @@ export default route(["GET", "POST"], async (req, res) => {
     if (body.password) {
       u.pw = await hashPassword(checkPassword(body.password));
       u.pwv = (u.pwv || 0) + 1; // cierra las sesiones abiertas con la contraseña anterior
+      // La que pone el administrador es temporal: el usuario la cambia al entrar (salvo la del propio admin).
+      u.pwTemp = email !== me.email; u.pwAt = new Date().toISOString(); u.pwPor = me.nombre;
     } else if (!prev) {
       throw new HttpError(400, "Asigna una contraseña inicial al usuario nuevo.");
     }

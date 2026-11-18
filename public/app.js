@@ -124,6 +124,7 @@
     $("user-name").textContent = S.me.nombre;
     $("user-rol").textContent = S.me.rolNombre + (S.me.contratista ? " · " + S.me.contratista : "");
     qsa("[data-perm]").forEach(function (n) { if (!S.permisos[n.getAttribute("data-perm")]) n.remove(); });
+    if (S.me.cambiarPw) setTimeout(function () { abrirPass(true); }, 300);
     // El formulario de avance solo existe para el contratista (los demás no tienen el permiso "reportar").
     if ($("reporte")) {
       $("r-btn").textContent = "Actualizar avance";
@@ -188,12 +189,28 @@
   $("btn-logout").addEventListener("click", function () {
     api("/api/session", { action: "logout" }).finally(function () { location.reload(); });
   });
-  $("btn-pass").addEventListener("click", function () { $("pass-error").hidden = true; $("pass-form").reset(); $("pass").showModal(); });
+  function abrirPass(forzada) {
+    $("pass-error").hidden = true; $("pass-form").reset();
+    $("pass-t").textContent = forzada ? "Crea tu contraseña" : "Cambiar contraseña";
+    $("pass-hint").hidden = !forzada; $("pass-cancel").hidden = !!forzada;
+    $("pass-actual").placeholder = forzada ? "Contraseña temporal" : "Contraseña actual";
+    S.passForzada = !!forzada;
+    $("pass").showModal();
+  }
+  $("btn-pass").addEventListener("click", function () { abrirPass(false); });
   $("pass-cancel").addEventListener("click", function () { $("pass").close(); });
+  // Con contraseña temporal no se puede cerrar el diálogo sin cambiarla.
+  $("pass").addEventListener("cancel", function (ev) { if (S.passForzada) ev.preventDefault(); });
+  $("reset-pw-ok").addEventListener("click", function () { $("reset-pw-valor").textContent = ""; $("reset-pw").close(); });
+  $("reset-pw").addEventListener("close", function () { $("reset-pw-valor").textContent = ""; });
+  $("reset-pw-copiar").addEventListener("click", function () {
+    var t = $("reset-pw-valor").textContent;
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { toast("Copiada."); }, function () { toast("No se pudo copiar; selecciónala y cópiala a mano.", true); });
+  });
   $("pass-form").addEventListener("submit", function (ev) {
     ev.preventDefault();
     api("/api/session", { action: "password", actual: $("pass-actual").value, nueva: $("pass-nueva").value })
-      .then(function () { $("pass").close(); toast("Contraseña actualizada."); })
+      .then(function () { S.passForzada = false; $("pass").close(); toast("Contraseña actualizada."); })
       .catch(function (e) { $("pass-error").textContent = e.message; $("pass-error").hidden = false; });
   });
 
@@ -1761,7 +1778,8 @@
       if (!$("u-rol").options.length) { fillSelect($("u-rol"), Object.keys(r.roles).map(function (k) { return [k, r.roles[k]]; })); $("u-rol").value = "residente"; $("u-contratista").hidden = true; pintarUProyectos([S.proyecto]); }
       var nombreP = {}; S.proyectos.forEach(function (p) { nombreP[p.id] = p.nombre; });
       var varios = S.proyectos.length > 1;
-      var head = el("tr", null, ["Nombre", "Correo", "Rol", "Contratista"].concat(varios ? ["Proyectos"] : []).concat([""]).map(function (h) { return el("th", { text: h }); }));
+      var head = el("tr", null, ["Nombre", "Correo", "Rol", "Contratista"].concat(varios ? ["Proyectos"] : []).concat(["Contraseña", ""]).map(function (h) { return el("th", { text: h }); }));
+      var fechaCorta = function (iso) { return iso ? new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : ""; };
       var rows = r.users.map(function (u) {
         var del = u.email === S.me.email ? el("span") : el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Eliminar", onclick: function (ev) {
           ev.stopPropagation();
@@ -1770,7 +1788,22 @@
         } });
         var tr = el("tr", { class: "click" }, [
           el("td", { text: u.nombre + (u.activo ? "" : " (inactivo)") }), el("td", { text: u.email }), el("td", { text: r.roles[u.rol] || u.rol }), el("td", { text: u.contratista || "—" }),
-        ].concat(varios ? [el("td", { text: u.rol === "admin" ? "Todos" : (u.proyectos || []).map(function (p) { return nombreP[p] || p; }).join(", ") })] : []).concat([el("td", null, [del])]));
+        ].concat(varios ? [el("td", { text: u.rol === "admin" ? "Todos" : (u.proyectos || []).map(function (p) { return nombreP[p] || p; }).join(", ") })] : []).concat([
+          el("td", null, [
+            el("span", { class: u.pw && u.pw.temporal ? "ln-warn" : "", text: u.pw && u.pw.temporal ? "Temporal · falta que la cambie" : (u.pw && u.pw.at ? "Propia" : "—") }),
+            u.pw && u.pw.at ? el("small", { class: "muted", style: "display:block", text: (u.pw.temporal ? "Dada por " : "Cambiada por ") + (u.pw.por || "—") + " · " + fechaCorta(u.pw.at) }) : null,
+          ]),
+          el("td", { class: "u-acc" }, [u.email === S.me.email ? null : el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Restablecer contraseña", onclick: function (ev) {
+            ev.stopPropagation();
+            var b = ev.currentTarget;
+            if (b.getAttribute("data-c") !== "1") { b.setAttribute("data-c", "1"); b.textContent = "¿Restablecer a " + u.nombre.split(" ")[0] + "?"; setTimeout(function () { b.removeAttribute("data-c"); b.textContent = "Restablecer contraseña"; }, 4000); return; }
+            api("/api/users", { action: "reset", email: u.email }).then(function (r2) {
+              $("reset-pw-quien").textContent = "Nueva contraseña temporal de " + u.nombre + " (" + u.email + "). Su contraseña anterior ya no funciona y se cerraron sus sesiones.";
+              $("reset-pw-valor").textContent = r2.temporal;
+              $("reset-pw").showModal(); loadUsers();
+            }).catch(function (e) { toast(e.message, true); });
+          } }), del]),
+        ]));
         tr.addEventListener("click", function () {
           $("u-email").value = u.email; $("u-email").readOnly = true; $("u-nombre").value = u.nombre; $("u-rol").value = u.rol;
           $("u-contratista").value = u.contratista; $("u-contratista").hidden = u.rol !== "contratista"; $("u-activo").checked = u.activo; $("u-pass").value = "";

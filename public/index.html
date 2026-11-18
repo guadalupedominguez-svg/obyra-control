@@ -539,10 +539,22 @@
       </form>
     </dialog>
 
+    <!-- Contraseña temporal (se muestra una sola vez al administrador) -->
+    <dialog id="reset-pw" class="dialog" aria-labelledby="reset-pw-t">
+      <div class="dialog-body stack">
+        <h3 id="reset-pw-t">Contraseña temporal</h3>
+        <p id="reset-pw-quien"></p>
+        <div class="reset-pw-caja"><code id="reset-pw-valor"></code><button type="button" class="btn btn-sm" id="reset-pw-copiar">Copiar</button></div>
+        <p class="hint">Dásela al usuario en persona o por un mensaje directo. Al entrar con ella, la app le pedirá crear su propia contraseña. Por seguridad no se vuelve a mostrar: si se pierde, restablécela otra vez.</p>
+        <div class="row end"><button type="button" class="btn btn-primary btn-sm" id="reset-pw-ok">Listo</button></div>
+      </div>
+    </dialog>
+
     <!-- Cambiar contraseña -->
     <dialog id="pass" class="dialog">
       <form id="pass-form" class="dialog-body stack">
-        <h3>Cambiar contraseña</h3>
+        <h3 id="pass-t">Cambiar contraseña</h3>
+        <p class="hint" id="pass-hint" hidden>El administrador te dio una contraseña temporal. Escríbela y crea una nueva que solo tú conozcas.</p>
         <input id="pass-actual" type="password" autocomplete="current-password" placeholder="Contraseña actual" aria-label="Contraseña actual" required>
         <input id="pass-nueva" type="password" autocomplete="new-password" placeholder="Nueva contraseña (mínimo 10 caracteres)" aria-label="Nueva contraseña" required>
         <p id="pass-error" class="form-error" role="alert" hidden></p>
