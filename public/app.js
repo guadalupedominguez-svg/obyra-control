@@ -405,7 +405,9 @@
     if ($("reporte")) {
       var gen = modoGenerador();
       $("reporte").classList.toggle("modo-gen", gen);
-      $("reporte").hidden = !S.sel.size;
+      // El contratista no actualiza avance cuando ve lo ya terminado o en estimación (en «Validado» solo arma el generador).
+      var sinReporte = S.me && S.me.rol === "contratista" && ["Terminado", "Por aprobar", "Estimado", "Pagado"].indexOf($("f-estatus").value) >= 0;
+      $("reporte").hidden = !S.sel.size || sinReporte;
       $("sel-count").textContent = nf0.format(S.sel.size);
       if ($("r-gen")) $("r-gen").textContent = "Armar generador con " + nf0.format(S.sel.size) + (S.sel.size === 1 ? " elemento" : " elementos");
     }
