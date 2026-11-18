@@ -473,10 +473,12 @@
   function pendientesVista() {
     var v = function (id) { return $(id) ? $(id).value : ""; };
     var c = v("ap-contratista"), u = v("ap-usuario"), e = v("ap-estatus"), z = v("ap-zona"), q = v("ap-buscar").trim().toLowerCase();
-    return pendientes().filter(function (g) {
+    // «Validados»: lo que el residente ya validó y el contratista puede estimar (no es un pendiente de revisión).
+    var base = e === VALIDADOS ? Object.keys(S.piezas).filter(estimable) : pendientes();
+    return base.filter(function (g) {
       if (c && S.piezas[g].contratista !== c) return false;
       if (u && apQuien(g) !== u) return false;
-      if (e && apEstatus(g) !== e) return false;
+      if (e && e !== VALIDADOS && apEstatus(g) !== e) return false;
       if (z && zonaDe(S.piezas[g]) !== z) return false;
       if (q && apTexto(g).indexOf(q) < 0) return false;
       return true;
@@ -498,7 +500,13 @@
       sel.value = ks.indexOf(prev) >= 0 ? prev : "";
     };
     llenar("ap-usuario", "Todos los usuarios", apQuien);
+    var prevE = $("ap-estatus").value;
     llenar("ap-estatus", "Todos los estatus", apEstatus);
+    if (S.permisos.enviarEstimacion) {
+      var nVal = Object.keys(S.piezas).filter(estimable).length, selE = $("ap-estatus");
+      selE.appendChild(el("option", { value: VALIDADOS, text: "Validados · listos para estimar (" + nVal + ")" }));
+      if (prevE === VALIDADOS) selE.value = VALIDADOS;
+    }
     llenar("ap-zona", "Todas las zonas", function (g) { return zonaDe(S.piezas[g]); });
     var act = ["ap-contratista", "ap-usuario", "ap-estatus", "ap-zona"].filter(function (id) { return $(id) && $(id).isConnected && $(id).value; }).length;
     $("desp-ap-res").textContent = act ? act + (act === 1 ? " activo" : " activos") : "Ninguno";
@@ -536,10 +544,11 @@
     if (soloSel) { var n0 = S.sel.size; list = list.filter(function (g) { return S.sel.has(g); }); fuera = n0 - list.length; }
     pintarChipSel("ap-solo-chip", soloSel);
     S.apSel.forEach(function (g) { if (list.indexOf(g) < 0) S.apSel["delete"](g); });
-    $("ap-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pendiente" : " pendientes") +
+    var esVal = $("ap-estatus") && $("ap-estatus").value === VALIDADOS;
+    $("ap-count").textContent = nf0.format(list.length) + (esVal ? (list.length === 1 ? " validado listo para estimar" : " validados listos para estimar") : list.length === 1 ? " pendiente" : " pendientes") +
       (soloSel ? " de lo seleccionado en el modelo" + (fuera > 0 ? " (" + fuera + " sin pendientes aquí)" : "") : "");
     if ($("ap-all")) $("ap-all").checked = list.length > 0 && list.every(function (g) { return S.apSel.has(g); });
-    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: soloSel ? "Lo que seleccionaste en el modelo no tiene pendientes en esta lista." : cola.vacio })); return; }
+    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: soloSel ? "Lo que seleccionaste en el modelo no tiene pendientes en esta lista." : esVal ? "Aún no hay elementos validados por estimar." : cola.vacio })); return; }
     $("lista-ap").replaceChildren.apply($("lista-ap"), list.map(function (g) {
       var p = S.piezas[g], r = rec(g);
       var cb = el("span"); // sin casilla para quien solo consulta
@@ -561,7 +570,8 @@
         var antes = r.antes ? r.antes.estatus + (r.antes.estatus === "En ejecución" && r.antes.pct ? " " + r.antes.pct + " %" : "") : "Planeado";
         cuerpo = [pill(r.estatus, r.estatus + (r.estatus === "En ejecución" && r.pct ? " " + r.pct + " %" : "")),
           el("span", { class: "s", text: [p.clave, p.takt && "Takt " + p.takt, p.eje && "Eje " + p.eje, "antes: " + antes].filter(Boolean).join(" · ") }),
-          el("span", { class: "note", text: r.porValidar.por + " · " + fecha(r.porValidar.at) + (r.porValidar.comentario ? " · " + r.porValidar.comentario : "") })];
+          r.porValidar ? el("span", { class: "note", text: r.porValidar.por + " · " + fecha(r.porValidar.at) + (r.porValidar.comentario ? " · " + r.porValidar.comentario : "") })
+            : el("span", { class: "note ok", text: r.validado ? "Validado por " + r.validado.por + " · " + fecha(r.validado.at) : "Validado" })];
       }
       var li = el("li", { class: S.apSel.has(g) ? "sel" : "" }, [cb, el("span", { class: "m", text: (p.marca || "(sin marca)") + " · " + p.contratista })].concat(cuerpo));
       li.addEventListener("click", function () { focusPieces([g]); });

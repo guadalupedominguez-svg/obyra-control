@@ -625,3 +625,4 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .validados-hint { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid rgba(43, 212, 131, .4); background: rgba(43, 212, 131, .08); border-radius: 8px; font-size: 12px; }
 .validados-hint[hidden] { display: none; }
 .validados-hint span { flex: 1; }
+.lista .note.ok { color: var(--ok); }
