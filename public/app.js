@@ -892,7 +892,7 @@
   }
   // Doble clic en una zona: solo se ven sus piezas (para seleccionarlas fácil). Otro doble clic, «Mostrar todas»
   // o «Ver modelo completo» la quitan.
-  // La zona sigue aislada aunque se apaguen los volúmenes y la lista («Zonas: no»); se quita con el chip de la barra.
+  // La zona sigue aislada aunque se apaguen los volúmenes y la lista («Zonas» apagado); se quita con el chip de la barra.
   function idsZonaAislada() {
     if (!S.zonaAislada || !S.zonaAisladaGuids) return null;
     var ids = []; S.zonaAisladaGuids.forEach(function (g) { var id = S.guid2db.get(g); if (id != null) ids.push(id); });
@@ -968,7 +968,7 @@
   $("viewer").addEventListener("mouseleave", function () { if (S.zonaHover) { S.zonaHover = null; resaltarZona(null); } $("zona-tip").hidden = true; });
   function pintarZonasBtn() {
     $("zonas-btn").setAttribute("aria-pressed", String(S.zonasOn));
-    $("zonas-btn").textContent = S.zonasOn ? "Zonas: sí" : "Zonas: no";
+    $("zonas-btn").textContent = "Zonas"; // activo = resaltado (aria-pressed)
   }
   $("zonas-btn").addEventListener("click", function () {
     S.zonasOn = !S.zonasOn;
@@ -1029,7 +1029,7 @@
   }
   function pintarEtiqBtn() {
     $("etiq-btn").setAttribute("aria-pressed", String(S.etiq));
-    $("etiq-btn").textContent = S.etiq ? "Etiquetas: sí" : "Etiquetas: no";
+    $("etiq-btn").textContent = "Etiquetas";
   }
   $("etiq-btn").addEventListener("click", function () {
     S.etiq = !S.etiq;

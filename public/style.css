@@ -542,8 +542,8 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .vista-ctrl .desp + .desp { border-top: 1px solid rgba(255, 255, 255, .05); }
 .vista-ctrl .desp-body { display: flex; flex-direction: column; gap: 8px; padding: 2px 14px 12px; }
 .desp-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.vista-ctrl #vertodo-btn[aria-pressed="true"], .vista-ctrl #multi-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
-.vista-ctrl #etiq-btn[aria-pressed="true"], .vista-ctrl #zonas-btn[aria-pressed="true"], .vista-ctrl #filsel-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.vista-ctrl #vertodo-btn[aria-pressed="true"], .vista-ctrl #multi-btn[aria-pressed="true"], .vista-ctrl #etiq-btn[aria-pressed="true"], .vista-ctrl #zonas-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.vista-ctrl #filsel-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .vista-ctrl .zona-chip { border-color: var(--accent); color: var(--accent); align-self: flex-start; }
 .vista-ctrl .zona-chip[hidden] { display: none; }
 .vista-ctrl .zonas-lista { position: static; max-height: 240px; min-width: 0; background: rgba(255, 255, 255, .03); }
