@@ -224,7 +224,6 @@
         fillSelect($("f-contratista"), [["", "Todos los contratistas"]].concat(contratistas.map(function (c) { return [c, c]; })));
         $("f-contratista").value = contratistas.indexOf(prev) >= 0 ? prev : "";
       }
-      pintarTakts();
       if ($("ap-contratista")) {
         var apPrev = $("ap-contratista").value;
         fillSelect($("ap-contratista"), [["", "Todos los contratistas"]].concat(contratistas.map(function (c) { return [c, c]; })));
@@ -240,26 +239,17 @@
     });
   }
 
-  // Áreas takt de las piezas (las del contratista elegido); el filtro solo aparece si el modelo trae tren takt.
-  function pintarTakts() {
-    var c = $("f-contratista") ? $("f-contratista").value : "";
-    var ts = Array.from(new Set(Object.values(S.piezas).filter(function (p) { return !c || p.contratista === c; }).map(function (p) { return p.takt; }).filter(Boolean)))
-      .sort(function (a, b) { return a.localeCompare(b, "es", { numeric: true }); });
-    var sel = $("f-takt"), prev = sel.value;
-    fillSelect(sel, [["", "Todas las áreas takt"]].concat(ts.map(function (t) { return [t, t]; })));
-    sel.value = ts.indexOf(prev) >= 0 ? prev : "";
-    sel.hidden = !ts.length;
-  }
   function filtradas() {
     var c = $("f-contratista") ? $("f-contratista").value : "";
-    var tk = $("f-takt").value;
+    // La zona aislada (doble clic en «Zonas · avance») también filtra la lista.
+    var zona = S.zonaAislada && S.zonaAisladaGuids ? new Set(S.zonaAisladaGuids) : null;
     var e = $("f-estatus").value;
     var n = e === "Estimado" ? $("f-estnum").value : "";
     var q = $("f-buscar").value.trim().toLowerCase();
     return Object.keys(S.piezas).filter(function (g) {
       var p = S.piezas[g];
       if (c && p.contratista !== c) return false;
-      if (tk && p.takt !== tk) return false;
+      if (zona && !zona.has(g)) return false;
       if (e && estado(g) !== e) return false;
       if (n && rec(g).estimacion !== n) return false;
       if (q && [p.marca, p.clave, p.zona, p.takt, p.eje, p.concepto].join(" ").toLowerCase().indexOf(q) < 0) return false;
@@ -291,7 +281,7 @@
     syncEstnumPiezas();
     var list = filtradas();
     var ul = $("lista");
-    $("list-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pieza" : " piezas");
+    $("list-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pieza" : " piezas") + (S.zonaAislada ? " en " + S.zonaAislada : "");
     if (!Object.keys(S.piezas).length) {
       ul.replaceChildren(el("li", { class: "empty", text: S.permisos.administrar
         ? "Todavía no hay piezas. En Configuración, conecta Forma, pega la liga del IFC y usa «Leer piezas del modelo»."
@@ -331,7 +321,7 @@
   function verFiltrado() {
     if (S.verTodo) ponerVerTodo(false);
   }
-  ["f-contratista", "f-estatus", "f-estnum", "f-takt"].forEach(function (id) { if ($(id)) $(id).addEventListener("change", function () { if (id === "f-contratista") pintarTakts(); verFiltrado(); renderLista(); paintModel(true); }); });
+  ["f-contratista", "f-estatus", "f-estnum"].forEach(function (id) { if ($(id)) $(id).addEventListener("change", function () { verFiltrado(); renderLista(); paintModel(true); }); });
   $("f-buscar").addEventListener("input", function () {
     verFiltrado(); renderLista(); paintModel(false);
     clearTimeout(S.tBuscar);
@@ -922,6 +912,7 @@
     S.zonaAisladaGuids = o ? o.guids.slice() : null;
     if (o && S.verTodo) ponerVerTodo(false);
     marcarZonaAislada();
+    if (S.modulo !== "lean") renderLista();
     paintModel(false);
     if (S.filselAbierto) filselContar();
     if (o && S.viewer) S.viewer.navigation.fitBounds(false, o.cajaMundo || o.caja);
@@ -2006,7 +1997,11 @@
     $("vertodo-btn").setAttribute("aria-pressed", String(S.verTodo));
     $("vertodo-btn").textContent = S.verTodo ? "Modelo completo: activo" : "Ver modelo completo";
   }
-  $("vertodo-btn").addEventListener("click", function () { S.zonaAislada = null; marcarZonaAislada(); ponerVerTodo(!S.verTodo); paintModel(false); });
+  $("vertodo-btn").addEventListener("click", function () {
+    var habia = !!S.zonaAislada; S.zonaAislada = null; marcarZonaAislada(); ponerVerTodo(!S.verTodo);
+    if (habia && S.modulo !== "lean") renderLista();
+    paintModel(false);
+  });
   $("multi-btn").addEventListener("click", function () {
     S.multi = !S.multi;
     pintarMulti();
