@@ -132,6 +132,21 @@
     if (P.enviarEstimacion) {
       var listos = gs.filter(O.estimable).length;
       cards.push(tarjeta({ icono: "moneda", tono: "t-verde", titulo: "Listos para estimar", n: listos, desc: "Terminado y validado: ya puedes armar tu generador.", accion: "Armar generador", primario: listos > 0, fn: function () { irA("estimaciones"); } }));
+      // Generadores ya creados (enviados): por número de estimación, los que esperan aprobación y los ya estimados.
+      var porAprobar = {}, estimados = {};
+      gs.forEach(function (g) {
+        var r = O.rec(g);
+        if (r.pend && r.pend.estatus === "Estimado" && r.pend.estimacion) porAprobar[r.pend.estimacion] = 1;
+        else if (r.estimacion) estimados[r.estimacion] = 1;
+      });
+      var nPA = Object.keys(porAprobar).length, nEs = Object.keys(estimados).length;
+      cards.push(tarjeta({ icono: "doc", tono: "t-violeta", titulo: "Generadores creados", n: nPA + nEs,
+        desc: nPA + nEs ? nPA + " por aprobar · " + nEs + " estimados" : "Aún no has enviado generadores.", accion: "Revisar generadores",
+        fn: function () {
+          irA("estimaciones");
+          var v = document.getElementById("g-vista");
+          if (v) { v.value = nPA ? "poraprobar" : "estimadas"; v.dispatchEvent(new Event("change")); }
+        } }));
     }
     // Avance general (promedio por elemento) y por estatus.
     var suma = 0, porEst = {};
