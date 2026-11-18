@@ -321,3 +321,13 @@ test("usuario inactivo: no entra hasta que el admin lo activa", async () => {
   assert.equal((await yo("session", { action: "login", email: "inact@obra.mx", password: "Inactivo-1234" })).status, 200);
   assert.equal((await admin("users", { action: "activo", email: "admin@obra.mx", activo: false })).status, 400);
 });
+
+test("lo rechazado antes de la regla queda En ejecución al leer las piezas", async () => {
+  const { setJson: _s } = await import("../lib/store.js");
+  const store = await import("../lib/store.js");
+  await store.hsetJson(store.key("avance"), { [G(9)]: { estatus: "Planeado", pct: 0, rechazo: { motivo: "x", por: "R", at: "2026-11-18T00:00:00Z" } } });
+  await store.cmd(["DEL", store.key("mig", "rechazo-ejecucion")]);
+  const r = await admin("piezas");
+  assert.equal(r.status, 200);
+  assert.equal((await store.hgetJson(store.key("avance"), G(9))).estatus, "En ejecución");
+});

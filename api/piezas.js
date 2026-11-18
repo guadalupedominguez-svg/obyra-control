@@ -61,6 +61,17 @@ export default route(["GET", "POST"], async (req, res) => {
   if (req.method === "GET") {
     const cat = (await getJson(CATALOGO())) || { piezas: {}, version: null, at: null };
     const avance = await hgetallJson(AVANCE());
+    // Corrección única: lo rechazado antes de la regla «rechazado = En ejecución» había regresado a Planeado o Liberado.
+    if (!(await getJson(key("mig", "rechazo-ejecucion")))) {
+      const fix = {};
+      for (const [g, r] of Object.entries(avance)) {
+        if (r && r.rechazo && !r.porValidar && !r.pend && ["Planeado", "Liberado"].includes(r.estatus || "Planeado")) {
+          r.estatus = "En ejecución"; r.pct = 0; fix[g] = r;
+        }
+      }
+      if (Object.keys(fix).length) await hsetJson(AVANCE(), fix);
+      await setJson(key("mig", "rechazo-ejecucion"), { at: new Date().toISOString(), n: Object.keys(fix).length });
+    }
     let piezas = cat.piezas || {};
     if (!can(me, "verTodo")) {
       piezas = Object.fromEntries(Object.entries(piezas).filter(([, p]) => p.contratista === me.contratista));
