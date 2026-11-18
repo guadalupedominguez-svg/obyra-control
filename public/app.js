@@ -162,7 +162,10 @@
       : S.permisos.validarGenerador
         ? "Valida el avance que actualiza el contratista y los generadores que envía a estimar; lo validado pasa al superintendente."
         : "Lo que espera revisión: el residente valida el avance y los generadores; el superintendente aprueba las estimaciones.";
-    fillSelect($("f-estatus"), [["", "Todos los estatus"]].concat(ORDEN.map(function (e) { return [e, e]; })));
+    // El contratista además puede ver lo que el residente ya validó (Terminado y validado): lo que puede estimar.
+    var opcEst = [];
+    ORDEN.forEach(function (e) { opcEst.push([e, e]); if (e === "Terminado" && S.permisos.enviarEstimacion) opcEst.push([VALIDADOS, "Validados · listos para estimar"]); });
+    fillSelect($("f-estatus"), [["", "Todos los estatus"]].concat(opcEst));
     renderLegend();
     renderCuenta();
     setupTabs();
@@ -263,6 +266,7 @@
     });
   }
 
+  var VALIDADOS = "__validados";
   function filtradas() {
     var c = $("f-contratista") ? $("f-contratista").value : "";
     // La zona aislada (doble clic en «Zonas · avance») también filtra la lista.
@@ -274,7 +278,8 @@
       var p = S.piezas[g];
       if (c && p.contratista !== c) return false;
       if (zona && !zona.has(g)) return false;
-      if (e && estado(g) !== e) return false;
+      if (e === VALIDADOS) { if (!estimable(g)) return false; }
+      else if (e && estado(g) !== e) return false;
       if (n && rec(g).estimacion !== n) return false;
       if (q && [p.marca, p.clave, p.zona, p.takt, p.eje, p.concepto].join(" ").toLowerCase().indexOf(q) < 0) return false;
       return true;
@@ -308,6 +313,7 @@
     var soloSel = S.soloSel && S.sel && S.sel.size;
     if (soloSel) list = list.filter(function (g) { return S.sel.has(g); });
     pintarChipSel("sel-solo-chip", soloSel);
+    if ($("validados-hint")) $("validados-hint").hidden = $("f-estatus").value !== VALIDADOS || !list.length;
     var ul = $("lista");
     $("list-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pieza" : " piezas") + (soloSel ? " seleccionadas en el modelo" : S.zonaAislada ? " en " + S.zonaAislada : "");
     if (!Object.keys(S.piezas).length) {
@@ -2282,6 +2288,7 @@
     if (S.tab === "aprobar") renderAprobar(); else renderLista();
   }
   if ($("sel-solo-chip")) $("sel-solo-chip").addEventListener("click", verTodaLaLista);
+  if ($("validados-ir")) $("validados-ir").addEventListener("click", function () { if (window.OBYRA.irA) window.OBYRA.irA("estimaciones"); else if (S.abrirTab) S.abrirTab("generador"); });
   if ($("ap-solo-chip")) $("ap-solo-chip").addEventListener("click", verTodaLaLista);
 
   function onViewerSelect(ev) {

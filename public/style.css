@@ -622,3 +622,6 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .pw-ojo:hover, .pw-ojo[aria-pressed="true"] { color: var(--accent); }
 .chip-sel { flex-shrink: 0; background: rgba(34, 211, 238, .12); border: 1px solid var(--accent); color: var(--accent); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .chip-sel[hidden] { display: none; }
+.validados-hint { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid rgba(43, 212, 131, .4); background: rgba(43, 212, 131, .08); border-radius: 8px; font-size: 12px; }
+.validados-hint[hidden] { display: none; }
+.validados-hint span { flex: 1; }
