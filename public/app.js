@@ -379,7 +379,7 @@
   // en el modelo con el color de ese estatus (el resaltado de selección toma ese color).
   // Mientras el contratista elige el estatus, lo seleccionado se pinta con el color de ese estatus
   // (también el resaltado de selección del visor toma ese color).
-  function previewActivo() { return !!($("reporte") && !$("reporte").hidden && S.sel && S.sel.size && $("r-estatus") && $("r-estatus").value); }
+  function previewActivo() { return !!($("reporte") && !$("reporte").hidden && !$("reporte").classList.contains("modo-gen") && S.sel && S.sel.size && $("r-estatus") && $("r-estatus").value); }
   function colorVista(g) {
     if (previewActivo() && S.sel.has(g)) return COLOR[$("r-estatus").value] || COLOR.Planeado;
     return COLOR[estado(g)] || COLOR.Planeado;
@@ -394,8 +394,15 @@
     if (clave || antes) paintModel(false);
     if (v.impl && v.impl.invalidate) v.impl.invalidate(true, true, true);
   }
+  function modoGenerador() { return $("f-estatus").value === VALIDADOS; }
   function updateSel() {
-    if ($("reporte")) { $("reporte").hidden = !S.sel.size; $("sel-count").textContent = nf0.format(S.sel.size); }
+    if ($("reporte")) {
+      var gen = modoGenerador();
+      $("reporte").classList.toggle("modo-gen", gen);
+      $("reporte").hidden = !S.sel.size;
+      $("sel-count").textContent = nf0.format(S.sel.size);
+      if ($("r-gen")) $("r-gen").textContent = "Armar generador con " + nf0.format(S.sel.size) + (S.sel.size === 1 ? " elemento" : " elementos");
+    }
     previewReporte();
     var list = filtradas();
     $("sel-all").checked = list.length > 0 && list.every(function (g) { return S.sel.has(g); });
@@ -2298,7 +2305,12 @@
     if (S.tab === "aprobar") renderAprobar(); else renderLista();
   }
   if ($("sel-solo-chip")) $("sel-solo-chip").addEventListener("click", verTodaLaLista);
-  if ($("validados-ir")) $("validados-ir").addEventListener("click", function () { if (window.OBYRA.irA) window.OBYRA.irA("estimaciones"); else if (S.abrirTab) S.abrirTab("generador"); });
+  // Validado: lo seleccionado pasa al generador ya marcado.
+  if ($("r-gen")) $("r-gen").addEventListener("click", function () {
+    var gs = Array.from(S.sel || []).filter(estimable);
+    if (window.OBYRA.irA) window.OBYRA.irA("estimaciones"); else if (S.abrirTab) S.abrirTab("generador");
+    if (gs.length && S.gSel) { gs.forEach(function (g) { S.gSel.add(g); }); renderGenerador(); selectGenEnModelo(); }
+  });
   if ($("ap-solo-chip")) $("ap-solo-chip").addEventListener("click", verTodaLaLista);
 
   function onViewerSelect(ev) {

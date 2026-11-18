@@ -626,3 +626,9 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .validados-hint[hidden] { display: none; }
 .validados-hint span { flex: 1; }
 .lista .note.ok { color: var(--ok); }
+/* Barra de avance: con «Validado» solo queda «Armar generador» */
+.rep-avance { display: contents; }
+.rep-gen { display: none; }
+#reporte.modo-gen .rep-avance { display: none; }
+#reporte.modo-gen .rep-gen { display: flex; }
+#reporte.modo-gen .rep-gen .btn { width: 100%; }

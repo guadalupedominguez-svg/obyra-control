@@ -158,8 +158,7 @@
               </div>
             </details>
             <div class="validados-hint" id="validados-hint" hidden>
-              <span>Ya los validó el residente: puedes incluirlos en tu generador para estimarlos.</span>
-              <button type="button" class="btn btn-sm btn-primary" id="validados-ir">Armar generador</button>
+              <span>Ya los validó el residente: selecciónalos e inclúyelos en tu generador para estimarlos.</span>
             </div>
           </div>
           <div class="list-head">
@@ -171,13 +170,19 @@
 
           <form id="reporte" class="actionbar" data-perm="reportar" hidden>
             <div class="actionbar-title"><span id="sel-count">0</span> seleccionadas</div>
-            <div class="row">
-              <select id="r-estatus" aria-label="Nuevo estatus"></select>
-              <input id="r-pct" type="number" min="0" max="100" step="5" placeholder="%" aria-label="Porcentaje de avance">
+            <div class="rep-avance">
+              <div class="row">
+                <select id="r-estatus" aria-label="Nuevo estatus"></select>
+                <input id="r-pct" type="number" min="0" max="100" step="5" placeholder="%" aria-label="Porcentaje de avance">
+              </div>
+              <input id="r-coment" type="text" maxlength="500" placeholder="Comentario (opcional)" aria-label="Comentario">
+              <button id="r-btn" class="btn btn-primary" type="submit">Enviar avance</button>
+              <p class="hint" id="r-hint"></p>
             </div>
-            <input id="r-coment" type="text" maxlength="500" placeholder="Comentario (opcional)" aria-label="Comentario">
-            <button id="r-btn" class="btn btn-primary" type="submit">Enviar avance</button>
-            <p class="hint" id="r-hint"></p>
+            <!-- Con el filtro «Validado»: ya no se reporta avance, solo se arma el generador. -->
+            <div class="rep-gen">
+              <button id="r-gen" class="btn btn-primary" type="button">Armar generador</button>
+            </div>
           </form>
         </section>
 
