@@ -445,3 +445,78 @@ input::placeholder { color: var(--muted); }
 .ln-barra.ok { border-color: #2BD483; }
 .ln-barra.bad { border-color: #F2545B; }
 .ln-barra.warn { border-color: #F5B83D; }
+
+/* ---------- Barra lateral por secciones (nav.js) ---------- */
+.modulos { display: none !important; } /* las secciones de la barra reemplazan Control de obra / Lean */
+.body { grid-template-columns: auto minmax(0, 1fr) 420px; }
+.app.lean .body { grid-template-columns: auto minmax(0, 0.85fr) minmax(560px, 1.35fr); }
+.nav-lat { display: flex; flex-direction: column; gap: 4px; padding: 12px 10px; width: 210px; box-sizing: border-box; background: var(--surface); border-right: 1px solid var(--line); overflow-y: auto; transition: width .18s ease; }
+.nav-item { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: none; color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; white-space: nowrap; position: relative; }
+.nav-item svg { flex-shrink: 0; color: var(--muted); }
+.nav-item:hover { background: var(--surface-2); }
+.nav-item:hover svg { color: var(--text); }
+.nav-item[aria-current="page"] { background: rgba(34, 211, 238, .12); color: var(--accent); font-weight: 700; }
+.nav-item[aria-current="page"] svg { color: var(--accent); }
+.nav-txt { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.nav-badge { background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 700; }
+.nav-badge[hidden] { display: none; }
+.nav-esp { flex: 1; min-height: 12px; }
+.nav-plegar { color: var(--muted); font-size: 13px; }
+.nav-plegar svg { transition: transform .18s ease; }
+.app.nav-plegada .nav-lat { width: 68px; }
+.app.nav-plegada .nav-txt { display: none; }
+.app.nav-plegada .nav-item { justify-content: center; padding: 0; }
+.app.nav-plegada .nav-plegar svg { transform: rotate(180deg); }
+.app.nav-plegada .nav-badge { position: absolute; top: 4px; right: 4px; padding: 0 5px; font-size: 10px; }
+/* Título de la sección en lugar de las pestañas de Control de obra; en Lean quedan solo las de la sección. */
+.panel-titulo { margin: 0; padding: 11px 14px; font-size: 15px; font-weight: 700; white-space: nowrap; flex: 1 0 auto; }
+#tabs .tab { display: none; }
+.app.sec-indicadores #ln-tabs .tab, .app.sec-planeacion #ln-tabs [data-ln="dash"] { display: none; }
+.app.sec-planeacion #ln-tabs .panel-titulo { flex: 0 0 auto; }
+
+/* ---------- Inicio ---------- */
+.app.sec-inicio .viewer-wrap, .app.sec-inicio .panel { display: none !important; }
+.inicio { grid-column: 2 / -1; overflow-y: auto; min-height: 0; padding: 26px 30px 40px; display: flex; flex-direction: column; gap: 20px; }
+.inicio[hidden] { display: none; }
+.ini-head { display: flex; flex-direction: column; gap: 4px; }
+.ini-head h1 { margin: 0; font-size: 26px; }
+.ini-head .muted::first-letter { text-transform: uppercase; }
+.ini-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.ini-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 8px; }
+.ini-card .btn { margin-top: auto; align-self: flex-start; }
+.ini-card-top { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.ini-ico { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--surface-2); color: var(--text); flex-shrink: 0; }
+.ini-ico.t-cian { background: rgba(34, 211, 238, .14); color: var(--accent); }
+.ini-ico.t-violeta { background: rgba(167, 139, 250, .16); color: var(--violet); }
+.ini-ico.t-verde { background: rgba(43, 212, 131, .14); color: var(--ok); }
+.ini-ico.t-rojo { background: rgba(242, 97, 106, .14); color: var(--bad); }
+.ini-ico.t-ambar { background: rgba(245, 184, 61, .14); color: var(--warn); }
+.ini-num { font-size: 34px; line-height: 1.1; }
+.ini-desc { margin: 0; font-size: 13px; color: var(--muted); }
+.ini-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.ini-kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ini-kpi b { font-size: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ini-kpi-t { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.ini-2col { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; }
+.ini-box { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+.ini-box h2 { margin: 0; font-size: 16px; }
+.ini-box > .btn { align-self: flex-start; margin-top: 4px; }
+.ini-act { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+.ini-act div { display: flex; flex-direction: column; min-width: 0; }
+.ini-act b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ini-barra { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--surface-2); }
+.ini-barra i { display: block; min-width: 3px; }
+.ini-ley { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.ini-ley span { display: flex; align-items: center; gap: 5px; }
+.ini-ley i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+@media (max-width: 900px) {
+  .body, .app.lean .body { grid-template-columns: 1fr; grid-template-rows: auto 42vh auto; }
+  .app.sec-inicio .body { grid-template-rows: auto auto; }
+  .nav-lat, .app.nav-plegada .nav-lat { width: auto; flex-direction: row; overflow-x: auto; padding: 6px 8px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .nav-item { flex: none; gap: 8px; }
+  .nav-esp, .nav-plegar { display: none; }
+  .inicio { grid-column: 1; padding: 18px 16px 30px; }
+  .ini-kpis, .ini-2col { grid-template-columns: 1fr 1fr; }
+  .ini-2col { grid-template-columns: 1fr; }
+}

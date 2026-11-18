@@ -179,6 +179,7 @@
       try { localStorage.setItem("ctrl_tab", name); } catch (e) { /* sin almacenamiento */ }
     }
     tabs.forEach(function (t) { t.addEventListener("click", function () { open(t.getAttribute("data-tab")); }); });
+    S.abrirTab = open; // la barra lateral (nav.js) abre la sección
     var last = null;
     try { last = localStorage.getItem("ctrl_tab"); } catch (e) { /* nada */ }
     open(tabs.some(function (t) { return t.getAttribute("data-tab") === last; }) ? last : "piezas");
@@ -440,6 +441,7 @@
     var b = $("badge-aprobar"); if (!b) return;
     var mias = colasMias(); if (!mias.length) mias = Object.keys(COLAS);
     var n = mias.reduce(function (s, k) { return s + enCola(k).length; }, 0); b.textContent = n; b.hidden = !n;
+    if (window.OBYRA && window.OBYRA.alCambiarAvance) window.OBYRA.alCambiarAvance();
   }
   function cuandoAp(g) { var r = rec(g); return (r.pend && r.pend.at) || (r.porValidar && r.porValidar.at) || ""; }
   function renderAprobar() {
@@ -2349,6 +2351,9 @@
   window.OBYRA = {
     S: S, api: api, el: el, $: $, qsa: qsa, toast: toast, fecha: fecha, f2: f2, nf0: nf0, pill: pill, COLOR: COLOR,
     paintModel: paintModel, focusPieces: focusPieces, etiquetas3D: etiquetas3D, loadExcel: loadExcel, marcaDe: marcaDe, pedirMarcas: pedirMarcas, nombreModelo: nombreModelo, renderLegend: renderLegend,
+    rec: rec, ORDEN: ORDEN, COLAS: COLAS, enCola: enCola, colasMias: colasMias, avancePieza: avancePieza, estimable: estimable,
+    abrirCola: function (k) { if ($("ap-cola")) { pintarColas(); $("ap-cola").value = k; renderAprobar(); } },
+    alCambiarAvance: null, // la pone nav.js para refrescar Inicio y la insignia de Aprobaciones
     alIniciar: [], // funciones que corren cuando la app ya cargó obra y piezas
     _onViewerSelect: onViewerSelect, // para pruebas
   };

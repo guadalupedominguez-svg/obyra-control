@@ -281,7 +281,7 @@
     ctrl.push(el("span", { class: "esp" }));
     if (P("planear")) {
       ctrl.push(botonPapelera());
-      ctrl.push(el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Ajustes", onclick: abrirAjustes }));
+      ctrl.push(el("button", { class: "btn btn-ghost btn-sm", type: "button", text: "Configuraciones", onclick: abrirAjustes }));
       ctrl.push(el("button", { class: "btn btn-primary btn-sm", type: "button", text: "+ Nueva actividad", onclick: function () { abrirAct(null); } }));
     }
 
@@ -1547,4 +1547,7 @@
     if (m === "lean") ponerModulo("lean");
   });
   window.OBYRA_LEAN._semana = { isoSemana: isoSemana, sumar: sumar, rango: rango }; // para pruebas
+  window.OBYRA_LEAN.ponerModulo = ponerModulo; // la barra lateral (nav.js) cambia de sección
+  window.OBYRA_LEAN.abrirTab = function (t) { abrirTab(t); };
+  window.OBYRA_LEAN.vista = function (v) { L.vista = v; try { localStorage.setItem("ctrl_ln_vista", v); } catch (e) { /* nada */ } if (L.tab === "la") render(); };
 })();

@@ -1,0 +1,204 @@
+// OBYRA Control · barra lateral por secciones e Inicio («lo que me toca»).
+// Las secciones reusan los módulos de siempre: Avance, Aprobaciones, Estimaciones y Configuraciones son pestañas
+// de Control de obra; Planeación e Indicadores son el módulo Lean (look-ahead + pull, y dashboard).
+(function () {
+  "use strict";
+  var O = window.OBYRA, S = O.S, el = O.el, $ = O.$;
+  var SECS = {
+    inicio: { titulo: "Inicio" },
+    avance: { mod: "control", tab: "piezas", titulo: "Avance de obra" },
+    aprobaciones: { mod: "control", tab: "aprobar", titulo: "Aprobaciones" },
+    estimaciones: { mod: "control", tab: "generador", titulo: "Estimaciones · generadores" },
+    planeacion: { mod: "lean", ln: ["la", "pull"], titulo: "Planeación" },
+    indicadores: { mod: "lean", ln: ["dash"], titulo: "Indicadores" },
+    configuraciones: { mod: "control", tab: "admin", titulo: "Configuraciones" },
+  };
+  var ICONOS = {
+    bandeja: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 12l3 3 5-6"/>',
+    doc: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>',
+    escudo: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
+    regresar: '<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/>',
+    reloj: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    moneda: '<circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .9-3 2s1.3 1.7 3 2 3 .9 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6v2M12 16v2"/>',
+    calendario: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    lego: '<rect x="2" y="13" width="20" height="7" rx="1"/><path d="M5 13v-1.5h3V13M16 13v-1.5h3V13"/><rect x="9" y="6" width="10" height="7" rx="1"/><path d="M11 6V4.5h2.5V6M15 6V4.5h2.5V6"/>',
+    alerta: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>',
+    rayo: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+    grafica: '<path d="M3 20h18"/><path d="M6 20v-7M11 20V5M16 20v-10M21 20v-4"/>',
+    check: '<path d="M5 12l5 5 9-10"/>',
+  };
+  function icono(n, t) {
+    var s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    s.setAttribute("width", t || 22); s.setAttribute("height", t || 22); s.setAttribute("viewBox", "0 0 24 24");
+    s.setAttribute("fill", "none"); s.setAttribute("stroke", "currentColor"); s.setAttribute("stroke-width", "2");
+    s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round"); s.setAttribute("aria-hidden", "true");
+    s.innerHTML = ICONOS[n] || ""; // trazos fijos de este archivo
+    return s;
+  }
+  var actual = null;
+
+  function boton(sec) { return document.querySelector('#nav-lat [data-sec="' + sec + '"]'); }
+  function irA(sec) {
+    if (!SECS[sec] || !boton(sec)) sec = "inicio";
+    var cfg = SECS[sec], app = $("app");
+    actual = sec;
+    Object.keys(SECS).forEach(function (k) { app.classList.toggle("sec-" + k, k === sec); });
+    O.qsa("#nav-lat .nav-item[data-sec]").forEach(function (b) {
+      if (b.getAttribute("data-sec") === sec) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+    });
+    $("inicio").hidden = sec !== "inicio";
+    try { localStorage.setItem("ctrl_sec", sec); } catch (e) { /* nada */ }
+    if (sec === "inicio") { renderInicio(); return; }
+    var L = window.OBYRA_LEAN;
+    if (cfg.mod === "lean" && L && L.ponerModulo) {
+      L.ponerModulo("lean");
+      var t = null; try { t = localStorage.getItem("ctrl_ln"); } catch (e) { /* nada */ }
+      L.abrirTab(cfg.ln.indexOf(t) >= 0 ? t : cfg.ln[0]);
+      $("ln-titulo").textContent = cfg.titulo;
+    } else {
+      if (L && L.ponerModulo && S.modulo !== "control") L.ponerModulo("control");
+      if (S.abrirTab) S.abrirTab(cfg.tab);
+      $("panel-titulo").textContent = cfg.titulo;
+    }
+    if (S.viewer) setTimeout(function () { try { S.viewer.resize(); } catch (e) { /* nada */ } }, 60);
+  }
+
+  // ---------- Inicio ----------
+  var leanCache = null;
+  function tarjeta(o) {
+    var b = el("button", { type: "button", class: "btn " + (o.primario ? "btn-primary" : ""), text: o.accion });
+    b.addEventListener("click", o.fn);
+    return el("div", { class: "ini-card" }, [
+      el("div", { class: "ini-card-top" }, [el("span", { class: "ini-ico " + (o.tono || "") }, [icono(o.icono)]), el("span", { class: "muted", text: o.titulo })]),
+      el("b", { class: "ini-num", text: String(o.n) }),
+      el("p", { class: "ini-desc", text: o.desc }),
+      b,
+    ]);
+  }
+  function kpi(ic, titulo, valor, tono) {
+    return el("div", { class: "ini-kpi" }, [el("span", { class: "muted ini-kpi-t" }, [icono(ic, 16), titulo]), el("b", { class: tono || "", text: valor })]);
+  }
+  function renderInicio() {
+    if (actual !== "inicio" || !S.piezas) return;
+    var P = S.permisos || {}, gs = Object.keys(S.piezas), cards = [];
+    var tonos = { avance: ["bandeja", "t-cian"], generador: ["doc", "t-violeta"], estimacion: ["escudo", "t-verde"] };
+    var descCola = {
+      avance: "Avance que capturó el contratista y espera tu validación.",
+      generador: "Generadores que el contratista mandó a estimar.",
+      estimacion: "Estimaciones que el residente ya validó: apruébalas o regrésalas.",
+    };
+    O.colasMias().forEach(function (k) {
+      var n = O.enCola(k).length;
+      cards.push(tarjeta({ icono: tonos[k][0], tono: tonos[k][1], titulo: O.COLAS[k].nombre, n: n, desc: n ? descCola[k] : "Nada pendiente por ahora.", accion: "Revisar", primario: n > 0,
+        fn: function () { irA("aprobaciones"); O.abrirCola(k); } }));
+    });
+    if (P.reportar) {
+      var regresados = gs.filter(function (g) { var r = O.rec(g); return r.rechazo && !r.porValidar; }).length;
+      var espera = gs.filter(function (g) { return !!O.rec(g).porValidar; }).length;
+      cards.push(tarjeta({ icono: "regresar", tono: "t-rojo", titulo: "Regresados por el residente", n: regresados, desc: regresados ? "Revisa el motivo y vuelve a reportarlos." : "No tienes elementos regresados.", accion: "Ir a Avance", primario: regresados > 0, fn: function () { irA("avance"); } }));
+      cards.push(tarjeta({ icono: "reloj", tono: "t-ambar", titulo: "Esperando validación", n: espera, desc: "Avance que ya capturaste y el residente aún no revisa.", accion: "Ver en Avance", fn: function () { irA("avance"); } }));
+    }
+    if (P.enviarEstimacion) {
+      var listos = gs.filter(O.estimable).length;
+      cards.push(tarjeta({ icono: "moneda", tono: "t-verde", titulo: "Listos para estimar", n: listos, desc: "Terminado y validado: ya puedes armar tu generador.", accion: "Armar generador", primario: listos > 0, fn: function () { irA("estimaciones"); } }));
+    }
+    // Avance general (promedio por elemento) y por estatus.
+    var suma = 0, porEst = {};
+    gs.forEach(function (g) { suma += O.avancePieza(g); var e = O.rec(g).estatus || "Planeado"; porEst[e] = (porEst[e] || 0) + 1; });
+    var pct = gs.length ? Math.round(suma / gs.length * 10) / 10 : 0;
+    var barra = el("div", { class: "ini-barra", role: "img", "aria-label": "Elementos por estatus" }, O.ORDEN.filter(function (e) { return porEst[e]; }).map(function (e) {
+      return el("i", { style: "flex:" + porEst[e] + ";background:" + O.COLOR[e], title: e + ": " + porEst[e] });
+    }));
+    var leyenda = el("div", { class: "ini-ley" }, O.ORDEN.filter(function (e) { return porEst[e]; }).map(function (e) {
+      return el("span", null, [el("i", { style: "background:" + O.COLOR[e] }), e + " " + porEst[e]]);
+    }));
+
+    var hoy = new Date(), fecha = hoy.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
+    var semFn = window.OBYRA_LEAN && window.OBYRA_LEAN._semana, sem = semFn ? semFn.isoSemana(hoy) : "";
+    var nombre = (S.me && S.me.nombre || "").split(" ")[0];
+    var h = hoy.getHours(), saludo = h < 12 ? "Buenos días" : h < 19 ? "Buenas tardes" : "Buenas noches";
+    var kpis = el("div", { class: "ini-kpis" }, [
+      kpi("lego", "Avance " + (S.obra && S.obra.nombre || ""), pct + " %"),
+      kpi("check", "Elementos terminados", String((porEst.Terminado || 0) + (porEst.Estimado || 0) + (porEst.Pagado || 0)) + " de " + gs.length),
+      el("div", { class: "ini-kpi", id: "ini-k-restr" }, [el("span", { class: "muted ini-kpi-t" }, [icono("alerta", 16), "Restricciones abiertas"]), el("b", { text: "…" })]),
+      el("div", { class: "ini-kpi", id: "ini-k-hito" }, [el("span", { class: "muted ini-kpi-t" }, [icono("rayo", 16), "Próximo hito"]), el("b", { text: "…" })]),
+    ]);
+    var semana = el("section", { class: "ini-box", id: "ini-semana" }, [el("h2", { text: "Esta semana en obra" }), el("p", { class: "muted", text: "Cargando el plan…" })]);
+    var avance = el("section", { class: "ini-box" }, [
+      el("h2", { text: "Cómo va la obra" }), barra, leyenda,
+      el("button", { type: "button", class: "btn", text: "Ver en el modelo", onclick: function () { irA("avance"); } }),
+    ]);
+    $("inicio").replaceChildren(
+      el("div", { class: "ini-head" }, [el("h1", { text: saludo + (nombre ? ", " + nombre : "") }), el("span", { class: "muted", text: fecha + (sem ? " · Semana " + +sem.slice(6) : "") + (S.obra ? " · " + S.obra.nombre : "") })]),
+      el("div", { class: "ini-cards" }, cards),
+      kpis,
+      el("div", { class: "ini-2col" }, [semana, avance])
+    );
+    pintarSemana(sem);
+  }
+  function pintarSemana(sem) {
+    var hacer = function (d) {
+      var box = $("ini-semana"); if (!box) return;
+      var mio = S.me && S.me.contratista;
+      var acts = (d.actividades || []).filter(function (a) { return a.semanaIni <= sem && a.semanaFin >= sem && (!mio || a.contratista === mio); });
+      var plan = (d.plan || []).filter(function (p) { return p.semana === sem; });
+      var porAct = {}; plan.forEach(function (p) { porAct[p.actId] = p; });
+      acts.sort(function (a, b) { return (porAct[b.id] ? 1 : 0) - (porAct[a.id] ? 1 : 0); });
+      var filas = acts.slice(0, 8).map(function (a) {
+        var p = porAct[a.id], estado;
+        if (p && p.res) estado = el("span", { class: p.res.cumplido ? "ln-ok" : "ln-bad", text: p.res.cumplido ? "Cumplió" : "No cumplió" });
+        else if (p && p.auto) estado = el("span", { style: "color:var(--accent)", text: p.auto.hechas + " / " + p.auto.total + " (" + p.auto.pct + " %)" });
+        else if (p) estado = el("span", { style: "color:var(--accent)", text: "Comprometida" });
+        else if ((a.restricciones || []).some(function (r) { return r.estado !== "liberada"; })) estado = el("span", { class: "ln-warn", text: "Con restricción" });
+        else estado = el("span", { class: "muted", text: (a.guids || []).length ? "Lista" : "Sin elementos ligados" });
+        return el("div", { class: "ini-act" }, [
+          el("div", null, [el("b", { text: a.descripcion || a.partida || "Actividad" }), el("small", { class: "muted", text: [a.ubicacion, a.contratista].filter(Boolean).join(" · ") })]),
+          estado,
+        ]);
+      });
+      var abiertas = 0; (d.actividades || []).forEach(function (a) { (a.restricciones || []).forEach(function (r) { if (r.estado !== "liberada" && (!mio || a.contratista === mio)) abiertas++; }); });
+      var hoyF = new Date().toISOString().slice(0, 10);
+      var hito = (d.hitos || []).filter(function (x) { return x.fecha >= hoyF; }).sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; })[0];
+      var kr = $("ini-k-restr"), kh = $("ini-k-hito");
+      if (kr) kr.lastChild.textContent = String(abiertas);
+      if (kh) kh.lastChild.textContent = hito ? hito.nombre + " · " + new Date(hito.fecha + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" }) : "—";
+      var ir = el("button", { type: "button", class: "btn", text: "Ver la semana día por día", onclick: function () { irA("planeacion"); if (window.OBYRA_LEAN.vista) window.OBYRA_LEAN.vista("dia"); } });
+      box.replaceChildren.apply(box, [el("h2", { text: "Esta semana en obra" + (plan.length ? " · " + plan.length + (plan.length === 1 ? " compromiso" : " compromisos") : "") })]
+        .concat(filas.length ? filas : [el("p", { class: "muted", text: mio ? "No tienes actividades en el look-ahead esta semana." : "No hay actividades en el look-ahead esta semana." })])
+        .concat(acts.length > 8 ? [el("small", { class: "muted", text: "y " + (acts.length - 8) + " más" })] : [], [ir]));
+    };
+    if (leanCache) hacer(leanCache);
+    O.api("/api/lean").then(function (d) { leanCache = d; hacer(d); }).catch(function () {
+      var box = $("ini-semana"); if (box) box.replaceChildren(el("h2", { text: "Esta semana en obra" }), el("p", { class: "muted", text: "No se pudo cargar el plan." }));
+    });
+  }
+
+  // Insignias: Aprobaciones (lo que me toca validar) e Inicio (eso + lo regresado al contratista).
+  var tPend = null;
+  O.alCambiarAvance = function () {
+    var mias = O.colasMias(), n = mias.reduce(function (s, k) { return s + O.enCola(k).length; }, 0);
+    var b = $("nav-badge-ap"); if (b) { b.textContent = n; b.hidden = !n; }
+    var reg = S.permisos && S.permisos.reportar ? Object.keys(S.piezas || {}).filter(function (g) { var r = O.rec(g); return r.rechazo && !r.porValidar; }).length : 0;
+    var bi = $("nav-badge-inicio"); if (bi) { bi.textContent = n + reg; bi.hidden = !(n + reg); }
+    if (actual === "inicio") { clearTimeout(tPend); tPend = setTimeout(renderInicio, 150); }
+  };
+
+  O.qsa("#nav-lat .nav-item[data-sec]").forEach(function (b) { b.addEventListener("click", function () { irA(b.getAttribute("data-sec")); }); });
+  var plegada = false;
+  try { plegada = localStorage.getItem("ctrl_nav_plegada") === "1"; } catch (e) { /* nada */ }
+  function plegar(v) {
+    plegada = v; $("app").classList.toggle("nav-plegada", v);
+    $("nav-plegar").setAttribute("aria-label", v ? "Mostrar los nombres" : "Plegar la barra");
+    $("nav-plegar").title = v ? "Mostrar los nombres" : "Plegar la barra";
+    try { localStorage.setItem("ctrl_nav_plegada", v ? "1" : "0"); } catch (e) { /* nada */ }
+    if (S.viewer) setTimeout(function () { try { S.viewer.resize(); } catch (e) { /* nada */ } }, 220);
+  }
+  $("nav-plegar").addEventListener("click", function () { plegar(!plegada); });
+  plegar(plegada);
+  O.irA = irA;
+  O.alIniciar.push(function () {
+    var s = null; try { s = localStorage.getItem("ctrl_sec"); } catch (e) { /* nada */ }
+    irA(s || "inicio");
+    O.alCambiarAvance();
+  });
+})();
