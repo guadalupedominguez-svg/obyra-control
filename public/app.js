@@ -1807,13 +1807,6 @@
         }
         var detalle = [r.roles[u.rol] || u.rol, u.contratista].filter(Boolean).join(" · ") +
           (varios ? " · " + (u.rol === "admin" ? "Todos los proyectos" : (u.proyectos || []).map(function (p) { return nombreP[p] || p; }).join(", ")) : "");
-        var li = el("li", { class: "u-item" + (u.activo ? "" : " inactivo"), tabindex: "0", title: "Clic para editar" }, [
-          el("div", { class: "u-cab" }, [el("b", { text: u.nombre + (yo ? " (tú)" : "") }), el("span", { class: "u-estado " + (u.activo ? "ok" : "off"), text: u.activo ? "Activo" : "Inactivo · no puede entrar" })]),
-          el("span", { class: "u-correo", text: u.email }),
-          el("span", { class: "muted u-det", text: detalle }),
-          el("span", { class: "u-pw" }, [pw, u.pw && u.pw.at ? el("small", { class: "muted", text: " · " + (u.pw.temporal ? "dada por " : "cambiada por ") + (u.pw.por || "—") + " el " + fechaCorta(u.pw.at) }) : null]),
-          acciones.length ? el("div", { class: "u-acc" }, acciones) : null,
-        ]);
         var editar = function () {
           $("u-email").value = u.email; $("u-email").readOnly = true; $("u-nombre").value = u.nombre; $("u-rol").value = u.rol;
           $("u-contratista").value = u.contratista; $("u-contratista").hidden = u.rol !== "contratista"; $("u-activo").checked = u.activo; $("u-pass").value = "";
@@ -1821,8 +1814,25 @@
           pintarUProyectos(u.proyectos || []);
           $("u-form").scrollIntoView({ behavior: "smooth", block: "start" });
         };
-        li.addEventListener("click", editar);
-        li.addEventListener("keydown", function (ev) { if (ev.key === "Enter" && ev.target === li) editar(); });
+        var bEditar = el("button", { class: "btn btn-sm", type: "button", text: "Editar" });
+        bEditar.addEventListener("click", editar);
+        // Lista compacta: solo el nombre y su estado; al dar clic se despliega lo demás.
+        var det = el("details", { class: "u-item" + (u.activo ? "" : " inactivo") }, [
+          el("summary", null, [
+            el("i", { class: "u-punto " + (u.activo ? "ok" : "off"), "aria-hidden": "true" }),
+            el("b", { text: u.nombre + (yo ? " (tú)" : "") }),
+            el("span", { class: "u-rol muted", text: r.roles[u.rol] || u.rol }),
+            u.activo ? (u.pw && u.pw.temporal ? el("span", { class: "u-estado warn", text: "Contraseña temporal" }) : null) : el("span", { class: "u-estado off", text: "Inactivo" }),
+          ]),
+          el("div", { class: "u-cuerpo" }, [
+            el("span", { class: "u-correo", text: u.email }),
+            el("span", { class: "muted u-det", text: detalle }),
+            el("span", { class: "u-estado-txt " + (u.activo ? "ok" : "off"), text: u.activo ? "Activo: puede entrar" : "Inactivo: no puede entrar" }),
+            el("span", { class: "u-pw" }, [pw, u.pw && u.pw.at ? el("small", { class: "muted", text: " · " + (u.pw.temporal ? "dada por " : "cambiada por ") + (u.pw.por || "—") + " el " + fechaCorta(u.pw.at) }) : null]),
+            el("div", { class: "u-acc" }, [bEditar].concat(acciones)),
+          ]),
+        ]);
+        var li = el("li", null, [det]);
         return li;
       });
       $("u-tabla").replaceChildren.apply($("u-tabla"), rows);

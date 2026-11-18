@@ -594,3 +594,24 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .u-estado.off { background: rgba(242, 97, 106, .16); color: var(--bad); }
 .u-correo { overflow-wrap: anywhere; }
 .u-acc { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+/* Usuarios como lista desplegable */
+.u-lista { gap: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.u-lista > li + li { border-top: 1px solid var(--line); }
+.u-lista .u-item { border: 0; border-radius: 0; padding: 0; cursor: default; gap: 0; }
+.u-lista .u-item.inactivo { border-style: none; }
+.u-item > summary { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; list-style: none; font-size: 13px; }
+.u-item > summary::-webkit-details-marker { display: none; }
+.u-item > summary::after { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); margin-left: 2px; transition: transform .15s ease; flex-shrink: 0; }
+.u-item[open] > summary::after { transform: rotate(-135deg); }
+.u-item > summary:hover { background: var(--surface-2); }
+.u-item > summary b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-item.inactivo > summary b { opacity: .6; }
+.u-rol { flex: 1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.u-punto { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.u-punto.ok { background: var(--ok); }
+.u-punto.off { background: var(--bad); }
+.u-estado.warn { background: rgba(245, 184, 61, .16); color: var(--warn); }
+.u-cuerpo { display: flex; flex-direction: column; gap: 4px; padding: 2px 12px 12px 30px; font-size: 13px; }
+.u-estado-txt { font-size: 12px; font-weight: 600; }
+.u-estado-txt.ok { color: var(--ok); }
+.u-estado-txt.off { color: var(--bad); }
