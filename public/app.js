@@ -162,10 +162,7 @@
       : S.permisos.validarGenerador
         ? "Valida el avance que actualiza el contratista y los generadores que envía a estimar; lo validado pasa al superintendente."
         : "Lo que espera revisión: el residente valida el avance y los generadores; el superintendente aprueba las estimaciones.";
-    // El contratista además puede ver lo que el residente ya validó (Terminado y validado): lo que puede estimar.
-    var opcEst = [];
-    ORDEN.forEach(function (e) { opcEst.push([e, e]); if (e === "Terminado" && S.permisos.enviarEstimacion) opcEst.push([VALIDADOS, "Validados · listos para estimar"]); });
-    fillSelect($("f-estatus"), [["", "Todos los estatus"]].concat(opcEst));
+    fillSelect($("f-estatus"), [["", "Todos los estatus"]].concat(ORDEN.map(function (e) { return [e, e]; })));
     renderLegend();
     renderCuenta();
     setupTabs();
@@ -278,8 +275,7 @@
       var p = S.piezas[g];
       if (c && p.contratista !== c) return false;
       if (zona && !zona.has(g)) return false;
-      if (e === VALIDADOS) { if (!estimable(g)) return false; }
-      else if (e && estado(g) !== e) return false;
+      if (e && estado(g) !== e) return false;
       if (n && rec(g).estimacion !== n) return false;
       if (q && [p.marca, p.clave, p.zona, p.takt, p.eje, p.concepto].join(" ").toLowerCase().indexOf(q) < 0) return false;
       return true;
@@ -313,7 +309,6 @@
     var soloSel = S.soloSel && S.sel && S.sel.size;
     if (soloSel) list = list.filter(function (g) { return S.sel.has(g); });
     pintarChipSel("sel-solo-chip", soloSel);
-    if ($("validados-hint")) $("validados-hint").hidden = $("f-estatus").value !== VALIDADOS || !list.length;
     var ul = $("lista");
     $("list-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pieza" : " piezas") + (soloSel ? " seleccionadas en el modelo" : S.zonaAislada ? " en " + S.zonaAislada : "");
     if (!Object.keys(S.piezas).length) {
@@ -504,7 +499,7 @@
     llenar("ap-estatus", "Todos los estatus", apEstatus);
     if (S.permisos.enviarEstimacion) {
       var nVal = Object.keys(S.piezas).filter(estimable).length, selE = $("ap-estatus");
-      selE.appendChild(el("option", { value: VALIDADOS, text: "Validados · listos para estimar (" + nVal + ")" }));
+      selE.appendChild(el("option", { value: VALIDADOS, text: "Validado (" + nVal + ")" }));
       if (prevE === VALIDADOS) selE.value = VALIDADOS;
     }
     llenar("ap-zona", "Todas las zonas", function (g) { return zonaDe(S.piezas[g]); });
@@ -545,10 +540,10 @@
     pintarChipSel("ap-solo-chip", soloSel);
     S.apSel.forEach(function (g) { if (list.indexOf(g) < 0) S.apSel["delete"](g); });
     var esVal = $("ap-estatus") && $("ap-estatus").value === VALIDADOS;
-    $("ap-count").textContent = nf0.format(list.length) + (esVal ? (list.length === 1 ? " validado listo para estimar" : " validados listos para estimar") : list.length === 1 ? " pendiente" : " pendientes") +
+    $("ap-count").textContent = nf0.format(list.length) + (esVal ? (list.length === 1 ? " validado" : " validados") : list.length === 1 ? " pendiente" : " pendientes") +
       (soloSel ? " de lo seleccionado en el modelo" + (fuera > 0 ? " (" + fuera + " sin pendientes aquí)" : "") : "");
     if ($("ap-all")) $("ap-all").checked = list.length > 0 && list.every(function (g) { return S.apSel.has(g); });
-    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: soloSel ? "Lo que seleccionaste en el modelo no tiene pendientes en esta lista." : esVal ? "Aún no hay elementos validados por estimar." : cola.vacio })); return; }
+    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: soloSel ? "Lo que seleccionaste en el modelo no tiene pendientes en esta lista." : esVal ? "Aún no hay elementos validados." : cola.vacio })); return; }
     $("lista-ap").replaceChildren.apply($("lista-ap"), list.map(function (g) {
       var p = S.piezas[g], r = rec(g);
       var cb = el("span"); // sin casilla para quien solo consulta
@@ -2298,7 +2293,6 @@
     if (S.tab === "aprobar") renderAprobar(); else renderLista();
   }
   if ($("sel-solo-chip")) $("sel-solo-chip").addEventListener("click", verTodaLaLista);
-  if ($("validados-ir")) $("validados-ir").addEventListener("click", function () { if (window.OBYRA.irA) window.OBYRA.irA("estimaciones"); else if (S.abrirTab) S.abrirTab("generador"); });
   if ($("ap-solo-chip")) $("ap-solo-chip").addEventListener("click", verTodaLaLista);
 
   function onViewerSelect(ev) {
