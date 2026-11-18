@@ -470,8 +470,10 @@
       es: function (r) { return !!r.porValidar || (!!r.pend && r.pend.estatus !== "Estimado"); },
       vacio: "No hay avance por validar." },
     generador: { nombre: "Generadores por validar", puede: "validarGenerador", ok: "Validar generador", no: "Regresar", acc: ["gen-validar", "gen-regresar"],
+      revisar: true, okRev: "Validar para estimación", noRev: "Regresar al contratista",
       es: function (r) { return etapaGen(r) === "residente"; }, vacio: "No hay generadores por validar." },
     estimacion: { nombre: "Estimaciones por aprobar", puede: "autorizar", ok: "Aprobar (Estimado)", no: "Regresar a Terminado", acc: ["aprobar", "regresar"],
+      revisar: true,
       es: function (r) { return etapaGen(r) === "superintendente"; }, vacio: "No hay estimaciones por aprobar." },
     // El contratista consulta lo que mandó a estimar, en cualquier etapa (no valida nada).
     enviados: { nombre: "Mis envíos por aprobar", puede: "enviarEstimacion", soloVer: true, ok: "", no: "", acc: [],
@@ -562,6 +564,9 @@
     $("ap-acciones").hidden = !actua;
     if ($("ap-all")) $("ap-all").hidden = !actua;
     $("ap-ok").textContent = cola.ok; $("ap-no").textContent = cola.no;
+    // Generadores y estimaciones se revisan en la vista del generador; ahí están validar y regresar.
+    var rev = !!cola.revisar;
+    $("ap-no").hidden = rev; $("ap-coment").hidden = rev;
     var list = pendientesVista().sort(function (a, b) { return cuandoAp(a) < cuandoAp(b) ? -1 : 1; });
     var soloSel = S.soloSel && S.sel && S.sel.size;
     var fuera = 0;
@@ -572,6 +577,8 @@
     $("ap-count").textContent = nf0.format(list.length) + (esVal ? (list.length === 1 ? " validado" : " validados") : list.length === 1 ? " pendiente" : " pendientes") +
       (soloSel ? " de lo seleccionado en el modelo" + (fuera > 0 ? " (" + fuera + " sin pendientes aquí)" : "") : "");
     if ($("ap-all")) $("ap-all").checked = list.length > 0 && list.every(function (g) { return S.apSel.has(g); });
+    if (rev) { var nRev = S.apSel.size || list.length; $("ap-ok").textContent = "Revisar generador" + (nRev ? " (" + nRev + (nRev === 1 ? " pieza)" : " piezas)") : ""); $("ap-ok").disabled = !list.length; }
+    else $("ap-ok").disabled = false;
     if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: soloSel ? "Lo que seleccionaste en el modelo no tiene pendientes en esta lista." : esVal ? "Aún no hay elementos validados." : cola.vacio })); return; }
     $("lista-ap").replaceChildren.apply($("lista-ap"), list.map(function (g) {
       var p = S.piezas[g], r = rec(g);
@@ -648,7 +655,16 @@
         })
         .catch(function (e) { toast(e.message, true); });
     };
-    $("ap-ok").addEventListener("click", function () { decide("ok"); });
+    $("ap-ok").addEventListener("click", function () {
+      var cola = COLAS[colaActual()];
+      if (cola.revisar) {
+        var filas = S.apSel.size ? pendientesVista().filter(function (g) { return S.apSel.has(g); }) : pendientesVista();
+        if (!filas.length) { toast("No hay generadores para revisar."); return; }
+        abrirPrevia(filas, $("ap-ok"), { cola: colaActual() });
+        return;
+      }
+      decide("ok");
+    });
     $("ap-no").addEventListener("click", function () { decide("no"); });
   }
 
@@ -764,7 +780,7 @@
   ];
   function valor(g, k) {
     if (k === "_estatus") return estado(g);
-    if (k === "_estimacion") return rec(g).estimacion || "";
+    if (k === "_estimacion") { var re = rec(g); return re.estimacion || (re.pend && re.pend.estatus === "Estimado" ? re.pend.estimacion + " (por aprobar)" : ""); }
     return S.piezas[g][k];
   }
   function resumenDe(filas) {
@@ -1198,26 +1214,52 @@
     });
   }
 
-  $("g-ver").addEventListener("click", function () {
-    var filas = genSeleccion() || genFilas();
-    if (!filas.length) { toast("No hay piezas en el generador con este filtro."); return; }
-    var btn = $("g-ver"); btn.disabled = true; btn.textContent = "Preparando vista…";
+  // Vista previa del generador: desde Estimaciones (Ver generador) o desde Aprobaciones (Revisar generador,
+  // con los botones para validar o regresar dentro de la vista).
+  function abrirPrevia(filas, btn, rev) {
+    var texto = btn.textContent; btn.disabled = true; btn.textContent = "Preparando vista…";
     capturarModelo(filas).then(function (img) {
-      if (genSeleccion()) { paintModel(false); selectGenEnModelo(); } // regresa el modelo a como estaba
-      var c = $("g-contratista").value;
+      paintModel(false); if (!rev && genSeleccion()) selectGenEnModelo(); // regresa el modelo a como estaba
+      var c = rev ? "" : $("g-contratista").value;
       var grupos = agrupar(filas);
       GP = {
-        filas: filas, img: img, grupos: grupos,
-        titulo: "Generador" + (c ? " · " + c : ""),
-        sub: [S.obra ? S.obra.nombre : "", descripcionVista(), filas.length + (filas.length === 1 ? " pieza" : " piezas"),
+        filas: filas, img: img, grupos: grupos, rev: rev || null,
+        titulo: (rev ? "Revisar generador" : "Generador") + (c ? " · " + c : ""),
+        sub: [S.obra ? S.obra.nombre : "", rev ? COLAS[rev.cola].nombre : descripcionVista(), filas.length + (filas.length === 1 ? " pieza" : " piezas"),
           grupos.length > 1 ? grupos.length + " generadores" : "", new Date().toLocaleDateString("es-MX", { dateStyle: "long" })].filter(Boolean).join(" · "),
       };
       if (grupos.length === 1) grupos[0].img = img; // la foto ya es justo de ese generador
       renderPrevia(); textoBotones(); renderGruposPrevia();
       cargarEnvios().then(renderGruposPrevia);
+      var R = $("gp-revision");
+      if (R) {
+        R.hidden = !rev; $("gp-coment").value = "";
+        if (rev) { var cola = COLAS[rev.cola]; $("gp-validar").textContent = cola.okRev || cola.ok; $("gp-regresar").textContent = cola.noRev || cola.no; }
+      }
       $("gen-prev").showModal();
-    }).finally(function () { btn.disabled = false; btn.textContent = "Ver generador"; actualizarMarcar(); });
+    }).finally(function () { btn.disabled = false; btn.textContent = texto; if (!rev) actualizarMarcar(); });
+  }
+  $("g-ver").addEventListener("click", function () {
+    var filas = genSeleccion() || genFilas();
+    if (!filas.length) { toast("No hay piezas en el generador con este filtro."); return; }
+    abrirPrevia(filas, $("g-ver"));
   });
+  // Validar o regresar desde la vista del generador.
+  function decidirRevision(cual) {
+    if (!GP || !GP.rev) return;
+    var cola = COLAS[GP.rev.cola], action = cola.acc[cual === "ok" ? 0 : 1], com = $("gp-coment").value.trim();
+    if (cual !== "ok" && !com) { toast("Escribe el motivo para que el contratista sepa qué corregir.", true); $("gp-coment").focus(); return; }
+    var b = $(cual === "ok" ? "gp-validar" : "gp-regresar"); b.disabled = true;
+    api("/api/piezas", { action: action, guids: GP.filas, comentario: com }).then(function (r) {
+      Object.assign(S.avance, r.avance);
+      S.apSel.clear(); $("gen-prev").close();
+      var hecho = { "gen-validar": " validadas para estimación: pasan al superintendente.", "gen-regresar": " regresadas al contratista.", aprobar: " aprobadas: quedan Estimado.", regresar: " regresadas a Terminado." }[action];
+      toast(nf0.format(r.actualizadas) + hecho + (r.omitidas ? " (" + r.omitidas + " sin cambio)" : ""));
+      updateBadge(); renderAprobar(); renderLista(); paintModel();
+    }).catch(function (e) { toast(e.message, true); }).finally(function () { b.disabled = false; });
+  }
+  if ($("gp-validar")) $("gp-validar").addEventListener("click", function () { decidirRevision("ok"); });
+  if ($("gp-regresar")) $("gp-regresar").addEventListener("click", function () { decidirRevision("no"); });
   $("gp-cerrar").addEventListener("click", function () { $("gen-prev").close(); });
   $("gen-prev").addEventListener("close", cerrarZoom);
 
@@ -1340,7 +1382,7 @@
   function agrupar(filas) {
     var m = {}, hoy = new Date().toISOString().slice(0, 10);
     filas.forEach(function (g) {
-      var p = S.piezas[g], est = rec(g).estimacion || "";
+      var r0 = rec(g), p = S.piezas[g], est = r0.estimacion || (r0.pend && r0.pend.estatus === "Estimado" ? r0.pend.estimacion : "") || "";
       var k = p.contratista + "|" + est;
       (m[k] || (m[k] = { contratista: p.contratista, estimacion: est, filas: [] })).filas.push(g);
     });
