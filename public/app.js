@@ -2005,7 +2005,13 @@
     } else if (S.verTodo) {
       if (cambiaVista("todo", [])) v.showAll();
     } else if (Object.keys(S.piezas).length && (S.tab === "generador" || S.tab === "piezas")) {
-      if (cambiaVista("vacio", [])) { v.isolate([], m); v.hide(m.getRootId(), m); } // filtro sin piezas: modelo vacío
+      // Nada que mostrar con este filtro (o las piezas no están en esta versión del modelo): nunca dejar el visor en
+      // blanco; se ve todo el modelo y se avisa por qué.
+      if (cambiaVista("todo", [])) v.showAll();
+      var algunaEnModelo = Object.keys(S.piezas).some(function (g) { return S.guid2db.has(g); });
+      var aviso = algunaEnModelo ? "Ningún elemento coincide con los filtros: se muestra el modelo completo."
+        : "Tus elementos no se encontraron en esta versión del modelo. Avisa al administrador.";
+      if (S.avisoVacio !== aviso) { S.avisoVacio = aviso; toast(aviso, !algunaEnModelo); }
     } else {
       if (cambiaVista("todo", [])) v.showAll();
     }
