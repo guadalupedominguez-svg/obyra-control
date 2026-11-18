@@ -2181,8 +2181,10 @@
       ids.push(id);
       v.setThemingColor(id, hexToVec(colorVista(g)), m, true);
     });
-    var zonaIds = idsZonaAislada();
-    if (zonaIds) {
+    var zonaIds = soloEstas ? null : idsZonaAislada(); // la foto del generador va solo con sus piezas
+    if (soloEstas && ids.length) {
+      if (cambiaVista("iso", ids)) v.isolate(ids, m); if (encuadrar) v.fitToView(ids, m);
+    } else if (zonaIds) {
       if (cambiaVista("zona", zonaIds)) v.isolate(zonaIds, m); if (encuadrar) v.fitToView(zonaIds, m); // solo la zona elegida
     } else if (ids.length && S.verTodo) {
       if (cambiaVista("todo", [])) v.showAll(); if (encuadrar) v.fitToView(ids, m); // modelo completo con los colores encima
