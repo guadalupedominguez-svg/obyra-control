@@ -615,3 +615,8 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .u-estado-txt { font-size: 12px; font-weight: 600; }
 .u-estado-txt.ok { color: var(--ok); }
 .u-estado-txt.off { color: var(--bad); }
+/* Ojito de contraseña */
+.pw-wrap { position: relative; display: block; }
+.pw-wrap > input { width: 100%; box-sizing: border-box; padding-right: 44px; }
+.pw-ojo { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; display: grid; place-items: center; background: none; border: 0; border-radius: 8px; color: var(--muted); cursor: pointer; }
+.pw-ojo:hover, .pw-ojo[aria-pressed="true"] { color: var(--accent); }

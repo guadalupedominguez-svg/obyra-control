@@ -75,7 +75,31 @@
   var estado = function (g) { var r = rec(g); return r.pend ? "Por aprobar" : (r.estatus || "Planeado"); };
 
   // ---------- Inicio ----------
+  // Ojito para mostrar u ocultar lo escrito en los campos de contraseña.
+  var OJO = '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>';
+  var OJO_NO = '<path d="M3 3l18 18"/><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4M6.6 6.6C3.9 8.4 2 12 2 12s4 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>';
+  function ojitos() {
+    qsa('input[type="password"]').forEach(function (inp) {
+      if (inp.parentNode.classList.contains("pw-wrap")) return;
+      var wrap = el("span", { class: "pw-wrap" });
+      inp.parentNode.insertBefore(wrap, inp); wrap.appendChild(inp);
+      var b = el("button", { type: "button", class: "pw-ojo", "aria-label": "Mostrar contraseña", title: "Mostrar contraseña" });
+      var pinta = function () {
+        var visible = inp.type === "text";
+        b.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (visible ? OJO_NO : OJO) + "</svg>";
+        b.setAttribute("aria-label", visible ? "Ocultar contraseña" : "Mostrar contraseña"); b.title = b.getAttribute("aria-label");
+        b.setAttribute("aria-pressed", String(visible));
+      };
+      b.addEventListener("click", function () { inp.type = inp.type === "password" ? "text" : "password"; pinta(); inp.focus(); });
+      // Al enviar o cerrar, vuelve a ocultarse.
+      if (inp.form) inp.form.addEventListener("reset", function () { inp.type = "password"; pinta(); });
+      if (inp.form) inp.form.addEventListener("submit", function () { inp.type = "password"; pinta(); });
+      pinta(); wrap.appendChild(b);
+    });
+  }
+
   function boot() {
+    ojitos();
     try { S.proyecto = localStorage.getItem("ctrl_proyecto") || ""; } catch (e) { S.proyecto = ""; }
     var q = new URLSearchParams(location.search);
     var forma = q.get("forma");
