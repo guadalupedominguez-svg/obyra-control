@@ -620,3 +620,5 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .pw-wrap > input { width: 100%; box-sizing: border-box; padding-right: 44px; }
 .pw-ojo { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; display: grid; place-items: center; background: none; border: 0; border-radius: 8px; color: var(--muted); cursor: pointer; }
 .pw-ojo:hover, .pw-ojo[aria-pressed="true"] { color: var(--accent); }
+.chip-sel { flex-shrink: 0; background: rgba(34, 211, 238, .12); border: 1px solid var(--accent); color: var(--accent); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.chip-sel[hidden] { display: none; }

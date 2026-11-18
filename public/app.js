@@ -304,8 +304,12 @@
   function renderLista() {
     syncEstnumPiezas();
     var list = filtradas();
+    // Lo que se seleccionó en el modelo es lo que se ve en la lista (hasta «Ver toda la lista»).
+    var soloSel = S.soloSel && S.sel && S.sel.size;
+    if (soloSel) list = list.filter(function (g) { return S.sel.has(g); });
+    pintarChipSel("sel-solo-chip", soloSel);
     var ul = $("lista");
-    $("list-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pieza" : " piezas") + (S.zonaAislada ? " en " + S.zonaAislada : "");
+    $("list-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pieza" : " piezas") + (soloSel ? " seleccionadas en el modelo" : S.zonaAislada ? " en " + S.zonaAislada : "");
     if (!Object.keys(S.piezas).length) {
       ul.replaceChildren(el("li", { class: "empty", text: S.permisos.administrar
         ? "Todavía no hay piezas. En Configuración, conecta Forma, pega la liga del IFC y usa «Leer piezas del modelo»."
@@ -521,10 +525,15 @@
     if ($("ap-all")) $("ap-all").hidden = !actua;
     $("ap-ok").textContent = cola.ok; $("ap-no").textContent = cola.no;
     var list = pendientesVista().sort(function (a, b) { return cuandoAp(a) < cuandoAp(b) ? -1 : 1; });
+    var soloSel = S.soloSel && S.sel && S.sel.size;
+    var fuera = 0;
+    if (soloSel) { var n0 = S.sel.size; list = list.filter(function (g) { return S.sel.has(g); }); fuera = n0 - list.length; }
+    pintarChipSel("ap-solo-chip", soloSel);
     S.apSel.forEach(function (g) { if (list.indexOf(g) < 0) S.apSel["delete"](g); });
-    $("ap-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pendiente" : " pendientes");
+    $("ap-count").textContent = nf0.format(list.length) + (list.length === 1 ? " pendiente" : " pendientes") +
+      (soloSel ? " de lo seleccionado en el modelo" + (fuera > 0 ? " (" + fuera + " sin pendientes aquí)" : "") : "");
     if ($("ap-all")) $("ap-all").checked = list.length > 0 && list.every(function (g) { return S.apSel.has(g); });
-    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: cola.vacio })); return; }
+    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: soloSel ? "Lo que seleccionaste en el modelo no tiene pendientes en esta lista." : cola.vacio })); return; }
     $("lista-ap").replaceChildren.apply($("lista-ap"), list.map(function (g) {
       var p = S.piezas[g], r = rec(g);
       var cb = el("span"); // sin casilla para quien solo consulta
@@ -2127,7 +2136,7 @@
     if (S.multi) toast("Da clic en cada elemento para agregarlo o quitarlo. Ya no hace falta Ctrl.");
   });
   $("multi-clear").addEventListener("click", function () {
-    S.sel = new Set();
+    S.sel = new Set(); S.soloSel = false;
     if (S.viewer) { S.syncing = true; S.viewer.clearSelection(); S.syncing = false; }
     pintarMulti();
     if (S.modulo !== "lean") renderLista();
@@ -2264,6 +2273,17 @@
   $("filsel-quitar").addEventListener("click", function () { filselAplicar("quitar"); });
   $("filsel-limpiar").addEventListener("click", function () { S.filselVals.clear(); filselContar(); });
 
+  function pintarChipSel(id, on) {
+    var b = $(id); if (!b) return;
+    b.hidden = !on;
+  }
+  function verTodaLaLista() {
+    S.soloSel = false;
+    if (S.tab === "aprobar") renderAprobar(); else renderLista();
+  }
+  if ($("sel-solo-chip")) $("sel-solo-chip").addEventListener("click", verTodaLaLista);
+  if ($("ap-solo-chip")) $("ap-solo-chip").addEventListener("click", verTodaLaLista);
+
   function onViewerSelect(ev) {
     if (S.syncing) return;
     var gs = (ev.dbIdArray || []).map(function (id) {
@@ -2294,7 +2314,11 @@
       S.sel = acum;
       selectInViewer();
     } else {
-      if (!gs.length) { pintarMulti(); return; }
+      if (!gs.length) { // clic en vacío: la lista vuelve a mostrar todo
+        pintarMulti();
+        if (S.soloSel && S.modulo !== "lean") { S.soloSel = false; if (S.tab === "aprobar") renderAprobar(); else renderLista(); }
+        return;
+      }
       // Ctrl + clic: el visor manda toda la selección; se conserva el orden en que se fue armando (orden de montaje).
       var prev = Array.from(S.sel || []).filter(function (g) { return gs.indexOf(g) >= 0; });
       S.sel = new Set(prev.concat(gs.filter(function (g) { return prev.indexOf(g) < 0; })));
@@ -2303,6 +2327,14 @@
     pintarMulti();
     etiquetas3D();
     if (S.modulo === "lean") return;
+    S.soloSel = S.sel.size > 0;
+    if (S.tab === "aprobar") {
+      // En Aprobaciones lo seleccionado en el modelo queda marcado para validar o rechazar.
+      var pend = pendientesVista();
+      S.apSel = new Set(pend.filter(function (g) { return S.sel.has(g); }));
+      renderAprobar();
+      return;
+    }
     renderLista();
     var sel = document.querySelector("#lista li.sel");
     if (sel) sel.scrollIntoView({ block: "nearest" });
