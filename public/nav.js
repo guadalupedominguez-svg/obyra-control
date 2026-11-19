@@ -102,9 +102,9 @@
   // ---------- Inicio ----------
   var leanCache = null;
   function tarjeta(o) {
-    // Contratista: el botón es texto con una línea inferior en degradado del color de la tarjeta, y un punto
-    // junto al título cuando hay algo pendiente. Los demás roles conservan el botón de siempre.
-    var linea = S.me && S.me.rol === "contratista";
+    // El botón es texto con una línea inferior en degradado del color de la tarjeta, y un punto
+    // junto al título cuando hay algo pendiente (todos los perfiles).
+    var linea = true;
     var b = el("button", { type: "button", class: linea ? "ini-accion" : "btn " + (o.primario ? "btn-primary" : ""), text: o.accion });
     b.addEventListener("click", o.fn);
     return el("div", { class: "ini-card " + (o.tono || "") }, [
