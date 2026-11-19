@@ -23,6 +23,7 @@
     calendario: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
     lego: '<rect x="2" y="13" width="20" height="7" rx="1"/><path d="M5 13v-1.5h3V13M16 13v-1.5h3V13"/><rect x="9" y="6" width="10" height="7" rx="1"/><path d="M11 6V4.5h2.5V6M15 6V4.5h2.5V6"/>',
     alerta: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>',
+    critico: '<path d="M8 2h8l6 6v8l-6 6H8l-6-6V8z"/><path d="M12 7v6M12 17h.01"/>',
     rayo: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
     grafica: '<path d="M3 20h18"/><path d="M6 20v-7M11 20V5M16 20v-10M21 20v-4"/>',
     check: '<path d="M5 12l5 5 9-10"/>',
@@ -181,7 +182,8 @@
     var nombre = (S.me && S.me.nombre || "").split(" ")[0];
     var h = hoy.getHours(), saludo = h < 12 ? "Buenos días" : h < 19 ? "Buenas tardes" : "Buenas noches";
     var kpis = el("div", { class: "ini-kpis" }, [
-      kpi("lego", "Avance " + (S.obra && S.obra.nombre || ""), pct + " %"),
+      el("div", { class: "ini-kpi", id: "ini-k-av" }, [el("span", { class: "muted ini-kpi-t" }, [icono("lego", 16), "Avance " + (S.obra && S.obra.nombre || "")]),
+        el("div", { class: "ini-kpi-val" }, [el("b", { text: pct + " %" }), el("span", { class: "ini-alerta", id: "ini-alerta" })])]),
       kpi("check", "Elementos terminados", String((porEst.Terminado || 0) + (porEst.Estimado || 0) + (porEst.Pagado || 0)) + " de " + gs.length),
       el("div", { class: "ini-kpi", id: "ini-k-restr" }, [el("span", { class: "muted ini-kpi-t" }, [icono("alerta", 16), "Restricciones abiertas"]), el("b", { text: "…" })]),
       el("div", { class: "ini-kpi", id: "ini-k-hito" }, [el("span", { class: "muted ini-kpi-t" }, [icono("rayo", 16), "Próximo hito"]), el("b", { text: "…" })]),
@@ -200,6 +202,41 @@
     pintarSemana(sem);
     if (P.reportar) pintarClima();
   }
+  // ---------- Alerta de atraso contra el look-ahead ----------
+  // Planeado: cuánto de cada actividad (con elementos ligados) ya debería ir según sus semanas (lunes a sábado).
+  // Real: el avance de esos elementos en Control de obra. Se pondera por número de elementos.
+  function lunesIso(sem) {
+    var m = /^(\d{4})-W(\d{2})$/.exec(sem || ""); if (!m) return null;
+    var y = +m[1], w = +m[2], ene4 = new Date(Date.UTC(y, 0, 4)), dia = ene4.getUTCDay() || 7;
+    return new Date(Date.UTC(y, 0, 4 - dia + 1 + (w - 1) * 7));
+  }
+  function pintarAlerta(d, mio) {
+    var box = $("ini-alerta"); if (!box) return;
+    var hoy = Date.now(), plan = 0, real = 0, peso = 0;
+    (d.actividades || []).forEach(function (a) {
+      if (mio && a.contratista !== mio) return;
+      var gs = (a.guids || []).filter(function (g) { return S.piezas && S.piezas[g]; });
+      if (!gs.length) return;
+      var ini = lunesIso(a.semanaIni), fin = lunesIso(a.semanaFin); if (!ini || !fin) return;
+      if (hoy < ini.getTime()) return; // aún no empieza: no cuenta
+      var finMs = fin.getTime() + 6 * 864e5; // termina el sábado (domingo 00:00)
+      var esperado = Math.max(0, Math.min(1, (hoy - ini.getTime()) / (finMs - ini.getTime())));
+      var avance = gs.reduce(function (s, g) { return s + O.avancePieza(g); }, 0) / gs.length / 100;
+      plan += esperado * gs.length; real += avance * gs.length; peso += gs.length;
+    });
+    box.replaceChildren(); box.className = "ini-alerta";
+    var card = $("ini-k-av"); if (card) card.classList.remove("nivel-ok", "nivel-atencion", "nivel-critico");
+    if (!peso) return; // sin actividades con elementos ligados que ya hayan empezado
+    var p = Math.round(plan / peso * 100), r = Math.round(real / peso * 100), dif = p - r;
+    var nivel = dif > 15 ? "critico" : dif > 5 ? "atencion" : "ok";
+    var ico = { ok: "check", atencion: "alerta", critico: "critico" }[nivel];
+    var txt = { ok: "En tiempo con el look-ahead", atencion: "Empieza a atrasarse", critico: "Atraso crítico" }[nivel] +
+      " · planeado " + p + " % · real " + r + " %" + (dif > 0 ? " · " + dif + " pts abajo" : "");
+    box.classList.add(nivel); box.title = txt; box.setAttribute("role", "img"); box.setAttribute("aria-label", txt);
+    box.appendChild(icono(ico, 22));
+    if (card) card.classList.add("nivel-" + nivel);
+  }
+
   // Pronóstico del clima según la ubicación del proyecto en ACC (lo calcula /api/clima).
   var climaCache = null;
   function climaDe(c) {
@@ -261,6 +298,7 @@
       var kr = $("ini-k-restr"), kh = $("ini-k-hito");
       if (kr) kr.lastChild.textContent = String(abiertas);
       if (kh) kh.lastChild.textContent = hito ? hito.nombre + " · " + new Date(hito.fecha + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" }) : "—";
+      pintarAlerta(d, mio);
       var ir = el("button", { type: "button", class: "btn", text: "Ver la semana día por día", onclick: function () { irA("planeacion"); if (window.OBYRA_LEAN.vista) window.OBYRA_LEAN.vista("dia"); } });
       box.replaceChildren.apply(box, [el("h2", { text: "Esta semana en obra" + (plan.length ? " · " + plan.length + (plan.length === 1 ? " compromiso" : " compromisos") : "") })]
         .concat(filas.length ? filas : [el("p", { class: "muted", text: mio ? "No tienes actividades en el look-ahead esta semana." : "No hay actividades en el look-ahead esta semana." })])

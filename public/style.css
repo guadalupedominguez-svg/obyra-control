@@ -657,3 +657,14 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .ini-accion:hover { color: var(--tono, var(--accent)); }
 .ini-accion:focus-visible { outline: 2px solid var(--tono, var(--accent)); outline-offset: 2px; }
 .ini-punto { width: 9px; height: 9px; border-radius: 50%; margin-left: auto; flex-shrink: 0; background: var(--tono, var(--accent)); box-shadow: 0 0 0 3px rgba(255, 255, 255, .06); }
+/* Inicio: alerta de atraso contra el look-ahead en «Avance» */
+.ini-kpi-val { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ini-alerta { display: inline-grid; place-items: center; flex-shrink: 0; cursor: help; }
+.ini-alerta:empty { display: none; }
+.ini-alerta.ok { color: var(--ok); }
+.ini-alerta.atencion { color: var(--warn); }
+.ini-alerta.critico { color: var(--bad); animation: ini-pulso 1.6s ease-in-out infinite; }
+@keyframes ini-pulso { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .ini-alerta.critico { animation: none; } }
+.ini-kpi.nivel-atencion { border-color: rgba(245, 184, 61, .45); }
+.ini-kpi.nivel-critico { border-color: rgba(242, 97, 106, .6); background: linear-gradient(90deg, var(--surface), rgba(242, 97, 106, .08)); }
