@@ -705,3 +705,27 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .gp-vacio { padding: 24px 16px; margin: 0; }
 .gp-head .oculto-gp { display: none; }
 #gp-res-t[hidden], .gp-res[hidden] { display: none; }
+/* Aprobaciones del contratista: tablero de solo consulta */
+.ap-tablero { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
+.ap-tablero[hidden], .ap-celda[hidden], .ap-chipv[hidden] { display: none; }
+.ap-tr { display: grid; grid-template-columns: 1.15fr 1fr 1fr 1fr; }
+.ap-tr + .ap-tr { border-top: 1px solid var(--line); }
+.ap-th { background: var(--surface-2); font-size: 11px; color: var(--muted); }
+.ap-th > div { padding: 7px 6px; text-align: center; white-space: nowrap; }
+.ap-tf { padding: 9px 10px; font-size: 13px; display: flex; flex-direction: column; justify-content: center; }
+.ap-tf small { color: var(--muted); font-size: 11px; line-height: 1.25; }
+.ap-c { background: none; border: 0; border-left: 1px solid var(--line); color: var(--text); padding: 9px 4px; cursor: pointer; font: inherit; text-align: center; }
+.ap-c b { display: block; font-size: 20px; line-height: 1.1; }
+.ap-c small { color: var(--muted); font-size: 11px; }
+.ap-c:hover:not(:disabled) { background: rgba(255, 255, 255, .04); }
+.ap-c.ap-ok b { color: var(--ok); }
+.ap-c.ap-rev b { color: var(--warn); }
+.ap-c.ap-no b { color: var(--bad); }
+.ap-c.cero { cursor: default; }
+.ap-c.cero b { color: var(--muted); opacity: .5; }
+.ap-c.sel { background: rgba(245, 184, 61, .12); box-shadow: inset 0 -2px 0 var(--warn); }
+.ap-celda { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin: 2px 0 6px; }
+.ap-celda .linklike { color: var(--accent); }
+.ap-chipv { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 3; background: rgba(17, 26, 43, .92); border: 1px solid var(--accent); border-radius: 20px; padding: 5px 14px; font-size: 12px; color: var(--text); pointer-events: none; white-space: nowrap; }
+.ap-chipv b { color: var(--accent); }
+#app.lean .ap-chipv { display: none; }

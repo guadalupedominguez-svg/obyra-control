@@ -60,6 +60,7 @@
       <section class="viewer-wrap" aria-label="Modelo 3D">
         <div id="viewer" class="viewer"></div>
         <canvas id="etiq-3d" class="etiq-3d" aria-hidden="true"></canvas>
+        <div class="ap-chipv" id="ap-chipv" hidden></div>
         <div id="viewer-msg" class="viewer-msg" hidden></div>
         <div id="aviso-version" class="aviso-version" role="status" hidden></div>
         <div class="legend" id="legend" aria-label="Colores por estatus"></div>
@@ -190,6 +191,8 @@
         <section class="tabpane" data-pane="aprobar" hidden>
           <p class="pane-intro" id="ap-intro"></p>
           <select id="ap-cola" aria-label="Qué revisar"></select>
+          <!-- Contratista: tablero de solo consulta (aprobados, en revisión, rechazados) -->
+          <div class="ap-tablero" id="ap-tablero" hidden></div>
           <div class="filtros-wrap">
             <input id="ap-buscar" type="search" placeholder="Buscar marca, clave o comentario" aria-label="Buscar en aprobaciones">
             <details class="desp" id="desp-ap-filtros">
@@ -203,6 +206,7 @@
               </div>
             </details>
           </div>
+          <div class="ap-celda" id="ap-celda" hidden><span id="ap-celda-t"></span><button type="button" class="linklike" id="ap-celda-x">Quitar ✕</button></div>
           <div class="list-head">
             <label class="check"><input type="checkbox" id="ap-all" data-perm="aprobar"> <span id="ap-count">0 pendientes</span></label>
             <button type="button" class="chip-sel" id="ap-solo-chip" hidden>Ver toda la lista ×</button>

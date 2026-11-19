@@ -161,6 +161,7 @@
       ? "Estimaciones que el residente ya validó: apruébalas (quedan Estimado) o regrésalas a Terminado con el motivo. También puedes validar avance."
       : S.permisos.validarGenerador
         ? "Valida el avance que actualiza el contratista y los generadores que envía a estimar; lo validado pasa al superintendente."
+        : apConsulta() ? "Así va lo que enviaste. Toca una cantidad para verla en la lista y en el modelo."
         : "Lo que espera revisión: el residente valida el avance y los generadores; el superintendente aprueba las estimaciones.";
     // El contratista además puede ver lo que el residente ya validó (Terminado y validado): lo que puede estimar.
     var opcEst = [];
@@ -202,6 +203,7 @@
       if (name === "aprobar") renderAprobar();
       if (name === "admin") loadUsers();
       var antes = S.tab; S.tab = name;
+      if ($("ap-chipv")) $("ap-chipv").hidden = name !== "aprobar" || !(apConsulta() && S.apCelda);
       // Piezas y Generador muestran en el modelo lo mismo que su lista; las demás pestañas, todas las piezas.
       if (antes !== name) paintModel(name === "piezas" || name === "generador");
       try { localStorage.setItem("ctrl_tab", name); } catch (e) { /* sin almacenamiento */ }
@@ -496,6 +498,8 @@
     var c = v("ap-contratista"), u = v("ap-usuario"), e = v("ap-estatus"), z = v("ap-zona"), q = v("ap-buscar").trim().toLowerCase();
     // «Validados»: lo que el residente ya validó y el contratista puede estimar (no es un pendiente de revisión).
     var base = e === VALIDADOS ? Object.keys(S.piezas).filter(estimable) : e === RECHAZADOS ? Object.keys(S.piezas).filter(rechazado) : pendientes();
+    var celda = apConsulta() && S.apCelda ? tableroAp()[S.apCelda.f][S.apCelda.c] : null;
+    if (celda) base = celda.guids; // lo que se eligió en el tablero del contratista
     return base.filter(function (g) {
       if (c && S.piezas[g].contratista !== c) return false;
       if (u && apQuien(g) !== u) return false;
@@ -505,8 +509,78 @@
       return true;
     });
   }
+  // ---------- Tablero del contratista en Aprobaciones (solo consulta) ----------
+  // Elementos (avance reportado), generadores (los revisa el residente) y estimaciones (las aprueba el superintendente),
+  // cada uno aprobado, en revisión o rechazado. Generadores y estimaciones se cuentan por número de estimación.
+  var AP_FILAS = [["elem", "Elementos", "avance reportado"], ["gen", "Generadores", "con el residente"], ["est", "Estimaciones", "con el superintendente"]];
+  var AP_COLS = [["ok", "Aprobados", "✓"], ["rev", "En revisión", "◷"], ["no", "Rechazados", "↺"]];
+  function apConsulta() { return !!S.permisos.enviarEstimacion && !S.permisos.aprobar && !S.permisos.validarGenerador && !S.permisos.autorizar; }
+  function regresoSuper(r) {
+    var h = (r.hist || []).filter(function (x) { return x.accion === "regresa"; }).pop();
+    return !!h && h.rol === "superintendente";
+  }
+  function tableroAp() {
+    var T = {}, mio = S.me && S.me.contratista;
+    AP_FILAS.forEach(function (f) { T[f[0]] = {}; AP_COLS.forEach(function (c) { T[f[0]][c[0]] = { guids: [], ests: {} }; }); });
+    var poner = function (f, c, g, est) { var x = T[f][c]; x.guids.push(g); if (est) x.ests[est] = 1; };
+    Object.keys(S.piezas).forEach(function (g) {
+      if (mio && S.piezas[g].contratista !== mio) return;
+      var r = rec(g), etapa = etapaGen(r), rech = rechazado(g);
+      var avRev = !!r.porValidar || (!!r.pend && r.pend.estatus !== "Estimado");
+      var avNo = rech && !r.rechazo.estimacion;
+      if (avRev) poner("elem", "rev", g);
+      else if (avNo) poner("elem", "no", g);
+      else if (r.validado || etapa || r.estatus === "Estimado" || r.estatus === "Pagado") poner("elem", "ok", g);
+      if (etapa === "residente") poner("gen", "rev", g, r.pend.estimacion);
+      if (etapa === "superintendente") { poner("gen", "ok", g, r.pend.estimacion); poner("est", "rev", g, r.pend.estimacion); }
+      if (r.estimacion) { poner("gen", "ok", g, r.estimacion); poner("est", "ok", g, r.estimacion); }
+      if (rech && r.rechazo.estimacion) poner(regresoSuper(r) ? "est" : "gen", "no", g, r.rechazo.estimacion);
+    });
+    return T;
+  }
+  function nombreCelda(f, c) {
+    var F = AP_FILAS.filter(function (x) { return x[0] === f; })[0], C = AP_COLS.filter(function (x) { return x[0] === c; })[0];
+    var fem = f === "est";
+    var col = c === "ok" ? (fem ? "aprobadas" : "aprobados") : c === "no" ? (fem ? "rechazadas" : "rechazados") : "en revisión";
+    return F[1] + " " + col;
+  }
+  function pintarTableroAp() {
+    var box = $("ap-tablero"); if (!box) return;
+    var on = apConsulta();
+    box.hidden = !on; if ($("ap-cola")) $("ap-cola").hidden = on;
+    if (!on) { S.apCelda = null; return; }
+    var T = tableroAp();
+    var filas = [el("div", { class: "ap-tr ap-th" }, [el("div")].concat(AP_COLS.map(function (c) { return el("div", { class: "ap-" + c[0] }, [el("span", { "aria-hidden": "true", text: c[2] + " " }), c[1]]); })))];
+    AP_FILAS.forEach(function (f) {
+      filas.push(el("div", { class: "ap-tr" }, [el("div", { class: "ap-tf" }, [el("span", { text: f[1] }), el("small", { text: f[2] })])].concat(AP_COLS.map(function (c) {
+        var x = T[f[0]][c[0]], n = f[0] === "elem" ? x.guids.length : Object.keys(x.ests).length;
+        var sel = S.apCelda && S.apCelda.f === f[0] && S.apCelda.c === c[0];
+        var b = el("button", { type: "button", class: "ap-c ap-" + c[0] + (n ? "" : " cero") + (sel ? " sel" : ""), "aria-pressed": String(!!sel),
+          "aria-label": nombreCelda(f[0], c[0]) + ": " + n }, [
+          el("b", { text: nf0.format(n) }),
+          el("small", { text: n ? (f[0] === "elem" ? (n === 1 ? "pza" : "pzas") : nf0.format(x.guids.length) + (x.guids.length === 1 ? " pza" : " pzas")) : "\u00a0" }),
+        ]);
+        if (!n) b.disabled = true;
+        b.addEventListener("click", function () { S.apCelda = sel ? null : { f: f[0], c: c[0] }; S.apSel.clear(); renderAprobar(); paintModel(true); });
+        return b;
+      }))));
+    });
+    box.replaceChildren.apply(box, filas);
+  }
+  function pintarCeldaAp(n) {
+    var on = apConsulta() && S.apCelda, t = on ? nombreCelda(S.apCelda.f, S.apCelda.c) : "";
+    if ($("ap-celda")) { $("ap-celda").hidden = !on; if (on) $("ap-celda-t").textContent = t + " · " + nf0.format(n) + (n === 1 ? " pieza" : " piezas"); }
+    var ch = $("ap-chipv");
+    if (ch) {
+      ch.hidden = !(on && S.tab === "aprobar");
+      if (on) ch.replaceChildren("Mostrando: ", el("b", { text: t }), " · " + nf0.format(n) + (n === 1 ? " pieza" : " piezas"));
+    }
+  }
+  if ($("ap-celda-x")) $("ap-celda-x").addEventListener("click", function () { S.apCelda = null; renderAprobar(); paintModel(true); });
+
   // ¿Hay algún filtro o búsqueda en Aprobaciones? Entonces el modelo muestra solo esos pendientes.
   function filtrosApActivos() {
+    if (apConsulta() && S.apCelda) return true;
     return ["ap-contratista", "ap-usuario", "ap-estatus", "ap-zona", "ap-buscar"].some(function (id) { return $(id) && $(id).isConnected && $(id).value.trim(); });
   }
   // Opciones de los filtros con lo que hay en la lista actual (y cuántos de cada uno).
@@ -566,6 +640,7 @@
   function renderAprobar() {
     if (!$("lista-ap")) return;
     pintarColas();
+    pintarTableroAp();
     pintarFiltrosAp();
     var cola = COLAS[colaActual()], actua = !cola.soloVer && !!S.permisos[cola.puede];
     $("ap-acciones").hidden = !actua;
@@ -579,6 +654,7 @@
     var fuera = 0;
     if (soloSel) { var n0 = S.sel.size; list = list.filter(function (g) { return S.sel.has(g); }); fuera = n0 - list.length; }
     pintarChipSel("ap-solo-chip", soloSel);
+    pintarCeldaAp(list.length);
     S.apSel.forEach(function (g) { if (list.indexOf(g) < 0) S.apSel["delete"](g); });
     var esVal = $("ap-estatus") && $("ap-estatus").value === VALIDADOS, esRech = $("ap-estatus") && $("ap-estatus").value === RECHAZADOS;
     if (esRech) { $("ap-acciones").hidden = true; if ($("ap-all")) $("ap-all").hidden = true; }
@@ -587,7 +663,7 @@
     if ($("ap-all")) $("ap-all").checked = list.length > 0 && list.every(function (g) { return S.apSel.has(g); });
     if (rev) { var nRev = S.apSel.size || list.length; $("ap-ok").textContent = "Revisar generador" + (nRev ? " (" + nRev + (nRev === 1 ? " pieza)" : " piezas)") : ""); $("ap-ok").disabled = !list.length; }
     else $("ap-ok").disabled = false;
-    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: soloSel ? "Lo que seleccionaste en el modelo no tiene pendientes en esta lista." : esRech ? "No hay elementos rechazados." : esVal ? "Aún no hay elementos validados." : cola.vacio })); return; }
+    if (!list.length) { $("lista-ap").replaceChildren(el("li", { class: "empty", text: apConsulta() && S.apCelda ? "No hay piezas con estos filtros." : soloSel ? "Lo que seleccionaste en el modelo no tiene pendientes en esta lista." : esRech ? "No hay elementos rechazados." : esVal ? "Aún no hay elementos validados." : cola.vacio })); return; }
     $("lista-ap").replaceChildren.apply($("lista-ap"), list.map(function (g) {
       var p = S.piezas[g], r = rec(g);
       var cb = el("span"); // sin casilla para quien solo consulta
