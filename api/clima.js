@@ -47,7 +47,12 @@ export default route(["GET"], async (req, res) => {
   if (!obra.projectId) { res.status(200).json({ error: "El proyecto aún no está ligado a ACC (falta cargar el modelo)." }); return; }
   let d;
   try { d = await direccionAcc(obra.projectId); }
-  catch (e) { res.status(200).json({ error: "No se pudo leer la ubicación del proyecto en ACC.", detalle: e.message }); return; }
+  catch (e) {
+    const permiso = /privilege|403/i.test(String(e.message));
+    res.status(200).json({ error: permiso ? "Falta permiso para leer la ubicación en ACC: un administrador debe volver a conectar Forma en Configuraciones."
+      : "No se pudo leer la ubicación del proyecto en ACC.", detalle: e.message });
+    return;
+  }
   const lugar = await coordenadas(d);
   if (!lugar) { res.status(200).json({ error: "El proyecto en ACC no tiene una dirección registrada." }); return; }
   const f = await json("https://api.open-meteo.com/v1/forecast?timezone=auto&forecast_days=5&latitude=" + lugar.lat + "&longitude=" + lugar.lon +
