@@ -26,6 +26,11 @@
     rayo: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
     grafica: '<path d="M3 20h18"/><path d="M6 20v-7M11 20V5M16 20v-10M21 20v-4"/>',
     check: '<path d="M5 12l5 5 9-10"/>',
+    tabla: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/>',
+    sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    nube: '<path d="M7 18h10a4 4 0 0 0 .4-8 6 6 0 0 0-11.6 1.6A3.2 3.2 0 0 0 7 18z"/>',
+    lluvia: '<path d="M7 14h10a4 4 0 0 0 .4-8 6 6 0 0 0-11.6 1.6A3.2 3.2 0 0 0 7 14z"/><path d="M8 17l-1 3M12 17l-1 3M16 17l-1 3"/>',
+    tormenta: '<path d="M7 14h10a4 4 0 0 0 .4-8 6 6 0 0 0-11.6 1.6A3.2 3.2 0 0 0 7 14z"/><path d="M12 14l-2 4h3l-2 4"/>',
   };
   function icono(n, t) {
     var s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -131,7 +136,7 @@
     }
     if (P.enviarEstimacion) {
       var listos = gs.filter(O.estimable).length;
-      cards.push(tarjeta({ icono: "moneda", tono: "t-verde", titulo: "Listos para estimar", n: listos, desc: "Terminado y validado: ya puedes armar tu generador.", accion: "Armar generador", primario: listos > 0, fn: function () { irA("estimaciones"); } }));
+      cards.push(tarjeta({ icono: "tabla", tono: "t-verde", titulo: "Elementos validados", n: listos, desc: "Terminado y validado: ya puedes armar tu generador.", accion: "Armar generador", primario: listos > 0, fn: function () { irA("estimaciones"); } }));
       // Generadores ya creados (enviados): por número de estimación, los que esperan aprobación y los ya estimados.
       var porAprobar = {}, estimados = {};
       gs.forEach(function (g) {
@@ -146,6 +151,14 @@
           irA("estimaciones");
           var v = document.getElementById("g-vista");
           if (v) { v.value = nPA ? "poraprobar" : "estimadas"; v.dispatchEvent(new Event("change")); }
+        } }));
+      // Estimaciones que ya aprobó el superintendente (Estimado / Pagado), por número de estimación.
+      cards.push(tarjeta({ icono: "moneda", tono: "t-ambar", titulo: "Estimaciones aprobadas", n: nEs,
+        desc: nEs ? "Ya las aprobó el superintendente: " + Object.keys(estimados).sort().join(", ") : "Aún no tienes estimaciones aprobadas.", accion: "Ver estimaciones",
+        fn: function () {
+          irA("estimaciones");
+          var v = document.getElementById("g-vista");
+          if (v) { v.value = "estimadas"; v.dispatchEvent(new Event("change")); }
         } }));
     }
     // Avance general (promedio por elemento) y por estatus.
@@ -178,9 +191,45 @@
       el("div", { class: "ini-head" }, [el("h1", { text: saludo + (nombre ? ", " + nombre : "") }), el("span", { class: "muted", text: fecha + (sem ? " · Semana " + +sem.slice(6) : "") + (S.obra ? " · " + S.obra.nombre : "") })]),
       el("div", { class: "ini-cards" }, cards),
       kpis,
-      el("div", { class: "ini-2col" }, [semana, avance])
+      el("div", { class: "ini-2col" }, [semana, P.reportar ? el("div", { class: "ini-col" }, [avance, el("section", { class: "ini-box", id: "ini-clima" }, [el("h2", { text: "Clima en obra" }), el("p", { class: "muted", text: "Consultando el pronóstico…" })])]) : avance])
     );
     pintarSemana(sem);
+    if (P.reportar) pintarClima();
+  }
+  // Pronóstico del clima según la ubicación del proyecto en ACC (lo calcula /api/clima).
+  var climaCache = null;
+  function climaDe(c) {
+    if (c === 0) return ["sol", "Despejado"];
+    if (c <= 2) return ["sol", "Parcialmente nublado"];
+    if (c === 3) return ["nube", "Nublado"];
+    if (c === 45 || c === 48) return ["nube", "Niebla"];
+    if (c >= 95) return ["tormenta", "Tormenta"];
+    if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82)) return ["lluvia", "Lluvia"];
+    if (c >= 71 && c <= 86) return ["nube", "Nieve"];
+    return ["nube", "Nublado"];
+  }
+  function pintarClima() {
+    var hacer = function (d) {
+      var box = $("ini-clima"); if (!box) return;
+      if (!d || d.error) { box.replaceChildren(el("h2", { text: "Clima en obra" }), el("p", { class: "muted", text: (d && d.error) || "No se pudo consultar el clima." })); return; }
+      var hoy = d.actual ? climaDe(d.actual.codigo) : null;
+      var dias = (d.dias || []).map(function (x, i) {
+        var c = climaDe(x.codigo), f = new Date(x.fecha + "T12:00:00");
+        return el("div", { class: "clima-dia" + (x.lluvia >= 60 ? " lluvioso" : ""), title: c[1] }, [
+          el("span", { class: "muted", text: i === 0 ? "Hoy" : f.toLocaleDateString("es-MX", { weekday: "short" }) }),
+          icono(c[0], 22),
+          el("b", { text: Math.round(x.max) + "°" }), el("span", { class: "muted", text: Math.round(x.min) + "°" }),
+          el("small", { text: (x.lluvia || 0) + " % lluvia" }),
+        ]);
+      });
+      box.replaceChildren(
+        el("h2", { text: "Clima en obra" }),
+        hoy ? el("div", { class: "clima-hoy" }, [icono(hoy[0], 34), el("div", null, [el("b", { text: Math.round(d.actual.temp) + " °C · " + hoy[1] }), el("span", { class: "muted", text: d.lugar + " · viento " + Math.round(d.actual.viento) + " km/h" })])]) : el("span", { class: "muted", text: d.lugar }),
+        el("div", { class: "clima-dias" }, dias)
+      );
+    };
+    if (climaCache) hacer(climaCache);
+    O.api("/api/clima").then(function (d) { climaCache = d; hacer(d); }).catch(function () { hacer(null); });
   }
   function pintarSemana(sem) {
     var hacer = function (d) {

@@ -12,6 +12,7 @@ const API = {
   carpetas: () => import("../api/carpetas.js"),
   lean: () => import("../api/lean.js"),
   proyectos: () => import("../api/proyectos.js"),
+  clima: () => import("../api/clima.js"),
 };
 const FORMA = () => import("../api/forma/[action].js");
 

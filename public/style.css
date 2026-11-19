@@ -636,3 +636,14 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .gp-revision[hidden] { display: none; }
 .gp-revision input { flex: 1; min-width: 220px; }
 .gp-head .gp-revision { flex-basis: 100%; margin: 6px 0 0; }
+/* Inicio: clima en obra */
+.ini-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.clima-hoy { display: flex; align-items: center; gap: 12px; }
+.clima-hoy svg { color: var(--warn); flex-shrink: 0; }
+.clima-hoy div { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.clima-hoy b { font-size: 16px; }
+.clima-dias { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.clima-dia { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; text-transform: capitalize; }
+.clima-dia svg { color: var(--accent); }
+.clima-dia.lluvioso { border-color: rgba(59, 130, 246, .6); }
+.clima-dia small { color: var(--muted); font-size: 11px; text-transform: none; }
