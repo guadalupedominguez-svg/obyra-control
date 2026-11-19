@@ -699,3 +699,9 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .gp-tip { position: absolute; z-index: 2; background: var(--bg); color: var(--text); border: 1px solid var(--accent); border-radius: 8px; padding: 6px 10px; font-size: 12px; box-shadow: 0 4px 14px rgba(0, 0, 0, .3); pointer-events: none; max-width: 340px; }
 .gp-tip b { display: block; font-weight: 600; }
 .gp-tip small { display: block; color: var(--muted); }
+/* Vista previa del generador: menú para elegir cuál ver */
+.gp-grupos { align-items: center; }
+.gp-sel { min-width: 280px; max-width: 100%; }
+.gp-vacio { padding: 24px 16px; margin: 0; }
+.gp-head .oculto-gp { display: none; }
+#gp-res-t[hidden], .gp-res[hidden] { display: none; }

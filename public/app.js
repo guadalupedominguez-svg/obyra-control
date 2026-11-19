@@ -1238,6 +1238,9 @@
           grupos.length > 1 ? grupos.length + " generadores" : "", new Date().toLocaleDateString("es-MX", { dateStyle: "long" })].filter(Boolean).join(" · "),
       };
       if (grupos.length === 1) grupos[0].img = img; // la foto ya es justo de ese generador
+      GP.todos = grupos; GP.elegido = null; GP.titulo0 = GP.titulo; GP.sub0 = GP.sub;
+      if (!rev && grupos.length > 1) { GP.grupos = []; GP.filas = []; GP.img = null; } // primero se elige cuál ver
+      else GP.elegido = grupos[0];
       renderPrevia(); textoBotones(); renderGruposPrevia();
       cargarEnvios().then(renderGruposPrevia);
       var R = $("gp-revision");
@@ -1254,7 +1257,7 @@
         $("gp-enviar-btn").textContent = "Enviar " + nEnv + (nEnv === 1 ? " pieza" : " piezas") + " a validar";
       }
       $("gen-prev").showModal();
-      if (img) abrirZoom(); // la vista del modelo se abre junto a la lista
+      if (GP.img) abrirZoom(); // la vista del modelo se abre junto a la lista
     }).finally(function () { btn.disabled = false; btn.textContent = texto; if (!rev) actualizarMarcar(); });
   }
   $("g-ver").addEventListener("click", function () {
@@ -1423,6 +1426,10 @@
     cerrarZoom();
   }
   function renderListaPrevia() {
+    if (!GP.elegido) {
+      $("gp-tabla").replaceChildren(el("p", { class: "muted gp-vacio", text: "Elige en el menú de arriba el generador que quieres ver." }));
+      return;
+    }
     var claves = Object.keys(GP.porConcepto).sort(function (a, b) { return GP.porConcepto[b].length - GP.porConcepto[a].length || a.localeCompare(b, "es"); });
     var comun = function (gs, k) { var v = {}; gs.forEach(function (g) { var x = S.piezas[g][k]; if (x) v[x] = 1; }); var l = Object.keys(v); return l.length === 1 ? l[0] : l.length > 1 ? "Varias" : ""; };
     var grupos = claves.map(function (k) {
@@ -1478,6 +1485,7 @@
     grupos.forEach(function (g) { $("gp-tabla").appendChild(g); });
   }
   function renderResumenPrevia() {
+    $("gp-res-t").hidden = $("gp-resumen").parentNode.hidden = !GP.elegido;
     var res = resumenDe(GP.filas);
     $("gp-resumen").replaceChildren(
       el("thead", null, [el("tr", null, ["Contratista", "Partida", "Clave", "Concepto", "Pzas", "Área (m²)", "Volumen (m³)"].map(function (h, i) { return el("th", { class: i >= 4 ? "num" : null, text: h }); }))]),
@@ -1535,6 +1543,7 @@
   }
   function textoBotones() {
     var n = GP ? GP.grupos.length : 1;
+    $("gp-excel").hidden = !n; if ($("gp-forma")) $("gp-forma").classList.toggle("oculto-gp", !n);
     $("gp-excel").textContent = n > 1 ? "Descargar " + n + " Excel" : "Descargar Excel";
     if ($("gp-forma")) {
       var b = $("gp-forma");
@@ -1649,18 +1658,59 @@
     return S.envios.filter(function (e) { return e.contratista === G.contratista && (e.estimacion || "") === (G.estimacion || ""); })
       .sort(function (a, b) { return a.ultimo.at < b.ultimo.at ? 1 : -1; })[0] || null;
   }
+  // Fecha en que se armó el generador: cuando el contratista lo envió (o cuando se aprobó).
+  function fechaGrupo(G) {
+    var f = "";
+    G.filas.forEach(function (g) {
+      var r = rec(g), x = "";
+      (r.hist || []).forEach(function (h) { if (h.accion === "envia" && (h.estimacion || "") === (G.estimacion || "") && h.at > x) x = h.at; });
+      if (!x && r.pend && r.pend.estimacion === G.estimacion) x = r.pend.at || "";
+      if (!x && r.aprobado && r.estimacion === G.estimacion) x = r.aprobado.at || "";
+      if (x > f) f = x;
+    });
+    return f;
+  }
+  function estadoForma(G) {
+    var dest = carpetaDe(G.contratista);
+    var e = ultimoEnvio(G), nombre = G.contratista + " · " + (G.estimacion || "Sin estimar") + (dest ? " → «" + dest.nombre + "»" : " → sin carpeta");
+    if (!e) return pill("Planeado", nombre + " — no enviado a Forma");
+    var mismo = e.nombre === G.archivo;
+    var txt = nombre + " — enviado " + fecha(e.ultimo.at) + " por " + e.ultimo.por + (e.ultimo.version ? " (versión " + e.ultimo.version + ")" : "");
+    if (!mismo) txt += " · archivo de otro día";
+    if (e.piezas != null && e.piezas !== G.filas.length) txt += " · se enviaron " + e.piezas + " piezas, ahora son " + G.filas.length;
+    return pill("Terminado", txt);
+  }
+  function elegirGenerador(G) {
+    GP.elegido = G || null; GP.grupos = G ? [G] : []; GP.filas = G ? G.filas : [];
+    GP.conceptoSel = null; GP.abiertos = {}; GP.completos = {};
+    GP.titulo = G ? G.titulo : GP.titulo0; GP.sub = G ? G.sub : GP.sub0;
+    var listo = function () {
+      GP.img = G ? G.img || null : null;
+      renderPrevia(); textoBotones(); renderGruposPrevia();
+      if (GP.img) abrirZoom();
+    };
+    if (!G || G.img !== undefined || !S.viewer) return listo();
+    $("gp-tabla").replaceChildren(el("p", { class: "muted gp-vacio", text: "Preparando la vista del generador…" }));
+    capturarModelo(G.filas).then(function (img) { G.img = img; paintModel(false); if (GP && GP.elegido === G) listo(); });
+  }
   function renderGruposPrevia() {
     if (!GP) return;
-    $("gp-grupos").replaceChildren.apply($("gp-grupos"), GP.grupos.map(function (G) {
-      var dest = carpetaDe(G.contratista);
-      var e = ultimoEnvio(G), nombre = G.contratista + " · " + (G.estimacion || "Sin estimar") + (dest ? " → «" + dest.nombre + "»" : " → sin carpeta");
-      if (!e) return pill("Planeado", nombre + " — no enviado a Forma");
-      var mismo = e.nombre === G.archivo;
-      var txt = nombre + " — enviado " + fecha(e.ultimo.at) + " por " + e.ultimo.por + (e.ultimo.version ? " (versión " + e.ultimo.version + ")" : "");
-      if (!mismo) txt += " · archivo de otro día";
-      if (e.piezas != null && e.piezas !== G.filas.length) txt += " · se enviaron " + e.piezas + " piezas, ahora son " + G.filas.length;
-      return pill("Terminado", txt);
-    }));
+    var box = $("gp-grupos"), hijos = [];
+    var todos = GP.todos || GP.grupos;
+    if (todos.length > 1) {
+      var varios = new Set(todos.map(function (G) { return G.contratista; })).size > 1;
+      var sel = el("select", { class: "gp-sel", "aria-label": "Generador a ver" },
+        [el("option", { value: "", text: "Elige un generador…" })].concat(todos.map(function (G, i) {
+          var f = fechaGrupo(G);
+          var o = el("option", { value: String(i), text: (varios ? G.contratista + " · " : "") + (G.estimacion || "Sin estimar") + " · " + (f ? new Date(f).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : "sin enviar") });
+          if (GP.elegido === G) o.selected = true;
+          return o;
+        })));
+      sel.addEventListener("change", function () { elegirGenerador(sel.value === "" ? null : todos[+sel.value]); });
+      hijos.push(sel);
+    }
+    if (GP.elegido) hijos.push(estadoForma(GP.elegido));
+    box.replaceChildren.apply(box, hijos);
   }
   $("g-envios").addEventListener("click", function () {
     $("ev-tabla").replaceChildren(el("tbody", null, [el("tr", null, [el("td", { text: "Cargando…" })])]));
