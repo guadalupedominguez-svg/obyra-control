@@ -729,3 +729,5 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .ap-chipv { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 3; background: rgba(17, 26, 43, .92); border: 1px solid var(--accent); border-radius: 20px; padding: 5px 14px; font-size: 12px; color: var(--text); pointer-events: none; white-space: nowrap; }
 .ap-chipv b { color: var(--accent); }
 #app.lean .ap-chipv { display: none; }
+.ap-celda-acc { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.ap-celda-acc [hidden] { display: none; }

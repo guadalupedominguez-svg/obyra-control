@@ -513,7 +513,7 @@
   // Elementos (avance reportado), generadores (los revisa el residente) y estimaciones (las aprueba el superintendente),
   // cada uno aprobado, en revisión o rechazado. Generadores y estimaciones se cuentan por número de estimación.
   var AP_FILAS = [["elem", "Elementos", "avance reportado"], ["gen", "Generadores", "con el residente"], ["est", "Estimaciones", "con el superintendente"]];
-  var AP_COLS = [["ok", "Aprobados", "✓"], ["rev", "En revisión", "◷"], ["no", "Rechazados", "↺"]];
+  var AP_COLS = [["rev", "En revisión", "◷"], ["ok", "Aprobados", "✓"], ["no", "Rechazados", "↺"]];
   function apConsulta() { return !!S.permisos.enviarEstimacion && !S.permisos.aprobar && !S.permisos.validarGenerador && !S.permisos.autorizar; }
   function regresoSuper(r) {
     var h = (r.hist || []).filter(function (x) { return x.accion === "regresa"; }).pop();
@@ -570,6 +570,8 @@
   function pintarCeldaAp(n) {
     var on = apConsulta() && S.apCelda, t = on ? nombreCelda(S.apCelda.f, S.apCelda.c) : "";
     if ($("ap-celda")) { $("ap-celda").hidden = !on; if (on) $("ap-celda-t").textContent = t + " · " + nf0.format(n) + (n === 1 ? " pieza" : " piezas"); }
+    // Generadores y estimaciones: se pueden abrir en la vista del generador (la misma de Estimaciones).
+    if ($("ap-celda-ver")) { $("ap-celda-ver").hidden = !on || S.apCelda.f === "elem" || !n; }
     var ch = $("ap-chipv");
     if (ch) {
       ch.hidden = !(on && S.tab === "aprobar");
@@ -577,6 +579,11 @@
     }
   }
   if ($("ap-celda-x")) $("ap-celda-x").addEventListener("click", function () { S.apCelda = null; renderAprobar(); paintModel(true); });
+  if ($("ap-celda-ver")) $("ap-celda-ver").addEventListener("click", function () {
+    var filas = pendientesVista();
+    if (!filas.length || !S.apCelda) return;
+    abrirPrevia(filas, $("ap-celda-ver"), null, nombreCelda(S.apCelda.f, S.apCelda.c));
+  });
 
   // ¿Hay algún filtro o búsqueda en Aprobaciones? Entonces el modelo muestra solo esos pendientes.
   function filtrosApActivos() {
@@ -1301,7 +1308,7 @@
 
   // Vista previa del generador: desde Estimaciones (Ver generador) o desde Aprobaciones (Revisar generador,
   // con los botones para validar o regresar dentro de la vista).
-  function abrirPrevia(filas, btn, rev) {
+  function abrirPrevia(filas, btn, rev, desc) {
     var texto = btn.textContent; btn.disabled = true; btn.textContent = "Preparando vista…";
     capturarModelo(filas).then(function (img) {
       paintModel(false); if (!rev && genSeleccion()) selectGenEnModelo(); // regresa el modelo a como estaba
@@ -1310,7 +1317,7 @@
       GP = {
         filas: filas, img: img, grupos: grupos, rev: rev || null,
         titulo: (rev ? "Revisar generador" : "Generador") + (c ? " · " + c : ""),
-        sub: [S.obra ? S.obra.nombre : "", rev ? COLAS[rev.cola].nombre : descripcionVista(), filas.length + (filas.length === 1 ? " pieza" : " piezas"),
+        sub: [S.obra ? S.obra.nombre : "", rev ? COLAS[rev.cola].nombre : desc || descripcionVista(), filas.length + (filas.length === 1 ? " pieza" : " piezas"),
           grupos.length > 1 ? grupos.length + " generadores" : "", new Date().toLocaleDateString("es-MX", { dateStyle: "long" })].filter(Boolean).join(" · "),
       };
       if (grupos.length === 1) grupos[0].img = img; // la foto ya es justo de ese generador
