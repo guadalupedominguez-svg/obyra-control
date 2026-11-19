@@ -1318,7 +1318,7 @@
     Z.tx = mx - (mx - Z.tx) * ns / Z.s; Z.ty = my - (my - Z.ty) * ns / Z.s; Z.s = ns;
     aplicarZ();
   }
-  function abrirZoom(g) {
+  function abrirZoom(g, sinCentrar) {
     if (!GP || !GP.img) return;
     var abierto = $("gen-prev").classList.contains("gp-zoom");
     if (!abierto) {
@@ -1333,14 +1333,27 @@
     if (!g) { mostrarTip(null); return; }
     var p = GP.img.pts && GP.img.pts[g];
     if (!p) { toast("Esa pieza no quedó dentro de la vista del modelo."); return; }
-    var v = zVisor(), cw = v.clientWidth, ch = v.clientHeight;
-    Z.s = Math.max(Z.s, Z.fit * 3);
-    Z.tx = cw / 2 - p.x * Z.s; Z.ty = ch / 2 - p.y * Z.s;
-    aplicarZ();
-    var d = Math.round(GP.img.w / 22);
-    an.style.left = p.x + "px"; an.style.top = p.y + "px"; an.style.width = d + "px"; an.style.height = d + "px";
+    if (!sinCentrar) { // desde la lista: acerca y centra la pieza; desde la vista: se queda donde está
+      var v = zVisor(), cw = v.clientWidth, ch = v.clientHeight;
+      Z.s = Math.max(Z.s, Z.fit * 3);
+      Z.tx = cw / 2 - p.x * Z.s; Z.ty = ch / 2 - p.y * Z.s;
+      aplicarZ();
+    }
+    an.style.left = p.x + "px"; an.style.top = p.y + "px";
     an.hidden = false; an.style.animation = "none"; void an.offsetWidth; an.style.animation = "";
     mostrarTip(g);
+  }
+  // Clic en la vista: el localizador y la lista siguen a la pieza (se despliega su concepto).
+  function elegirEnVista(g) {
+    if (!GP || !GP.elegido && !GP.filas.length) return;
+    if (!g) { abrirZoom(null); return; }
+    var k = conceptoPrev(g), lista = GP.porConcepto[k] || [];
+    GP.abiertos[k] = true;
+    if (lista.indexOf(g) >= GP_MUESTRA) GP.completos[k] = true;
+    GP.fija = g; renderListaPrevia();
+    abrirZoom(g, true);
+    var fila = document.querySelector('#gp-tabla [data-guid="' + g + '"]');
+    if (fila) fila.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
   function cerrarZoom() {
     $("gen-prev").classList.remove("gp-zoom");
@@ -1405,7 +1418,12 @@
     });
     v.addEventListener("pointerleave", function () { if (!arr) mostrarTip(GP && GP.fija); });
     var fin = function () { arr = null; v.classList.remove("arrastrando"); };
-    v.addEventListener("pointerup", fin); v.addEventListener("pointercancel", fin);
+    v.addEventListener("pointerup", function (ev) {
+      var clic = arr && Math.abs(ev.clientX - arr.x) < 4 && Math.abs(ev.clientY - arr.y) < 4;
+      fin();
+      if (clic && !ev.target.closest(".gp-ctrl")) { var q = rel(ev); elegirEnVista(piezaCerca(q.x, q.y)); }
+    });
+    v.addEventListener("pointercancel", fin);
     $("gp-mas").addEventListener("click", function () { zoomZ(1.4, v.clientWidth / 2, v.clientHeight / 2); });
     $("gp-menos").addEventListener("click", function () { zoomZ(1 / 1.4, v.clientWidth / 2, v.clientHeight / 2); });
     $("gp-ajustar").addEventListener("click", function () { ajustarZ(); mostrarTip(GP && GP.fija); });
