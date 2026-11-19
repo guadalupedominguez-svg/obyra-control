@@ -731,3 +731,4 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 #app.lean .ap-chipv { display: none; }
 .ap-celda-acc { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .ap-celda-acc [hidden] { display: none; }
+#ap-filtros-wrap[hidden], #ap-count-wrap[hidden] { display: none; }

@@ -193,7 +193,7 @@
           <select id="ap-cola" aria-label="Qué revisar"></select>
           <!-- Contratista: tablero de solo consulta (aprobados, en revisión, rechazados) -->
           <div class="ap-tablero" id="ap-tablero" hidden></div>
-          <div class="filtros-wrap">
+          <div class="filtros-wrap" id="ap-filtros-wrap">
             <input id="ap-buscar" type="search" placeholder="Buscar marca, clave o comentario" aria-label="Buscar en aprobaciones">
             <details class="desp" id="desp-ap-filtros">
               <summary><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg><span class="desp-t">Filtros</span><span class="desp-res" id="desp-ap-res"></span></summary>
@@ -206,9 +206,9 @@
               </div>
             </details>
           </div>
-          <div class="ap-celda" id="ap-celda" hidden><span id="ap-celda-t"></span><span class="ap-celda-acc"><button type="button" class="btn btn-ghost btn-sm" id="ap-celda-ver" hidden>Ver generador</button><button type="button" class="linklike" id="ap-celda-x">Quitar ✕</button></span></div>
+          <div class="ap-celda" id="ap-celda" hidden><span id="ap-celda-t"></span><span class="ap-celda-acc"><button type="button" class="linklike" id="ap-celda-x">Quitar ✕</button></span></div>
           <div class="list-head">
-            <label class="check"><input type="checkbox" id="ap-all" data-perm="aprobar"> <span id="ap-count">0 pendientes</span></label>
+            <label class="check" id="ap-count-wrap"><input type="checkbox" id="ap-all" data-perm="aprobar"> <span id="ap-count">0 pendientes</span></label>
             <button type="button" class="chip-sel" id="ap-solo-chip" hidden>Ver toda la lista ×</button>
           </div>
           <ul id="lista-ap" class="lista" aria-label="Avance por aprobar"></ul>
