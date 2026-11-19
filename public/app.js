@@ -1210,7 +1210,7 @@
           fetch(url).then(function (r) { return r.blob(); }).then(function (b) {
             var fr = new FileReader();
             fr.onload = function () {
-              etiquetar(fr.result, w, h, puntos, w / cw, h / ch).then(function (r) { resolve({ data: r.data, pts: r.pts, w: w, h: h }); });
+              etiquetar(fr.result, w, h, puntos, w / cw, h / ch).then(function (r) { resolve({ data: r.data, raw: fr.result, pts: r.pts, w: w, h: h }); });
             };
             fr.onerror = function () { resolve(null); };
             fr.readAsDataURL(b);
@@ -1254,6 +1254,7 @@
         $("gp-enviar-btn").textContent = "Enviar " + nEnv + (nEnv === 1 ? " pieza" : " piezas") + " a validar";
       }
       $("gen-prev").showModal();
+      if (img) abrirZoom(); // la vista del modelo se abre junto a la lista
     }).finally(function () { btn.disabled = false; btn.textContent = texto; if (!rev) actualizarMarcar(); });
   }
   $("g-ver").addEventListener("click", function () {
@@ -1299,7 +1300,10 @@
   // La imagen ya trae las marcas dibujadas, así que al acercar se conservan.
   var Z = { s: 1, tx: 0, ty: 0, fit: 1 };
   function zVisor() { return $("gp-visor"); }
-  function aplicarZ() { $("gp-lienzo").style.transform = "translate(" + Z.tx + "px," + Z.ty + "px) scale(" + Z.s + ")"; }
+  function aplicarZ() {
+    var l = $("gp-lienzo"); l.style.transform = "translate(" + Z.tx + "px," + Z.ty + "px) scale(" + Z.s + ")";
+    l.style.setProperty("--gpk", String(1 / Z.s)); // los puntos del concepto conservan su tamaño en pantalla
+  }
   function ajustarZ() {
     var v = zVisor(), W = GP.img.w, H = GP.img.h, cw = v.clientWidth, ch = v.clientHeight;
     Z.fit = Math.min(cw / W, ch / H) * 0.96;
@@ -1317,12 +1321,13 @@
     if (!abierto) {
       $("gen-prev").classList.add("gp-zoom");
       zVisor().hidden = false;
-      $("gp-zimg").src = GP.img.data; $("gp-zimg").width = GP.img.w; $("gp-zimg").height = GP.img.h;
+      $("gp-zimg").src = GP.img.raw || GP.img.data; $("gp-zimg").width = GP.img.w; $("gp-zimg").height = GP.img.h;
       ajustarZ();
+      pintarMarcas();
     }
-    qsa("#gp-tabla tbody tr").forEach(function (tr) { tr.classList.toggle("sel", !!g && tr.getAttribute("data-guid") === g); });
-    var an = $("gp-anillo"); an.hidden = true;
-    if (!g) return;
+    qsa("#gp-tabla [data-guid]").forEach(function (tr) { tr.classList.toggle("on", !!g && tr.getAttribute("data-guid") === g); });
+    var an = $("gp-anillo"); an.hidden = true; GP.fija = g || null;
+    if (!g) { mostrarTip(null); return; }
     var p = GP.img.pts && GP.img.pts[g];
     if (!p) { toast("Esa pieza no quedó dentro de la vista del modelo."); return; }
     var v = zVisor(), cw = v.clientWidth, ch = v.clientHeight;
@@ -1332,59 +1337,147 @@
     var d = Math.round(GP.img.w / 22);
     an.style.left = p.x + "px"; an.style.top = p.y + "px"; an.style.width = d + "px"; an.style.height = d + "px";
     an.hidden = false; an.style.animation = "none"; void an.offsetWidth; an.style.animation = "";
+    mostrarTip(g);
   }
   function cerrarZoom() {
     $("gen-prev").classList.remove("gp-zoom");
     zVisor().hidden = true; $("gp-anillo").hidden = true;
-    qsa("#gp-tabla tbody tr.sel").forEach(function (tr) { tr.classList.remove("sel"); });
+    qsa("#gp-tabla [data-guid].on").forEach(function (tr) { tr.classList.remove("on"); });
+    if (GP) GP.fija = null;
+    mostrarTip(null);
+  }
+  // Sin etiquetas fijas: la etiqueta de una pieza sale al pasar el cursor o al elegirla en la lista.
+  function infoPieza(g) {
+    var p = S.piezas[g] || {}, k = conceptoPrev(g), lista = (GP.porConcepto && GP.porConcepto[k]) || [];
+    return {
+      titulo: (p.concepto || p.tipo || "Pieza") + (p.marca ? " · " + p.marca : ""),
+      sub: ["Pieza " + (lista.indexOf(g) + 1) + " de " + lista.length, p.largo ? f2(p.largo) + " m" : "", p.zona || p.takt || ""].filter(Boolean).join(" · "),
+    };
+  }
+  function mostrarTip(g) {
+    var t = $("gp-tip"); if (!t) return;
+    var p = g && GP && GP.img && GP.img.pts && GP.img.pts[g];
+    if (!p) { t.hidden = true; return; }
+    var i = infoPieza(g);
+    t.replaceChildren(el("b", { text: i.titulo }), el("small", { text: i.sub }));
+    t.hidden = false;
+    var v = zVisor(), x = Z.tx + p.x * Z.s, y = Z.ty + p.y * Z.s;
+    var tw = t.offsetWidth, th = t.offsetHeight;
+    t.style.left = Math.min(Math.max(x + 14, 6), v.clientWidth - tw - 6) + "px";
+    t.style.top = Math.min(Math.max(y - th - 12, 6), v.clientHeight - th - 6) + "px";
+  }
+  function piezaCerca(mx, my) {
+    if (!GP || !GP.img || !GP.img.pts) return null;
+    var ix = (mx - Z.tx) / Z.s, iy = (my - Z.ty) / Z.s, r = 16 / Z.s, mejor = null, dm = r * r;
+    Object.keys(GP.img.pts).forEach(function (g) { var p = GP.img.pts[g], d = (p.x - ix) * (p.x - ix) + (p.y - iy) * (p.y - iy); if (d < dm) { dm = d; mejor = g; } });
+    return mejor;
+  }
+  // Puntos sobre las piezas del concepto elegido en la lista.
+  function pintarMarcas() {
+    var box = $("gp-marcas"), chip = $("gp-chip"); if (!box) return;
+    box.replaceChildren();
+    var k = GP && GP.conceptoSel, gs = k != null ? (GP.porConcepto[k] || []) : [];
+    if (chip) {
+      chip.hidden = k == null;
+      if (k != null) chip.replaceChildren("Resaltado: ", el("b", { text: k }), " · " + gs.length + " de " + GP.filas.length);
+    }
+    if (!GP || !GP.img || !GP.img.pts) return;
+    gs.forEach(function (g) {
+      var p = GP.img.pts[g]; if (!p) return;
+      box.appendChild(el("span", { class: "gp-marca", style: "left:" + p.x + "px;top:" + p.y + "px" }));
+    });
   }
   (function () {
     var v = zVisor(), arr = null;
     var rel = function (ev) { var r = v.getBoundingClientRect(); return { x: ev.clientX - r.left, y: ev.clientY - r.top }; };
-    v.addEventListener("wheel", function (ev) { ev.preventDefault(); var p = rel(ev); zoomZ(ev.deltaY < 0 ? 1.18 : 1 / 1.18, p.x, p.y); }, { passive: false });
+    v.addEventListener("wheel", function (ev) { ev.preventDefault(); var p = rel(ev); zoomZ(ev.deltaY < 0 ? 1.18 : 1 / 1.18, p.x, p.y); mostrarTip(GP && GP.fija); }, { passive: false });
     v.addEventListener("dblclick", function (ev) { if (ev.target.closest(".gp-ctrl")) return; var p = rel(ev); zoomZ(2, p.x, p.y); });
     v.addEventListener("pointerdown", function (ev) {
       if (ev.target.closest(".gp-ctrl")) return;
       arr = { x: ev.clientX, y: ev.clientY, tx: Z.tx, ty: Z.ty }; v.setPointerCapture(ev.pointerId); v.classList.add("arrastrando");
     });
-    v.addEventListener("pointermove", function (ev) { if (!arr) return; Z.tx = arr.tx + ev.clientX - arr.x; Z.ty = arr.ty + ev.clientY - arr.y; aplicarZ(); });
+    v.addEventListener("pointermove", function (ev) {
+      if (!arr) { if (ev.target.closest(".gp-ctrl")) return; var q = rel(ev), g = piezaCerca(q.x, q.y); mostrarTip(g || (GP && GP.fija)); return; }
+      Z.tx = arr.tx + ev.clientX - arr.x; Z.ty = arr.ty + ev.clientY - arr.y; aplicarZ(); if (GP && GP.fija) mostrarTip(GP.fija);
+    });
+    v.addEventListener("pointerleave", function () { if (!arr) mostrarTip(GP && GP.fija); });
     var fin = function () { arr = null; v.classList.remove("arrastrando"); };
     v.addEventListener("pointerup", fin); v.addEventListener("pointercancel", fin);
     $("gp-mas").addEventListener("click", function () { zoomZ(1.4, v.clientWidth / 2, v.clientHeight / 2); });
     $("gp-menos").addEventListener("click", function () { zoomZ(1 / 1.4, v.clientWidth / 2, v.clientHeight / 2); });
-    $("gp-ajustar").addEventListener("click", ajustarZ);
+    $("gp-ajustar").addEventListener("click", function () { ajustarZ(); mostrarTip(GP && GP.fija); });
     $("gp-salir").addEventListener("click", cerrarZoom);
     window.addEventListener("resize", function () { if ($("gen-prev").classList.contains("gp-zoom")) ajustarZ(); });
   })();
 
+  function conceptoPrev(g) { var p = S.piezas[g] || {}; return p.concepto || p.tipo || "(sin concepto)"; }
+  var GP_MUESTRA = 5; // piezas visibles al desplegar un concepto, antes de «ver las restantes»
   function renderPrevia() {
     $("gp-titulo").textContent = GP.titulo;
     $("gp-sub").textContent = GP.sub;
-    var head = el("tr", null, COLS.map(function (c) { return el("th", { class: c[2] ? "num" : null, text: c[0] }); }).concat([el("th", { class: "refh", text: "Referencia visual" })]));
-    var tot = { area: 0, volumen: 0 };
-    var rows = GP.filas.map(function (g, i) {
-      var p = S.piezas[g]; tot.area += p.area || 0; tot.volumen += p.volumen || 0;
-      var tds = COLS.map(function (c) { var x = valor(g, c[1]); return el("td", { class: c[2] ? "num" : null, text: c[2] ? f2(x) : (x || "—") }); });
-      if (i === 0) {
-        tds.push(el("td", { class: "ref", rowspan: String(GP.filas.length) }, [
-          GP.img ? el("img", { src: GP.img.data, alt: "Vista del modelo con las " + GP.filas.length + " piezas del generador", title: "Clic para ampliar", onclick: function (ev) { ev.stopPropagation(); abrirZoom(); } })
-                 : el("p", { class: "muted", text: "No se pudo tomar la vista del modelo. Espera a que cargue el modelo e intenta de nuevo." }),
-        ]));
-      }
-      var tr = el("tr", { class: "click", "data-guid": g }, tds);
-      // Con vista del modelo: el renglón ubica la pieza en la vista ampliada. Sin vista: lleva a la pieza en el modelo.
-      tr.addEventListener("click", function () { if (GP.img) abrirZoom(g); else { $("gen-prev").close(); focusPieces([g]); } });
-      return tr;
-    });
-    var foot = el("tr", null, COLS.map(function (c) {
-      if (c[1] === "contratista") return el("td", { text: "Total" });
-      if (c[1] === "area") return el("td", { class: "num", text: f2(tot.area) });
-      if (c[1] === "volumen") return el("td", { class: "num", text: f2(tot.volumen) });
-      return el("td");
-    }).concat([el("td")]));
-    $("gp-tabla").replaceChildren(el("thead", null, [head]), el("tbody", null, rows), el("tfoot", null, [foot]));
+    GP.porConcepto = {}; GP.abiertos = GP.abiertos || {}; GP.completos = GP.completos || {};
+    GP.filas.forEach(function (g) { var k = conceptoPrev(g); (GP.porConcepto[k] || (GP.porConcepto[k] = [])).push(g); });
+    if (GP.conceptoSel != null && !GP.porConcepto[GP.conceptoSel]) GP.conceptoSel = null;
+    renderListaPrevia();
+    renderResumenPrevia();
     cerrarZoom();
-
+  }
+  function renderListaPrevia() {
+    var claves = Object.keys(GP.porConcepto).sort(function (a, b) { return GP.porConcepto[b].length - GP.porConcepto[a].length || a.localeCompare(b, "es"); });
+    var comun = function (gs, k) { var v = {}; gs.forEach(function (g) { var x = S.piezas[g][k]; if (x) v[x] = 1; }); var l = Object.keys(v); return l.length === 1 ? l[0] : l.length > 1 ? "Varias" : ""; };
+    var grupos = claves.map(function (k) {
+      var gs = GP.porConcepto[k], abierto = !!GP.abiertos[k], sel = GP.conceptoSel === k;
+      var largo = gs.reduce(function (t, g) { return t + (S.piezas[g].largo || 0); }, 0);
+      var sub = [comun(gs, "partida"), comun(gs, "zona") || comun(gs, "takt")].filter(Boolean).join(" · ");
+      var car = el("button", { type: "button", class: "gp-car", "aria-expanded": String(abierto), "aria-label": (abierto ? "Ocultar" : "Ver") + " las piezas de " + k, text: abierto ? "▾" : "▸" });
+      car.addEventListener("click", function (ev) { ev.stopPropagation(); GP.abiertos[k] = !abierto; renderListaPrevia(); });
+      var cab = el("div", { class: "gp-gr", role: "button", tabindex: "0", title: "Resaltar en la vista" }, [
+        car,
+        el("div", { class: "gp-gn" }, [el("b", { text: k }), sub ? el("small", { text: sub }) : null].filter(Boolean)),
+        el("span", { class: "gp-gm", text: largo ? f2(largo) + " m" : "—" }),
+        el("span", { class: "gp-n", text: nf0.format(gs.length) + (gs.length === 1 ? " pza" : " pzas") }),
+      ]);
+      var elegir = function () {
+        GP.conceptoSel = sel ? null : k;
+        if (GP.img && !$("gen-prev").classList.contains("gp-zoom")) abrirZoom();
+        renderListaPrevia(); pintarMarcas();
+      };
+      cab.addEventListener("click", elegir);
+      cab.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); elegir(); } });
+      var hijos = [cab];
+      if (abierto) {
+        var ver = GP.completos[k] ? gs : gs.slice(0, GP_MUESTRA);
+        ver.forEach(function (g, n) {
+          var p = S.piezas[g];
+          var it = el("div", { class: "gp-it" + (GP.fija === g ? " on" : ""), "data-guid": g, role: "button", tabindex: "0" }, [
+            el("span", { text: String(n + 1) }),
+            el("span", { class: "gp-in", text: (p.concepto || p.tipo || "Pieza") + (p.marca ? " · " + p.marca : "") }),
+            el("span", { class: "num", text: p.largo ? f2(p.largo) + " m" : "—" }),
+            el("span", { text: p.zona || p.takt || "—" }),
+          ]);
+          // Con vista del modelo: ubica la pieza. Sin vista: lleva a la pieza en el modelo.
+          var ir = function () { if (GP.img) abrirZoom(g); else { $("gen-prev").close(); focusPieces([g]); } };
+          it.addEventListener("click", ir);
+          it.addEventListener("keydown", function (ev) { if (ev.key === "Enter") ir(); });
+          hijos.push(it);
+        });
+        if (gs.length > ver.length) {
+          var mas = el("button", { type: "button", class: "gp-mas", text: "… ver las " + nf0.format(gs.length - ver.length) + " piezas restantes" });
+          mas.addEventListener("click", function () { GP.completos[k] = true; renderListaPrevia(); });
+          hijos.push(mas);
+        }
+      }
+      return el("div", { class: "gp-g" + (sel ? " sel" : "") }, hijos);
+    });
+    $("gp-tabla").replaceChildren(
+      el("div", { class: "gp-lh" }, [
+        el("span", { text: claves.length + (claves.length === 1 ? " concepto" : " conceptos") + " · " + nf0.format(GP.filas.length) + (GP.filas.length === 1 ? " pieza" : " piezas") }),
+        el("span", { text: "Clic en un concepto para resaltarlo · ▸ para ver sus piezas" }),
+      ])
+    );
+    grupos.forEach(function (g) { $("gp-tabla").appendChild(g); });
+  }
+  function renderResumenPrevia() {
     var res = resumenDe(GP.filas);
     $("gp-resumen").replaceChildren(
       el("thead", null, [el("tr", null, ["Contratista", "Partida", "Clave", "Concepto", "Pzas", "Área (m²)", "Volumen (m³)"].map(function (h, i) { return el("th", { class: i >= 4 ? "num" : null, text: h }); }))]),
