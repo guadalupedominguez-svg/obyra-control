@@ -69,7 +69,8 @@ async function callback(req, res) {
 const token = route(["GET"], async (req, res) => {
   await requireUser(req);
   const t = await getToken("view");
-  res.status(200).json({ access_token: t.access, expires_in: Math.max(60, Math.floor((t.exp - Date.now()) / 1000) - 60) });
+  // Siempre más de 5 minutos (ver MARGEN en lib/forma.js), para que el visor no lo pida en ciclo.
+  res.status(200).json({ access_token: t.access, expires_in: Math.max(360, Math.floor((t.exp - Date.now()) / 1000) - 60) });
 });
 
 const pages = route(["GET"], async (req, res) => {

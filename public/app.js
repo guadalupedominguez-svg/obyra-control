@@ -2298,16 +2298,39 @@
       return new Promise(function (resolve) {
         Autodesk.Viewing.Initializer({
           env: "AutodeskProduction2", api: "streamingV2",
-          getAccessToken: function (cb) {
-            fetch("/api/forma/token", { credentials: "same-origin", headers: S.proyecto ? { "X-Proyecto": S.proyecto } : {} })
-              .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error); return j; }); })
-              .then(function (t) { cb(t.access_token, t.expires_in); })
-              .catch(function (e) { viewerMsg(e.message || "No se pudo obtener acceso al modelo."); cb("", 0); });
-          },
+          getAccessToken: pedirToken,
         }, resolve);
       });
     });
     return libPromise;
+  }
+  // Token del visor. El visor de Autodesk lo vuelve a pedir antes de que venza; para que nunca entre en ciclo
+  // (miles de solicitudes por minuto), se guarda en el navegador y se reutiliza mientras le queden más de 6 minutos,
+  // nunca se piden dos al servidor con menos de 30 s de diferencia y, si falla, se espera cada vez más.
+  var TK = { token: "", exp: 0, ultimo: 0, fallas: 0, cola: [] };
+  function pedirToken(cb) {
+    var ahora = Date.now(), resta = Math.floor((TK.exp - ahora) / 1000);
+    if (TK.token && resta > 360) { cb(TK.token, resta); return; }
+    TK.cola.push(cb);
+    if (TK.cola.length > 1) return; // ya hay una solicitud en camino
+    var espera = Math.max(0, TK.ultimo + 30000 - ahora);
+    if (TK.fallas) espera = Math.max(espera, Math.min(300000, 15000 * Math.pow(2, TK.fallas - 1)));
+    setTimeout(function () {
+      TK.ultimo = Date.now();
+      fetch("/api/forma/token", { credentials: "same-origin", headers: S.proyecto ? { "X-Proyecto": S.proyecto } : {} })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || !j.access_token) throw new Error(j.error || "No se pudo obtener acceso al modelo."); return j; }); })
+        .then(function (t) {
+          TK.fallas = 0; TK.token = t.access_token; TK.exp = Date.now() + Math.max(360, Number(t.expires_in) || 0) * 1000;
+          var cs = TK.cola; TK.cola = [];
+          cs.forEach(function (f) { f(TK.token, Math.floor((TK.exp - Date.now()) / 1000)); });
+        })
+        .catch(function (e) {
+          TK.fallas++; viewerMsg(e.message || "No se pudo obtener acceso al modelo.");
+          // El visor vuelve a pedirlo cuando "vence": se le da un plazo largo para no reintentar en ciclo.
+          var cs = TK.cola; TK.cola = [];
+          cs.forEach(function (f) { f(TK.token || "", 600); });
+        });
+    }, espera);
   }
 
   function startViewer() {
