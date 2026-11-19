@@ -102,10 +102,14 @@
   // ---------- Inicio ----------
   var leanCache = null;
   function tarjeta(o) {
-    var b = el("button", { type: "button", class: "btn " + (o.primario ? "btn-primary" : ""), text: o.accion });
+    // Contratista: el botón es texto con una línea inferior en degradado del color de la tarjeta, y un punto
+    // junto al título cuando hay algo pendiente. Los demás roles conservan el botón de siempre.
+    var linea = S.me && S.me.rol === "contratista";
+    var b = el("button", { type: "button", class: linea ? "ini-accion" : "btn " + (o.primario ? "btn-primary" : ""), text: o.accion });
     b.addEventListener("click", o.fn);
-    return el("div", { class: "ini-card" }, [
-      el("div", { class: "ini-card-top" }, [el("span", { class: "ini-ico " + (o.tono || "") }, [icono(o.icono)]), el("span", { class: "muted", text: o.titulo })]),
+    return el("div", { class: "ini-card " + (o.tono || "") }, [
+      el("div", { class: "ini-card-top" }, [el("span", { class: "ini-ico " + (o.tono || "") }, [icono(o.icono)]), el("span", { class: "muted", text: o.titulo }),
+        linea && o.n > 0 ? el("i", { class: "ini-punto", "aria-hidden": "true" }) : null]),
       el("b", { class: "ini-num", text: String(o.n) }),
       el("p", { class: "ini-desc", text: o.desc }),
       b,

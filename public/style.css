@@ -647,3 +647,13 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .clima-dia svg { color: var(--accent); }
 .clima-dia.lluvioso { border-color: rgba(59, 130, 246, .6); }
 .clima-dia small { color: var(--muted); font-size: 11px; text-transform: none; }
+/* Inicio (contratista): botón como línea inferior en degradado, sin relleno ni texto remarcado */
+.ini-card.t-cian { --tono: var(--accent); }
+.ini-card.t-violeta { --tono: var(--violet); }
+.ini-card.t-verde { --tono: var(--ok); }
+.ini-card.t-rojo { --tono: var(--bad); }
+.ini-card.t-ambar { --tono: var(--warn); }
+.ini-accion { margin-top: auto; align-self: stretch; background: none; border: 0; border-bottom: 2px solid; border-image: linear-gradient(90deg, color-mix(in srgb, var(--tono, var(--accent)) 8%, transparent), var(--tono, var(--accent))) 1; color: var(--text); font: inherit; font-size: 14px; font-weight: 400; text-align: left; padding: 9px 4px 8px; cursor: pointer; }
+.ini-accion:hover { color: var(--tono, var(--accent)); }
+.ini-accion:focus-visible { outline: 2px solid var(--tono, var(--accent)); outline-offset: 2px; }
+.ini-punto { width: 9px; height: 9px; border-radius: 50%; margin-left: auto; flex-shrink: 0; background: var(--tono, var(--accent)); box-shadow: 0 0 0 3px rgba(255, 255, 255, .06); }
