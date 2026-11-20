@@ -811,7 +811,11 @@
     // En el panel solo marca, estatus y estimación; el detalle completo está en "Ver generador".
     // En "Sin estimar", quien estima puede marcar las piezas que van en una misma estimación.
     // Casillas para elegir qué va en el generador: quien estima y el contratista que lo arma.
-    var conCasillas = !!((S.permisos.estimar || S.permisos.enviarEstimacion) && $("g-vista").value === "porestimar");
+    // El contratista no ve la lista de piezas: consulta con «Ver generador» y «Ver estimación».
+    var soloVer = apConsulta();
+    $("g-tablawrap").hidden = soloVer; $("g-verest").hidden = !soloVer;
+    $("g-tablawrap").parentNode.classList.toggle("sin-lista", soloVer);
+    var conCasillas = !soloVer && !!((S.permisos.estimar || S.permisos.enviarEstimacion) && $("g-vista").value === "porestimar");
     var elegibles = filas.filter(estimable);
     S.gSel.forEach(function (g) { if (!conCasillas || elegibles.indexOf(g) < 0) S.gSel["delete"](g); });
     var todas = null;
@@ -1305,7 +1309,7 @@
 
   // Vista previa del generador: desde Estimaciones (Ver generador) o desde Aprobaciones (Revisar generador,
   // con los botones para validar o regresar dentro de la vista).
-  function abrirPrevia(filas, btn, rev) {
+  function abrirPrevia(filas, btn, rev, opts) {
     var texto = btn.textContent; btn.disabled = true; btn.textContent = "Preparando vista…";
     capturarModelo(filas).then(function (img) {
       paintModel(false); if (!rev && genSeleccion()) selectGenEnModelo(); // regresa el modelo a como estaba
@@ -1313,8 +1317,8 @@
       var grupos = agrupar(filas);
       GP = {
         filas: filas, img: img, grupos: grupos, rev: rev || null,
-        titulo: (rev ? "Revisar generador" : "Generador") + (c ? " · " + c : ""),
-        sub: [S.obra ? S.obra.nombre : "", rev ? COLAS[rev.cola].nombre : descripcionVista(), filas.length + (filas.length === 1 ? " pieza" : " piezas"),
+        titulo: (rev ? "Revisar generador" : opts && opts.titulo || "Generador") + (c ? " · " + c : ""),
+        sub: [S.obra ? S.obra.nombre : "", rev ? COLAS[rev.cola].nombre : opts && opts.desc || descripcionVista(), filas.length + (filas.length === 1 ? " pieza" : " piezas"),
           grupos.length > 1 ? grupos.length + " generadores" : "", new Date().toLocaleDateString("es-MX", { dateStyle: "long" })].filter(Boolean).join(" · "),
       };
       if (grupos.length === 1) grupos[0].img = img; // la foto ya es justo de ese generador
@@ -1344,6 +1348,13 @@
     var filas = genSeleccion() || genFilas();
     if (!filas.length) { toast("No hay piezas en el generador con este filtro."); return; }
     abrirPrevia(filas, $("g-ver"));
+  });
+  // Ver estimación: solo lo ya estimado (aprobado por el superintendente) del contratista elegido; si hay varias, se elige en el menú.
+  $("g-verest").addEventListener("click", function () {
+    var c = $("g-contratista").value;
+    var filas = Object.keys(S.piezas).filter(function (g) { return !!rec(g).estimacion && (!c || S.piezas[g].contratista === c); });
+    if (!filas.length) { toast("Todavía no hay estimaciones aprobadas."); return; }
+    abrirPrevia(filas, $("g-verest"), null, { titulo: "Estimación", desc: "Estimaciones aprobadas" });
   });
   // Validar o regresar desde la vista del generador.
   function decidirRevision(cual) {
