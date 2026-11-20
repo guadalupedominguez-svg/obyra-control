@@ -556,6 +556,19 @@
     $("la-ver").hidden = !n;
     $("la-usar").textContent = "Usar piezas seleccionadas" + (S.sel && S.sel.size ? " (" + S.sel.size + ")" : "");
   }
+  // Divisor de la vista dividida: entre el modelo y la tarjeta acoplada.
+  var dvDock = null;
+  function divisorDock() {
+    if (dvDock) return dvDock;
+    dvDock = O.divisor(el("div", { class: "fijo" }), {
+      el: function () { return document.documentElement; }, var: "--dock", clave: "ctrl_w_dock", min: 380,
+      max: function () { var n = $("nav-lat"); return window.innerWidth - (n ? n.getBoundingClientRect().width : 0) - 320; },
+      ancho: function (ev) { return window.innerWidth - ev.clientX; },
+      actual: function () { return $("ln-act").getBoundingClientRect().width; },
+    });
+    dvDock.hidden = true; document.body.appendChild(dvDock);
+    return dvDock;
+  }
   function dividir(on) {
     var d = $("ln-act"), app = $("app");
     if (on) {
@@ -565,9 +578,11 @@
       if (!d.classList.contains("act-dock")) { L.acoplando = true; d.close(); d.classList.add("act-dock"); d.show(); }
       app.classList.add("act-split");
       var top = document.querySelector(".app .top");
-      if (top) d.style.setProperty("--dock-top", Math.round(top.getBoundingClientRect().bottom) + "px");
+      if (top) document.documentElement.style.setProperty("--dock-top", Math.round(top.getBoundingClientRect().bottom) + "px");
+      divisorDock().hidden = false;
     } else {
       L.verAct = null; d.classList.remove("act-dock"); app.classList.remove("act-split");
+      divisorDock().hidden = true;
     }
     requestAnimationFrame(function () {
       if (S.viewer) { try { S.viewer.resize(); } catch (e) { /* nada */ } }

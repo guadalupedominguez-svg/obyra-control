@@ -2986,10 +2986,70 @@
   }
 
   // Puente para el módulo Lean (public/lean.js).
+  // ---------- Divisores de ancho ----------
+  // Una barra delgada entre dos zonas que se arrastra para cambiar el ancho (una variable CSS). El ancho se
+  // recuerda en este navegador; doble clic regresa al original; también se mueve con las flechas del teclado.
+  function divisor(h, o) {
+    h.classList.add("divisor"); h.setAttribute("role", "separator"); h.setAttribute("aria-orientation", "vertical");
+    h.setAttribute("tabindex", "0"); h.title = "Arrastra para ajustar el ancho · doble clic para restablecer";
+    var poner = function (w) { w = Math.round(Math.min(o.max(), Math.max(o.min, w))); o.el().style.setProperty(o.var, w + "px"); return w; };
+    var guardar = function (w) { try { localStorage.setItem(o.clave, String(w)); } catch (e) { /* nada */ } };
+    try { var g = +localStorage.getItem(o.clave); if (g) o.el().style.setProperty(o.var, g + "px"); } catch (e) { /* nada */ }
+    var raf = 0, avisar = function () {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(function () { if (S.viewer) { try { S.viewer.resize(); } catch (e) { /* nada */ } } if (o.alCambiar) o.alCambiar(); });
+    };
+    var activo = false, ultimo = 0;
+    h.addEventListener("pointerdown", function (ev) {
+      if (ev.button) return;
+      activo = true; h.classList.add("activo"); h.setPointerCapture(ev.pointerId);
+      document.documentElement.classList.add("arrastrando-divisor"); ev.preventDefault();
+    });
+    h.addEventListener("pointermove", function (ev) { if (!activo) return; ultimo = poner(o.ancho(ev)); avisar(); });
+    var fin = function () {
+      if (!activo) return;
+      activo = false; h.classList.remove("activo"); document.documentElement.classList.remove("arrastrando-divisor");
+      if (ultimo) guardar(ultimo); avisar();
+    };
+    h.addEventListener("pointerup", fin); h.addEventListener("pointercancel", fin);
+    h.addEventListener("dblclick", function () {
+      o.el().style.removeProperty(o.var); try { localStorage.removeItem(o.clave); } catch (e) { /* nada */ } avisar();
+    });
+    h.addEventListener("keydown", function (ev) {
+      if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+      ev.preventDefault();
+      var paso = (ev.key === "ArrowLeft" ? 1 : -1) * (ev.shiftKey ? 80 : 24) * (o.crece || 1);
+      guardar(poner(o.actual() + paso)); avisar();
+    });
+    return h;
+  }
+  // Panel derecho (Control de obra y Planeación): se arrastra su borde izquierdo.
+  function anchoNav() { var n = $("nav-lat"); return n ? n.getBoundingClientRect().width : 0; }
+  [["control-panel", "--panel-w", "ctrl_w_panel", 320], ["lean-panel", "--panel-lean", "ctrl_w_lean", 420]].forEach(function (x) {
+    var p = $(x[0]); if (!p) return;
+    p.appendChild(divisor(el("div"), {
+      el: function () { return $("app"); }, var: x[1], clave: x[2], min: x[3],
+      max: function () { return window.innerWidth - anchoNav() - 320; },
+      ancho: function (ev) { return window.innerWidth - ev.clientX; },
+      actual: function () { return p.getBoundingClientRect().width; },
+    }));
+  });
+  // Vista previa del generador: entre la lista y la vista del modelo.
+  (function () {
+    var izq = document.querySelector("#gen-prev .gp-left"), main = document.querySelector("#gen-prev .gp-main");
+    if (!izq || !main) return;
+    izq.appendChild(divisor(el("div"), {
+      el: function () { return $("gen-prev"); }, var: "--gp-izq", clave: "ctrl_w_gp", min: 300, crece: -1,
+      max: function () { return main.getBoundingClientRect().width - 340; },
+      ancho: function (ev) { return ev.clientX - main.getBoundingClientRect().left - 8; },
+      actual: function () { return izq.getBoundingClientRect().width; },
+    }));
+  })();
+
   window.OBYRA = {
     S: S, api: api, el: el, $: $, qsa: qsa, toast: toast, fecha: fecha, f2: f2, nf0: nf0, pill: pill, COLOR: COLOR,
     paintModel: paintModel, focusPieces: focusPieces, etiquetas3D: etiquetas3D, loadExcel: loadExcel, marcaDe: marcaDe, pedirMarcas: pedirMarcas, nombreModelo: nombreModelo, renderLegend: renderLegend,
-    rec: rec, ORDEN: ORDEN, COLAS: COLAS, enCola: enCola, colasMias: colasMias, avancePieza: avancePieza, estimable: estimable,
+    divisor: divisor, rec: rec, ORDEN: ORDEN, COLAS: COLAS, enCola: enCola, colasMias: colasMias, avancePieza: avancePieza, estimable: estimable,
     abrirCola: function (k) { if ($("ap-cola")) { pintarColas(); $("ap-cola").value = k; renderAprobar(); } },
     alCambiarAvance: null, // la pone nav.js para refrescar Inicio y la insignia de Aprobaciones
     alIniciar: [], // funciones que corren cuando la app ya cargó obra y piezas
