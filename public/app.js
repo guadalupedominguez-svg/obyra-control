@@ -2476,23 +2476,9 @@
     if (S.resalteEncuadrar && ids.length) { v.fitToView(ids, m); S.resalteEncuadrar = false; }
     if (v.impl && v.impl.invalidate) v.impl.invalidate(true, true, true);
   }
-  // El «fantasma» del visor (lo que queda fuera al aislar) es casi invisible; en la vista dividida de una tarjeta
-  // se hace más visible para dar contexto, y al salir se regresa a como lo trae el visor.
-  var FANTASMA = { opacidad: 0.22, color: 0x8A96A6 };
-  function fantasmaVisible(on) {
-    var f = S.viewer && S.viewer.impl && S.viewer.impl.fadeMaterial;
-    if (!f) return;
-    if (!S.fantasmaOrig) S.fantasmaOrig = { opacidad: f.opacity, color: f.color ? f.color.getHex() : null };
-    var o = on ? FANTASMA : S.fantasmaOrig;
-    if (f.opacity === o.opacidad && (!f.color || o.color == null || f.color.getHex() === o.color)) return;
-    f.opacity = o.opacidad; if (f.color && o.color != null) f.color.setHex(o.color);
-    f.needsUpdate = true;
-    if (S.viewer.impl.invalidate) S.viewer.impl.invalidate(true);
-  }
   function paintModelBase(encuadrar, soloEstas) {
     var v = S.viewer, m = S.model;
     if (!v || !m || !S.guid2db.size) return;
-    if (S.modulo !== "lean") fantasmaVisible(false);
     v.clearThemingColors(m);
     // En el módulo Lean, los colores los decide el plan (lean.js).
     if (S.modulo === "lean" && window.OBYRA_LEAN) {
@@ -2505,11 +2491,9 @@
       if (simulando) { S.syncing = true; v.clearSelection(); S.syncing = false; } // la selección azul tapa los colores
       // aislar = solo lo elegido; si no, todo el modelo visible con los colores encima (para poder seleccionar más).
       var zids = idsZonaAislada();
-      // Vista dividida de una tarjeta: sus piezas a color, las de otras tarjetas en azul apagado (ambas sólidas) y lo
-      // sin asignar como «fantasma» del visor (semitransparente), solo de contexto.
-      var conContexto = !!(window.OBYRA_LEAN.contexto && window.OBYRA_LEAN.contexto());
-      fantasmaVisible(conContexto);
-      if (conContexto) {
+      // Vista dividida de una tarjeta: sus piezas a color, las de otras tarjetas en azul apagado y lo sin asignar en
+      // gris tenue, todo a la vista para no perder el contexto.
+      if (window.OBYRA_LEAN.contexto && window.OBYRA_LEAN.contexto()) {
         var visibles = lids.slice(), enTarjeta = new Set(lids);
         var otras = window.OBYRA_LEAN.otrasTarjetas ? window.OBYRA_LEAN.otrasTarjetas() : {};
         Object.keys(otras).forEach(function (g) {
@@ -2518,7 +2502,13 @@
         });
         // Al final el color de la tarjeta, por si alguna parte anidada quedó con el de otra.
         Object.keys(col).forEach(function (g) { var id = S.guid2db.get(g); if (id != null) v.setThemingColor(id, hexToVec(col[g]), m, true); });
-        if (cambiaVista("iso", visibles)) v.isolate(visibles, m);
+        // Lo sin asignar en gris tenue y a la vista (el «fantasma» del visor no se alcanza a ver en este modelo).
+        var gris = hexToVec("#D9DEE4"), asignadas = new Set(visibles); gris.w = 0.55;
+        S.guid2db.forEach(function (id) { if (!asignadas.has(id)) v.setThemingColor(id, gris, m, true); });
+        // y de nuevo los colores de las tarjetas encima, por las partes anidadas que el gris haya tapado
+        Object.keys(otras).forEach(function (g) { var id = S.guid2db.get(g); if (id != null && !enTarjeta.has(id)) v.setThemingColor(id, hexToVec(otras[g]), m, true); });
+        Object.keys(col).forEach(function (g) { var id = S.guid2db.get(g); if (id != null) v.setThemingColor(id, hexToVec(col[g]), m, true); });
+        if (cambiaVista("todo", [])) v.showAll();
         if (encuadrar && lids.length) v.fitToView(lids, m);
       }
       else if (zids) { if (cambiaVista("zona", zids)) v.isolate(zids, m); if (encuadrar) v.fitToView(zids, m); }

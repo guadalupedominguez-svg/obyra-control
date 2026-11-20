@@ -103,7 +103,7 @@
     var items = [["Comprometido", C_LEAN.comp], ["Cumplido", C_LEAN.ok], ["No cumplido", C_LEAN.bad], ["Con restricción", C_LEAN.restr], ["Lista", C_LEAN.lista]];
     // Vista dividida de una tarjeta: las piezas de otras tarjetas van en azul apagado.
     if (L.verAct) items.push(["En otra tarjeta", C_OTRA]);
-    items.push(["Sin asignar", "#C3C9D1", L.verAct ? 0.45 : 0]); // en la vista dividida se ve como fantasma
+    items.push(["Sin asignar", "#C3C9D1"]);
     $("legend").replaceChildren.apply($("legend"), items.map(function (x) { return el("span", null, [el("i", { class: "dot", style: "background:" + x[1] + (x[2] ? ";opacity:" + x[2] : "") }), x[0]]); }));
   }
   function abrirTab(t) {
@@ -148,7 +148,7 @@
     // En la sesión pull se aísla solo con una tarea o un día elegido; en las demás vistas, siempre.
     simulando: function () { return L.tab === "pull" && L.sim.on && !!L.sim.dia; },
     aislar: function () { return L.tab !== "pull" || !!(L.tarSel || L.diaSel || L.sim.on); },
-    // Vista dividida de una tarjeta: se ve lo asignado a color y lo sin asignar como fantasma.
+    // Vista dividida de una tarjeta: se ve lo asignado a color y lo sin asignar en gris tenue.
     contexto: function () { return !!L.verAct; },
     // Vista dividida: piezas ligadas a otras actividades, en azul apagado.
     otrasTarjetas: function () {
