@@ -2497,6 +2497,8 @@
         // id y el gris las taparía si se pintara después.
         var enTarjeta = new Set(lids), gris = hexToVec("#D9DEE4"); gris.w = 0.55; // gris tenue (se mezcla con el material)
         S.guid2db.forEach(function (id) { if (!enTarjeta.has(id)) v.setThemingColor(id, gris, m, true); });
+        var otras = window.OBYRA_LEAN.otrasTarjetas ? window.OBYRA_LEAN.otrasTarjetas() : {};
+        Object.keys(otras).forEach(function (g) { var id = S.guid2db.get(g); if (id == null || enTarjeta.has(id)) return; var c = hexToVec(otras[g]); c.w = 0.35; v.setThemingColor(id, c, m, true); });
         Object.keys(col).forEach(function (g) { var id = S.guid2db.get(g); if (id != null) v.setThemingColor(id, hexToVec(col[g]), m, true); });
         if (cambiaVista("todo", [])) v.showAll();
         if (encuadrar && lids.length) v.fitToView(lids, m);
