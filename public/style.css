@@ -736,3 +736,8 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 .tabpane[data-pane="generador"].sin-lista { grid-template-rows: auto auto auto; align-content: start; }
 .gp-estado { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; padding: 4px 2px; }
 .gp-estado[hidden], #gp-est[hidden], #gp-enviar-btn[hidden] { display: none; }
+/* Planeación: «Ver en el modelo» divide la pantalla (modelo a la izquierda, tarjeta a la derecha) */
+.app.act-split { --dock: min(50vw, 900px); }
+.app.lean.act-split .body { grid-template-columns: auto minmax(0, 1fr) var(--dock); }
+dialog.dialog.act-dock { position: fixed; top: var(--dock-top, 53px); right: 0; bottom: 0; left: auto; width: min(50vw, 900px); max-width: none; height: auto; max-height: none; margin: 0; border-radius: 0; border-width: 0 0 0 1px; overflow-y: auto; z-index: 40; box-shadow: -12px 0 30px rgba(0, 0, 0, .35); }
+@media (max-width: 900px) { dialog.dialog.act-dock { width: 100vw; top: 50vh; } .app.lean.act-split .body { grid-template-columns: 1fr; } }

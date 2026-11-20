@@ -114,12 +114,7 @@
     render();
   }
 
-  // Colores del modelo según la semana elegida (lo llama paintModel de app.js).
-  window.OBYRA_LEAN = {
-    // En la sesión pull se aísla solo con una tarea o un día elegido; en las demás vistas, siempre.
-    simulando: function () { return L.tab === "pull" && L.sim.on && !!L.sim.dia; },
-    aislar: function () { return L.tab !== "pull" || !!(L.tarSel || L.diaSel || L.sim.on); },
-    colores: function () {
+  function coloresVista() {
       var out = {};
       if (!L.cargado) return out;
       if (L.tab === "pull" && L.sim.on && L.sim.dia) return coloresSim();
@@ -143,6 +138,20 @@
         a.guids.forEach(function (g) { out[g] = c; });
       });
       return out;
+  }
+  // Colores del modelo según la semana elegida (lo llama paintModel de app.js).
+  window.OBYRA_LEAN = {
+    // En la sesión pull se aísla solo con una tarea o un día elegido; en las demás vistas, siempre.
+    simulando: function () { return L.tab === "pull" && L.sim.on && !!L.sim.dia; },
+    aislar: function () { return !!L.verAct || L.tab !== "pull" || !!(L.tarSel || L.diaSel || L.sim.on); },
+    colores: function () {
+      // Vista dividida de una actividad: solo sus piezas, con el color que tendrían en la vista actual.
+      if (L.verAct) {
+        var base = coloresVista(), solo = {};
+        L.verAct.forEach(function (g) { solo[g] = base[g] || C_LEAN.comp; });
+        return solo;
+      }
+      return coloresVista();
     },
     refrescar: function () { render(); },
     // Piezas que llevan etiqueta en la vista 3D: lo que se ejecuta en el día simulado, la tarea o el día
@@ -539,12 +548,31 @@
     var puedeRestr = a && (ed || P("calificar") || P("validar") || (esContratista() && a.contratista === S.me.contratista));
     $("la-restr-form").hidden = !puedeRestr;
     if (!$("ln-act").open) $("ln-act").showModal();
+    else if (L.verAct) { L.verAct = (L.act.guids || []).slice(); O.paintModel(false); }
   }
   function piezasTxt() {
     var n = (L.act.guids || []).length;
     $("la-piezas").textContent = n ? n + (n === 1 ? " pieza del modelo ligada" : " piezas del modelo ligadas") : "Sin piezas del modelo";
     $("la-ver").hidden = !n;
     $("la-usar").textContent = "Usar piezas seleccionadas" + (S.sel && S.sel.size ? " (" + S.sel.size + ")" : "");
+  }
+  function dividir(on) {
+    var d = $("ln-act"), app = $("app");
+    if (on) {
+      L.verAct = (L.act.guids || []).slice();
+      if (!L.verAct.length) return;
+      // Se cierra la ventana modal y se vuelve a abrir acoplada a la derecha (sin bloquear el modelo).
+      if (!d.classList.contains("act-dock")) { L.acoplando = true; d.close(); d.classList.add("act-dock"); d.show(); }
+      app.classList.add("act-split");
+      var top = document.querySelector(".app .top");
+      if (top) d.style.setProperty("--dock-top", Math.round(top.getBoundingClientRect().bottom) + "px");
+    } else {
+      L.verAct = null; d.classList.remove("act-dock"); app.classList.remove("act-split");
+    }
+    requestAnimationFrame(function () {
+      if (S.viewer) { try { S.viewer.resize(); } catch (e) { /* nada */ } }
+      O.paintModel(true);
+    });
   }
   function renderPlanAct() {
     var a = L.act, box = $("la-plan");
@@ -588,7 +616,13 @@
       if (!S.sel || !S.sel.size) { toast("Selecciona piezas en el modelo (clic, Ctrl+clic para varias) o en la pestaña Piezas."); return; }
       L.act.guids = Array.from(S.sel); piezasTxt(); toast("Se ligarán " + L.act.guids.length + " piezas al guardar.");
     });
-    $("la-ver").addEventListener("click", function () { O.focusPieces(L.act.guids || []); });
+    // «Ver en el modelo»: la pantalla se divide; a la izquierda el modelo solo con las piezas de la actividad
+    // (se puede girar y acercar) y a la derecha la tarjeta.
+    $("la-ver").addEventListener("click", function () { dividir(true); });
+    $("ln-act").addEventListener("close", function () {
+      if (L.acoplando) { L.acoplando = false; return; } // el cierre al acoplarla no cuenta
+      if (L.verAct) dividir(false);
+    });
     $("ln-act-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
       var x = L.act;
