@@ -734,3 +734,5 @@ td.u-acc .btn + .btn { margin-left: 6px; }
 #ap-filtros-wrap[hidden], #ap-count-wrap[hidden] { display: none; }
 #g-tablawrap[hidden], #g-verest[hidden] { display: none; }
 .tabpane[data-pane="generador"].sin-lista { grid-template-rows: auto auto auto; align-content: start; }
+.gp-estado { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; padding: 4px 2px; }
+.gp-estado[hidden], #gp-est[hidden], #gp-enviar-btn[hidden] { display: none; }

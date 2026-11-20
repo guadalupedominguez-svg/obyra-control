@@ -1333,16 +1333,45 @@
         if (rev) { var cola = COLAS[rev.cola]; $("gp-validar").textContent = cola.okRev || cola.ok; $("gp-regresar").textContent = cola.noRev || cola.no; }
       }
       // El contratista envía desde aquí lo que está viendo (solo lo Terminado y validado).
-      var E = $("gp-enviar");
-      if (E) {
-        var nEnv = filas.filter(estimable).length;
-        E.hidden = !!rev || !S.permisos.enviarEstimacion || !nEnv;
-        $("gp-est").value = $("g-est") ? $("g-est").value : "";
-        $("gp-enviar-btn").textContent = "Enviar " + nEnv + (nEnv === 1 ? " pieza" : " piezas") + " a validar";
-      }
+      if ($("gp-est")) $("gp-est").value = $("g-est") ? $("g-est").value : "";
+      pintarEnvio();
       $("gen-prev").showModal();
       if (GP.img) abrirZoom(); // la vista del modelo se abre junto a la lista
     }).finally(function () { btn.disabled = false; btn.textContent = texto; if (!rev) actualizarMarcar(); });
+  }
+  // Recuadro del contratista en la vista: si el generador elegido aún no se envía, el campo y el botón para enviarlo
+  // (contando solo sus piezas listas); si ya se envió o se estimó, en qué estatus está.
+  function pintarEnvio() {
+    var E = $("gp-enviar"); if (!E || !GP) return;
+    var ver = !GP.rev && !!S.permisos.enviarEstimacion, G = GP.elegido;
+    var filas = GP.filas || [], nEnv = filas.filter(estimable).length;
+    var estado = ver && G && G.estimacion ? estadoGenerador(G) : null;
+    E.hidden = !ver || (!estado && !nEnv);
+    $("gp-est").hidden = $("gp-enviar-btn").hidden = !!estado;
+    $("gp-estado").hidden = !estado;
+    if (estado) $("gp-estado").replaceChildren(pill(estado.pill, estado.texto), el("span", { class: "muted", text: estado.detalle }));
+    else $("gp-enviar-btn").textContent = "Enviar " + nEnv + (nEnv === 1 ? " pieza" : " piezas") + " a validar";
+  }
+  function estadoGenerador(G) {
+    var rs = G.filas.map(rec), f = "";
+    rs.forEach(function (r) { // fecha de envío: del historial o de la solicitud pendiente
+      (r.hist || []).forEach(function (h) { if (h.accion === "envia" && (h.estimacion || "") === G.estimacion && h.at > f) f = h.at; });
+      if (r.pend && r.pend.estimacion === G.estimacion && (r.pend.at || "") > f) f = r.pend.at;
+    });
+    var cuando = f ? "Enviado el " + new Date(f).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : "";
+    var pend = rs.filter(function (r) { return r.pend && r.pend.estatus === "Estimado"; });
+    if (pend.length) {
+      var conRes = pend.some(function (r) { return (r.pend.etapa || "residente") === "residente"; });
+      return conRes
+        ? { pill: "Por aprobar", texto: "Enviado a validar", detalle: [cuando, "espera la validación del residente"].filter(Boolean).join(" · ") }
+        : { pill: "Por aprobar", texto: "Validado por el residente", detalle: [cuando, "espera la aprobación del superintendente"].filter(Boolean).join(" · ") };
+    }
+    var pagado = rs.length && rs.every(function (r) { return r.estatus === "Pagado"; });
+    var ap = rs.reduce(function (x, r) { return r.aprobado && r.aprobado.at > x ? r.aprobado.at : x; }, "");
+    return {
+      pill: pagado ? "Pagado" : "Estimado", texto: pagado ? "Pagado" : "Estimado",
+      detalle: [cuando, ap ? "aprobado por el superintendente el " + new Date(ap).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : "aprobado por el superintendente"].filter(Boolean).join(" · "),
+    };
   }
   $("g-ver").addEventListener("click", function () {
     var filas = genSeleccion() || genFilas();
@@ -1795,7 +1824,7 @@
     GP.titulo = G ? G.titulo : GP.titulo0; GP.sub = G ? G.sub : GP.sub0;
     var listo = function () {
       GP.img = G ? G.img || null : null;
-      renderPrevia(); textoBotones(); renderGruposPrevia();
+      renderPrevia(); textoBotones(); renderGruposPrevia(); pintarEnvio();
       if (GP.img) abrirZoom();
     };
     if (!G || G.img !== undefined || !S.viewer) return listo();
