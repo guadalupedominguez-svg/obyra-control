@@ -2491,7 +2491,14 @@
       if (simulando) { S.syncing = true; v.clearSelection(); S.syncing = false; } // la selección azul tapa los colores
       // aislar = solo lo elegido; si no, todo el modelo visible con los colores encima (para poder seleccionar más).
       var zids = idsZonaAislada();
-      if (zids) { if (cambiaVista("zona", zids)) v.isolate(zids, m); if (encuadrar) v.fitToView(zids, m); }
+      // Vista dividida de una tarjeta: todo el modelo a la vista, en gris, y solo sus piezas a color (sin perder el contexto).
+      if (window.OBYRA_LEAN.contexto && window.OBYRA_LEAN.contexto()) {
+        var enTarjeta = new Set(lids), gris = hexToVec("#A7AFBA");
+        S.guid2db.forEach(function (id) { if (!enTarjeta.has(id)) v.setThemingColor(id, gris, m, true); });
+        if (cambiaVista("todo", [])) v.showAll();
+        if (encuadrar && lids.length) v.fitToView(lids, m);
+      }
+      else if (zids) { if (cambiaVista("zona", zids)) v.isolate(zids, m); if (encuadrar) v.fitToView(zids, m); }
       else if (lids.length && window.OBYRA_LEAN.aislar() && (!S.multi || simulando) && !S.verTodo) { if (cambiaVista("iso", lids)) v.isolate(lids, m); if (encuadrar) v.fitToView(lids, m); }
       else { if (cambiaVista("todo", [])) v.showAll(); if (lids.length && encuadrar) v.fitToView(lids, m); }
       if (v.impl && v.impl.invalidate) v.impl.invalidate(true, true, true); // fuerza a redibujar con los colores nuevos

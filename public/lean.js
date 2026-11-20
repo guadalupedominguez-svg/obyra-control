@@ -143,7 +143,9 @@
   window.OBYRA_LEAN = {
     // En la sesión pull se aísla solo con una tarea o un día elegido; en las demás vistas, siempre.
     simulando: function () { return L.tab === "pull" && L.sim.on && !!L.sim.dia; },
-    aislar: function () { return !!L.verAct || L.tab !== "pull" || !!(L.tarSel || L.diaSel || L.sim.on); },
+    aislar: function () { return L.tab !== "pull" || !!(L.tarSel || L.diaSel || L.sim.on); },
+    // Vista dividida de una tarjeta: el resto del modelo se ve en gris (no se aísla).
+    contexto: function () { return !!L.verAct; },
     colores: function () {
       // Vista dividida de una actividad: solo sus piezas, con el color que tendrían en la vista actual.
       if (L.verAct) {
