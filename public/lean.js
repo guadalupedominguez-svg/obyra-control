@@ -99,7 +99,7 @@
     O.paintModel(false);
   }
   function leyenda() {
-    var items = [["Comprometido", C_LEAN.comp], ["Cumplido", C_LEAN.ok], ["No cumplido", C_LEAN.bad], ["Con restricción", C_LEAN.restr], ["Lista", C_LEAN.lista]];
+    var items = [["Comprometido", C_LEAN.comp], ["Cumplido", C_LEAN.ok], ["No cumplido", C_LEAN.bad], ["Con restricción", C_LEAN.restr], ["Lista", C_LEAN.lista], ["Sin asignar", "#C3C9D1"]];
     $("legend").replaceChildren.apply($("legend"), items.map(function (x) { return el("span", null, [el("i", { class: "dot", style: "background:" + x[1] }), x[0]]); }));
   }
   function abrirTab(t) {
@@ -558,6 +558,36 @@
     $("la-ver").hidden = !n;
     $("la-usar").textContent = "Usar piezas seleccionadas" + (S.sel && S.sel.size ? " (" + S.sel.size + ")" : "");
   }
+  // Vista dividida: al pasar el cursor sobre un elemento del modelo se muestra su marca (sin tener que dar clic).
+  var tipMarca = null, rafTip = 0;
+  function marcaBajoCursor(ev) {
+    var v = S.viewer; if (!v || !S.model || !L.verAct) return null;
+    var r = v.container.getBoundingClientRect(), hit = null;
+    try { hit = v.impl.hitTest(ev.clientX - r.left, ev.clientY - r.top, false); } catch (e) { return null; }
+    var id = hit && hit.dbId, it = S.model.getInstanceTree && S.model.getInstanceTree();
+    while (id != null && id > 0 && !S.db2guid.has(id) && it) id = it.getNodeParentId(id); // partes anidadas → su pieza
+    return id != null && S.db2guid.has(id) ? S.db2guid.get(id) : null;
+  }
+  function moverTip(ev) {
+    cancelAnimationFrame(rafTip);
+    rafTip = requestAnimationFrame(function () {
+      var g = marcaBajoCursor(ev);
+      if (!tipMarca) { tipMarca = el("div", { class: "tip-marca", hidden: "" }); $("viewer").parentNode.appendChild(tipMarca); }
+      if (!g) { tipMarca.hidden = true; return; }
+      var poner = function () {
+        var m = O.marcaDe(g);
+        tipMarca.textContent = (m || "(sin marca)") + (L.verAct && L.verAct.indexOf(g) >= 0 ? " · en esta tarjeta" : "");
+      };
+      poner();
+      if (!O.marcaDe(g)) O.pedirMarcas([g], poner);
+      var w = $("viewer").parentNode.getBoundingClientRect();
+      tipMarca.style.left = (ev.clientX - w.left + 14) + "px"; tipMarca.style.top = (ev.clientY - w.top + 14) + "px";
+      tipMarca.hidden = false;
+    });
+  }
+  function ocultarTip() { cancelAnimationFrame(rafTip); if (tipMarca) tipMarca.hidden = true; }
+  if ($("viewer")) { $("viewer").addEventListener("mousemove", function (ev) { if (L.verAct) moverTip(ev); }); $("viewer").addEventListener("mouseleave", ocultarTip); }
+
   // Divisor de la vista dividida: entre el modelo y la tarjeta acoplada.
   var dvDock = null;
   function divisorDock() {
@@ -583,7 +613,7 @@
       if (top) document.documentElement.style.setProperty("--dock-top", Math.round(top.getBoundingClientRect().bottom) + "px");
       divisorDock().hidden = false;
     } else {
-      L.verAct = null; d.classList.remove("act-dock"); app.classList.remove("act-split");
+      L.verAct = null; d.classList.remove("act-dock"); app.classList.remove("act-split"); ocultarTip();
       divisorDock().hidden = true;
     }
     requestAnimationFrame(function () {

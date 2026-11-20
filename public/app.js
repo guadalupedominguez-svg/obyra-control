@@ -2495,7 +2495,7 @@
       if (window.OBYRA_LEAN.contexto && window.OBYRA_LEAN.contexto()) {
         // Primero el gris y luego el color de la tarjeta: en familias anidadas, las partes de una pieza tienen su propio
         // id y el gris las taparía si se pintara después.
-        var enTarjeta = new Set(lids), gris = hexToVec("#A7AFBA");
+        var enTarjeta = new Set(lids), gris = hexToVec("#D9DEE4"); gris.w = 0.55; // gris tenue (se mezcla con el material)
         S.guid2db.forEach(function (id) { if (!enTarjeta.has(id)) v.setThemingColor(id, gris, m, true); });
         Object.keys(col).forEach(function (g) { var id = S.guid2db.get(g); if (id != null) v.setThemingColor(id, hexToVec(col[g]), m, true); });
         if (cambiaVista("todo", [])) v.showAll();

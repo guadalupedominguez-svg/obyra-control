@@ -752,3 +752,5 @@ html.arrastrando-divisor, html.arrastrando-divisor * { cursor: col-resize !impor
 .gp-left > .divisor { left: auto; right: -13px; display: none; }
 .gp-zoom .gp-left > .divisor { display: block; }
 @media (max-width: 900px) { .divisor, .gp-zoom .gp-left > .divisor { display: none; } }
+.tip-marca { position: absolute; z-index: 6; pointer-events: none; background: rgba(10, 15, 26, .92); color: var(--text); border: 1px solid var(--accent); border-radius: 6px; padding: 3px 8px; font-size: 12px; white-space: nowrap; }
+.tip-marca[hidden] { display: none; }
