@@ -2493,8 +2493,11 @@
       var zids = idsZonaAislada();
       // Vista dividida de una tarjeta: todo el modelo a la vista, en gris, y solo sus piezas a color (sin perder el contexto).
       if (window.OBYRA_LEAN.contexto && window.OBYRA_LEAN.contexto()) {
+        // Primero el gris y luego el color de la tarjeta: en familias anidadas, las partes de una pieza tienen su propio
+        // id y el gris las taparía si se pintara después.
         var enTarjeta = new Set(lids), gris = hexToVec("#A7AFBA");
         S.guid2db.forEach(function (id) { if (!enTarjeta.has(id)) v.setThemingColor(id, gris, m, true); });
+        Object.keys(col).forEach(function (g) { var id = S.guid2db.get(g); if (id != null) v.setThemingColor(id, hexToVec(col[g]), m, true); });
         if (cambiaVista("todo", [])) v.showAll();
         if (encuadrar && lids.length) v.fitToView(lids, m);
       }
