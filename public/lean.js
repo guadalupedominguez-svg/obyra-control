@@ -37,6 +37,7 @@
   var P = function (k) { return !!(S.permisos && S.permisos[k]); };
   var esContratista = function () { return S.me && S.me.rol === "contratista"; };
   var C_LEAN = { comp: "#22D3EE", ok: "#2BD483", bad: "#F2616A", restr: "#F5B83D", lista: "#3B82F6" };
+  var C_OTRA = "#7C93AE"; // vista dividida: piezas de otras tarjetas
   var PALETA = ["#3B82F6", "#A78BFA", "#F472B6", "#F59E0B", "#2BD483", "#22D3EE", "#F2616A", "#94A3B8"];
   function colorDe(c) {
     var lista = contratistas();
@@ -100,9 +101,9 @@
   }
   function leyenda() {
     var items = [["Comprometido", C_LEAN.comp], ["Cumplido", C_LEAN.ok], ["No cumplido", C_LEAN.bad], ["Con restricción", C_LEAN.restr], ["Lista", C_LEAN.lista]];
-    // Vista dividida de una tarjeta: las piezas de otras tarjetas van en el color de la abierta, translúcido.
-    if (L.verAct) items.push(["En otra tarjeta", colorTarjetaAbierta(), 0.35]);
-    items.push(["Sin asignar", "#C3C9D1"]);
+    // Vista dividida de una tarjeta: las piezas de otras tarjetas van en azul apagado.
+    if (L.verAct) items.push(["En otra tarjeta", C_OTRA]);
+    items.push(["Sin asignar", "#C3C9D1", L.verAct ? 0.45 : 0]); // en la vista dividida se ve como fantasma
     $("legend").replaceChildren.apply($("legend"), items.map(function (x) { return el("span", null, [el("i", { class: "dot", style: "background:" + x[1] + (x[2] ? ";opacity:" + x[2] : "") }), x[0]]); }));
   }
   function abrirTab(t) {
@@ -117,10 +118,6 @@
     render();
   }
 
-  function colorTarjetaAbierta() {
-    var base = coloresVista(), g = (L.verAct || []).find(function (x) { return base[x]; });
-    return g ? base[g] : C_LEAN.comp;
-  }
   function coloresVista() {
       var out = {};
       if (!L.cargado) return out;
@@ -151,12 +148,12 @@
     // En la sesión pull se aísla solo con una tarea o un día elegido; en las demás vistas, siempre.
     simulando: function () { return L.tab === "pull" && L.sim.on && !!L.sim.dia; },
     aislar: function () { return L.tab !== "pull" || !!(L.tarSel || L.diaSel || L.sim.on); },
-    // Vista dividida de una tarjeta: el resto del modelo se ve en gris (no se aísla).
+    // Vista dividida de una tarjeta: se ve lo asignado a color y lo sin asignar como fantasma.
     contexto: function () { return !!L.verAct; },
-    // Vista dividida: piezas ligadas a otras actividades → el color de la tarjeta abierta (app.js lo pinta translúcido).
+    // Vista dividida: piezas ligadas a otras actividades, en azul apagado.
     otrasTarjetas: function () {
       var out = {}; if (!L.verAct) return out;
-      var c = colorTarjetaAbierta(), mias = new Set(L.verAct);
+      var c = C_OTRA, mias = new Set(L.verAct);
       L.acts.forEach(function (a) { if (a.id === L.act.id) return; (a.guids || []).forEach(function (g) { if (!mias.has(g)) out[g] = c; }); });
       return out;
     },

@@ -2491,16 +2491,18 @@
       if (simulando) { S.syncing = true; v.clearSelection(); S.syncing = false; } // la selección azul tapa los colores
       // aislar = solo lo elegido; si no, todo el modelo visible con los colores encima (para poder seleccionar más).
       var zids = idsZonaAislada();
-      // Vista dividida de una tarjeta: todo el modelo a la vista, en gris, y solo sus piezas a color (sin perder el contexto).
+      // Vista dividida de una tarjeta: sus piezas a color, las de otras tarjetas en azul apagado (ambas sólidas) y lo
+      // sin asignar como «fantasma» del visor (semitransparente), solo de contexto.
       if (window.OBYRA_LEAN.contexto && window.OBYRA_LEAN.contexto()) {
-        // Primero el gris y luego el color de la tarjeta: en familias anidadas, las partes de una pieza tienen su propio
-        // id y el gris las taparía si se pintara después.
-        var enTarjeta = new Set(lids), gris = hexToVec("#D9DEE4"); gris.w = 0.55; // gris tenue (se mezcla con el material)
-        S.guid2db.forEach(function (id) { if (!enTarjeta.has(id)) v.setThemingColor(id, gris, m, true); });
+        var visibles = lids.slice(), enTarjeta = new Set(lids);
         var otras = window.OBYRA_LEAN.otrasTarjetas ? window.OBYRA_LEAN.otrasTarjetas() : {};
-        Object.keys(otras).forEach(function (g) { var id = S.guid2db.get(g); if (id == null || enTarjeta.has(id)) return; var c = hexToVec(otras[g]); c.w = 0.35; v.setThemingColor(id, c, m, true); });
+        Object.keys(otras).forEach(function (g) {
+          var id = S.guid2db.get(g); if (id == null || enTarjeta.has(id)) return;
+          visibles.push(id); v.setThemingColor(id, hexToVec(otras[g]), m, true);
+        });
+        // Al final el color de la tarjeta, por si alguna parte anidada quedó con el de otra.
         Object.keys(col).forEach(function (g) { var id = S.guid2db.get(g); if (id != null) v.setThemingColor(id, hexToVec(col[g]), m, true); });
-        if (cambiaVista("todo", [])) v.showAll();
+        if (cambiaVista("iso", visibles)) v.isolate(visibles, m);
         if (encuadrar && lids.length) v.fitToView(lids, m);
       }
       else if (zids) { if (cambiaVista("zona", zids)) v.isolate(zids, m); if (encuadrar) v.fitToView(zids, m); }
