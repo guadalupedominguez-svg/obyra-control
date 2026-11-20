@@ -2476,9 +2476,23 @@
     if (S.resalteEncuadrar && ids.length) { v.fitToView(ids, m); S.resalteEncuadrar = false; }
     if (v.impl && v.impl.invalidate) v.impl.invalidate(true, true, true);
   }
+  // El «fantasma» del visor (lo que queda fuera al aislar) es casi invisible; en la vista dividida de una tarjeta
+  // se hace más visible para dar contexto, y al salir se regresa a como lo trae el visor.
+  var FANTASMA = { opacidad: 0.22, color: 0x8A96A6 };
+  function fantasmaVisible(on) {
+    var f = S.viewer && S.viewer.impl && S.viewer.impl.fadeMaterial;
+    if (!f) return;
+    if (!S.fantasmaOrig) S.fantasmaOrig = { opacidad: f.opacity, color: f.color ? f.color.getHex() : null };
+    var o = on ? FANTASMA : S.fantasmaOrig;
+    if (f.opacity === o.opacidad && (!f.color || o.color == null || f.color.getHex() === o.color)) return;
+    f.opacity = o.opacidad; if (f.color && o.color != null) f.color.setHex(o.color);
+    f.needsUpdate = true;
+    if (S.viewer.impl.invalidate) S.viewer.impl.invalidate(true);
+  }
   function paintModelBase(encuadrar, soloEstas) {
     var v = S.viewer, m = S.model;
     if (!v || !m || !S.guid2db.size) return;
+    if (S.modulo !== "lean") fantasmaVisible(false);
     v.clearThemingColors(m);
     // En el módulo Lean, los colores los decide el plan (lean.js).
     if (S.modulo === "lean" && window.OBYRA_LEAN) {
@@ -2493,7 +2507,9 @@
       var zids = idsZonaAislada();
       // Vista dividida de una tarjeta: sus piezas a color, las de otras tarjetas en azul apagado (ambas sólidas) y lo
       // sin asignar como «fantasma» del visor (semitransparente), solo de contexto.
-      if (window.OBYRA_LEAN.contexto && window.OBYRA_LEAN.contexto()) {
+      var conContexto = !!(window.OBYRA_LEAN.contexto && window.OBYRA_LEAN.contexto());
+      fantasmaVisible(conContexto);
+      if (conContexto) {
         var visibles = lids.slice(), enTarjeta = new Set(lids);
         var otras = window.OBYRA_LEAN.otrasTarjetas ? window.OBYRA_LEAN.otrasTarjetas() : {};
         Object.keys(otras).forEach(function (g) {
